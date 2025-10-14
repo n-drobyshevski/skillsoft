@@ -1,0 +1,23 @@
+FROM openjdk:21-jdk-slim
+
+WORKDIR /app
+
+# Install Maven
+RUN apt-get update && apt-get install -y maven curl && rm -rf /var/lib/apt/lists/*
+
+# Copy Maven configuration
+COPY pom.xml .
+COPY .mvn .mvn
+COPY mvnw .
+
+# Download dependencies (cache layer)
+RUN ./mvnw dependency:go-offline
+
+# Copy source code
+COPY src ./src
+
+# Expose ports
+EXPOSE 8080 5005 35729
+
+# Development command with Spring Boot DevTools
+CMD ["./mvnw", "spring-boot:run", "-Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"]

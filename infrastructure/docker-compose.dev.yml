@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:15-alpine
+    container_name: skillsoft-db-dev
+    environment:
+      POSTGRES_DB: skillsoft_assessment_dev
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./database/init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - skillsoft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d skillsoft_assessment_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../assessment-backend
+      dockerfile: Dockerfile.dev
+    container_name: backend-dev
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/skillsoft_assessment_dev
+      - SPRING_DATASOURCE_USERNAME=${DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-password}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - SPRING_DEVTOOLS_RESTART_ENABLED=true
+      - SPRING_DEVTOOLS_LIVERELOAD_ENABLED=true
+    volumes:
+      # HOT RELOAD: Mount source code for live changes
+      - ../assessment-backend/src:/app/src:ro
+      - ../assessment-backend/target:/app/target
+      - maven_cache:/root/.m2
+    ports:
+      - "8080:8080"
+      - "35729:35729"  # Spring Boot LiveReload port
+    networks:
+      - skillsoft-network
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: ["./mvnw", "spring-boot:run", "-Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"]
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend-dev
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080/api
+      - CHOKIDAR_USEPOLLING=true  # Enable file watching in Docker
+      - FAST_REFRESH=true
+      - WDS_SOCKET_HOST=localhost
+    volumes:
+      # HOT RELOAD: Mount source code for live changes
+      - ../frontend/src:/app/src
+      - ../frontend/public:/app/public
+      - ../frontend/package.json:/app/package.json
+      - /app/node_modules  # Anonymous volume to prevent overriding
+    ports:
+      - "3000:3000"
+    networks:
+      - skillsoft-network
+    depends_on:
+      - backend
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_dev_data:
+  maven_cache:
+
+networks:
+  skillsoft-network:
+    driver: bridge
