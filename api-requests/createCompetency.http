@@ -1,0 +1,11 @@
+POST http://localhost:8080/api/competencies
+Content-Type: application/json
+
+{
+  "name": "Strategic Thinking",
+  "description": "Ability to develop long-term objectives and plans considering the organization's vision",
+  "category": "LEADERSHIP",
+  "level": "ADVANCED",
+  "isActive": true,
+  "approvalStatus": "PENDING_REVIEW"
+}
