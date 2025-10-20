@@ -37,7 +37,7 @@ docker-compose.local.yml
 # Database data
 /infrastructure/database/postgres-data/
 /postgres-data/
-*.sql
+#*.sql
 *.sqlite
 *.db
 dump.rdb
