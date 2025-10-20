@@ -1,0 +1,15 @@
+POST http://localhost:8080/api/competencies/3f87bdfd-e69d-47bc-9b56-75728abac65d/bi
+Content-Type: application/json
+
+{
+  "title": "Demonstrates Strategic Vision",
+  "description": "Shows ability to think long-term and consider organizational impact",
+  "observabilityLevel": "ADVANCED",
+  "measurementType": "QUALITY",
+  "weight": 0.8,
+  "examples": "Develops 5-year strategic plans, identifies market opportunities",
+  "counterExamples": "Focuses only on short-term gains, ignores market trends",
+  "isActive": true,
+  "approvalStatus": "PENDING_REVIEW",
+  "orderIndex": 1
+}

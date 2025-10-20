@@ -1,0 +1,3 @@
+GET http://localhost:8080/api/competencies/e3b78e44-7bbc-47b3-859a-3e344d11a1e0/bi/f1bcbb40-da3f-4e39-bdad-d834b52fc469
+
+# Replace the UUIDs in the URL with actual competency ID and behavioral indicator ID from your database
