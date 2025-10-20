@@ -1,4 +1,4 @@
-POST http://localhost:8080/api/competencies/e3b78e44-7bbc-47b3-859a-3e344d11a1e0/bi
+POST http://localhost:8080/api/competencies/3f87bdfd-e69d-47bc-9b56-75728abac65d/bi
 Content-Type: application/json
 
 {
