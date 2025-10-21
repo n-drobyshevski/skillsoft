@@ -50,7 +50,7 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
 
         // Set timestamps
         LocalDateTime now = LocalDateTime.now();
- 
+
         return behavioralIndicatorRepository.save(behavioralIndicator);
     }
 

@@ -1,4 +1,4 @@
-PUT http://localhost:8080/api/competencies/e3b78e44-7bbc-47b3-859a-3e344d11a1e0/bi/f1bcbb40-da3f-4e39-bdad-d834b52fc469
+PUT http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f
 Content-Type: application/json
 
 {
@@ -8,7 +8,7 @@ Content-Type: application/json
   "description": "Updated description: Shows advanced ability to think long-term and consider organizational impact",
   "observabilityLevel": "EXPERT",
   "measurementType": "IMPACT",
-  "weight": 0.9,
+  "weight": 0.4,
   "examples": "Develops comprehensive 5-year strategic plans, identifies and capitalizes on market opportunities",
   "counterExamples": "Focuses only on short-term gains, ignores market trends and stakeholder needs",
   "isActive": true,

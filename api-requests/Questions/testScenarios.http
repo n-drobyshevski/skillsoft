@@ -1,0 +1,128 @@
+### Assessment Question Edge Cases and Validation Tests
+
+### Create Question - Invalid JSON Format
+POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+Content-Type: application/json
+
+{
+  "questionText": "Test question with invalid enum"
+  "questionType": "INVALID_TYPE",
+  "answerOptions": [],
+  "scoringRubric": "Test rubric",
+  "difficultyLevel": "FOUNDATIONAL",
+  "isActive": true,
+  "orderIndex": 1
+}
+
+### Create Question - Missing Required Fields
+POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+Content-Type: application/json
+
+{
+  "questionType": "MULTIPLE_CHOICE",
+  "answerOptions": []
+}
+
+### Create Question - Self-Reflection Type
+POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+Content-Type: application/json
+
+{
+  "questionText": "Reflect on a time when you had to make a strategic decision with limited information. Describe your thought process and the outcome.",
+  "questionType": "SELF_REFLECTION",
+  "answerOptions": [
+    {
+      "type": "text_area",
+      "maxLength": 1000,
+      "placeholder": "Describe your experience in detail..."
+    }
+  ],
+  "scoringRubric": "Evaluate depth of reflection, strategic thinking process, learning from outcomes, and ability to articulate thought process",
+  "timeLimit": 600,
+  "difficultyLevel": "EXPERT",
+  "isActive": true,
+  "orderIndex": 4
+}
+
+### Create Question - Behavioral Example Type
+POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+Content-Type: application/json
+
+{
+  "questionText": "Provide a specific example of when you identified a strategic opportunity that others missed. What steps did you take to capitalize on it?",
+  "questionType": "BEHAVIORAL_EXAMPLE",
+  "answerOptions": [
+    {
+      "type": "structured_response",
+      "sections": [
+        {
+          "label": "Situation",
+          "description": "Describe the context and background"
+        },
+        {
+          "label": "Task",
+          "description": "What was your role and responsibility?"
+        },
+        {
+          "label": "Action",
+          "description": "What specific actions did you take?"
+        },
+        {
+          "label": "Result",
+          "description": "What was the outcome and impact?"
+        }
+      ]
+    }
+  ],
+  "scoringRubric": "STAR method evaluation: Situation clarity, Task definition, Action specificity, Result measurement. Focus on strategic identification and execution",
+  "timeLimit": 900,
+  "difficultyLevel": "ADVANCED",
+  "isActive": true,
+  "orderIndex": 5
+}
+
+### Create Question - Frequency Scale Type
+POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+Content-Type: application/json
+
+{
+  "questionText": "How frequently do you seek input from diverse stakeholders before making strategic decisions?",
+  "questionType": "FREQUENCY_SCALE",
+  "answerOptions": [
+    {
+      "label": "Never",
+      "frequency": "0%",
+      "value": 1,
+      "description": "I make decisions independently without seeking input"
+    },
+    {
+      "label": "Rarely",
+      "frequency": "1-25%",
+      "value": 2,
+      "description": "I occasionally seek input for major decisions"
+    },
+    {
+      "label": "Sometimes",
+      "frequency": "26-50%",
+      "value": 3,
+      "description": "I regularly seek input for important decisions"
+    },
+    {
+      "label": "Often",
+      "frequency": "51-75%",
+      "value": 4,
+      "description": "I consistently seek diverse input for strategic decisions"
+    },
+    {
+      "label": "Always",
+      "frequency": "76-100%",
+      "value": 5,
+      "description": "I systematically gather stakeholder input for all strategic decisions"
+    }
+  ],
+  "scoringRubric": "5=Systematic stakeholder engagement, 4=Consistent consultation, 3=Regular input seeking, 2=Occasional consultation, 1=Independent decision-making",
+  "timeLimit": 90,
+  "difficultyLevel": "INTERMEDIATE",
+  "isActive": true,
+  "orderIndex": 6
+}

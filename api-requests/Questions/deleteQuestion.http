@@ -1,0 +1,8 @@
+### Delete Assessment Question
+DELETE http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions/550e8400-e29b-41d4-a716-446655440000
+
+### Delete Assessment Question - Not Found Test
+DELETE http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions/00000000-0000-0000-0000-000000000000
+
+### Delete Assessment Question - Invalid Behavioral Indicator
+DELETE http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/00000000-0000-0000-0000-000000000000/questions/550e8400-e29b-41d4-a716-446655440000

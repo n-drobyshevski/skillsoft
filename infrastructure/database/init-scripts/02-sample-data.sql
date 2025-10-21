@@ -1121,6 +1121,201 @@ BEGIN
             true,
             3
         );
+        
+        -- ADDITIONAL LEADERSHIP QUESTIONS
+        
+        -- Leadership Question 3 (Multiple Choice)
+        INSERT INTO assessment_questions (
+            behavioral_indicator_id,
+            question_text,
+            question_type,
+            answer_options,
+            scoring_rubric,
+            time_limit,
+            difficulty_level,
+            is_active,
+            order_index
+        ) VALUES (
+            leadership_indicator_id,
+            'Что является ключевым элементом эффективного стратегического видения?',
+            'MULTIPLE_CHOICE',
+            '[
+                {"text": "Детальное планирование на ближайший месяц", "correct": false},
+                {"text": "Четкое представление о желаемом будущем и пути к нему", "correct": true},
+                {"text": "Анализ конкурентов в отрасли", "correct": false},
+                {"text": "Увеличение прибыли любой ценой", "correct": false}
+            ]',
+            'Правильный ответ = 5 баллов, неправильный = 0 баллов',
+            90,
+            'INTERMEDIATE',
+            true,
+            3
+        );
+        
+        -- ADDITIONAL COMMUNICATION QUESTIONS
+        
+        -- Communication Question 4 (Open Text)
+        INSERT INTO assessment_questions (
+            behavioral_indicator_id,
+            question_text,
+            question_type,
+            answer_options,
+            scoring_rubric,
+            time_limit,
+            difficulty_level,
+            is_active,
+            order_index
+        ) VALUES (
+            communication_indicator_id,
+            'Опишите ситуацию, когда вам пришлось объяснить сложную техническую концепцию нетехническому сотруднику. Какой подход вы использовали?',
+            'OPEN_TEXT',
+            '[]',
+            'Критерии оценки: 1) Использование простого языка без жаргона (2 балла), 2) Применение аналогий или примеров (2 балла), 3) Проверка понимания (1 балл). Максимум: 5 баллов',
+            300,
+            'ADVANCED',
+            true,
+            4
+        );
+        
+        -- ADDITIONAL EMOTIONAL INTELLIGENCE QUESTIONS
+        
+        -- Emotional Intelligence Question 3 (Multiple Choice)
+        INSERT INTO assessment_questions (
+            behavioral_indicator_id,
+            question_text,
+            question_type,
+            answer_options,
+            scoring_rubric,
+            time_limit,
+            difficulty_level,
+            is_active,
+            order_index
+        ) VALUES (
+            emotional_indicator_id,
+            'Какой невербальный сигнал НАИБОЛЕЕ точно указывает на стрессовое состояние собеседника?',
+            'MULTIPLE_CHOICE',
+            '[
+                {"text": "Скрещенные руки", "correct": false},
+                {"text": "Избегание зрительного контакта в сочетании с напряженной позой", "correct": true},
+                {"text": "Быстрая речь", "correct": false},
+                {"text": "Использование жестикуляции", "correct": false}
+            ]',
+            'Правильный ответ = 5 баллов, неправильный = 0 баллов',
+            60,
+            'INTERMEDIATE',
+            true,
+            3
+        );
+        
+        -- ADDITIONAL PROBLEM SOLVING QUESTIONS
+        
+        -- Problem Solving Question 4 (Open Text)
+        INSERT INTO assessment_questions (
+            behavioral_indicator_id,
+            question_text,
+            question_type,
+            answer_options,
+            scoring_rubric,
+            time_limit,
+            difficulty_level,
+            is_active,
+            order_index
+        ) VALUES (
+            problem_solving_indicator_id,
+            'Опишите конкретный случай, когда вы успешно решили сложную проблему на работе. Какие шаги анализа вы предприняли?',
+            'OPEN_TEXT',
+            '[]',
+            'Критерии оценки: 1) Четкое описание проблемы (1 балл), 2) Систематический анализ причин (2 балла), 3) Рассмотрение альтернативных решений (1 балл), 4) Оценка результатов (1 балл). Максимум: 5 баллов',
+            450,
+            'ADVANCED',
+            true,
+            4
+        );
+        
+        -- SCENARIO-BASED QUESTIONS FOR CRITICAL THINKING
+        
+        -- Get critical thinking indicator ID for additional questions
+        DECLARE
+            critical_indicator_id UUID;
+        BEGIN
+            SELECT id INTO critical_indicator_id 
+            FROM behavioral_indicators 
+            WHERE competency_id = critical_id 
+            AND title = 'Анализирует информацию из разных источников';
+            
+            -- Critical Thinking Question 1 (Situational Judgment)
+            INSERT INTO assessment_questions (
+                behavioral_indicator_id,
+                question_text,
+                question_type,
+                answer_options,
+                scoring_rubric,
+                time_limit,
+                difficulty_level,
+                is_active,
+                order_index
+            ) VALUES (
+                critical_indicator_id,
+                'Вы получили противоречивые отчеты от разных отделов по одному проекту. Как вы определите достоверную информацию?',
+                'SITUATIONAL_JUDGMENT',
+                '[
+                    {
+                        "text": "Приму решение на основе отчета от более авторитетного отдела",
+                        "score": 2,
+                        "explanation": "Полагание на авторитет без анализа данных"
+                    },
+                    {
+                        "text": "Соберу дополнительную информацию из первоисточников и проверю факты",
+                        "score": 5,
+                        "explanation": "Оптимальный подход с верификацией данных"
+                    },
+                    {
+                        "text": "Попрошу отделы предоставить единый согласованный отчет",
+                        "score": 3,
+                        "explanation": "Компромиссный подход, но может скрыть важные различия"
+                    },
+                    {
+                        "text": "Использую среднее значение из всех отчетов",
+                        "score": 1,
+                        "explanation": "Механистический подход без критического анализа"
+                    }
+                ]',
+                'Оценка от 1 до 5 в зависимости от выбранного варианта',
+                180,
+                'INTERMEDIATE',
+                true,
+                1
+            );
+            
+            -- Critical Thinking Question 2 (Likert Scale)
+            INSERT INTO assessment_questions (
+                behavioral_indicator_id,
+                question_text,
+                question_type,
+                answer_options,
+                scoring_rubric,
+                time_limit,
+                difficulty_level,
+                is_active,
+                order_index
+            ) VALUES (
+                critical_indicator_id,
+                'Я регулярно проверяю достоверность источников информации перед принятием решений',
+                'LIKERT_SCALE',
+                '[
+                    {"label": "Никогда", "value": 1},
+                    {"label": "Редко", "value": 2},
+                    {"label": "Иногда", "value": 3},
+                    {"label": "Часто", "value": 4},
+                    {"label": "Всегда", "value": 5}
+                ]',
+                'Прямая оценка: баллы соответствуют выбранному значению от 1 до 5',
+                60,
+                'FOUNDATIONAL',
+                true,
+                2
+            );
+        END;
     END;
 END;
 $$;

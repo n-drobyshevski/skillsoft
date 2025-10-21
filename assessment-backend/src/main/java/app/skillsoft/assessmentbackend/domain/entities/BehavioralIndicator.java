@@ -186,4 +186,3 @@ public class BehavioralIndicator {
     @Max(value = 20, message = "Maximum 20 indicators per competency")
     private Integer orderIndex;
 }
-

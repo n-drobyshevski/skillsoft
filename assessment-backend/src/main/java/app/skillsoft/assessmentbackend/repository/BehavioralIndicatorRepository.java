@@ -12,6 +12,6 @@ import java.util.UUID;
 @Repository
 public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralIndicator, UUID> {
         public List<BehavioralIndicator> findByCompetencyId(UUID competencyId);
-
+        
         public Optional<BehavioralIndicator> findByIdAndCompetencyId(UUID id, UUID competencyId);
 }

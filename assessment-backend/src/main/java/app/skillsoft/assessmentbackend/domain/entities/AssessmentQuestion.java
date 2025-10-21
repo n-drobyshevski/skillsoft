@@ -1,8 +1,13 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -24,8 +29,10 @@ public class AssessmentQuestion {
     @Enumerated(EnumType.STRING)
     private QuestionType questionType;
 
-    @Column(name="answer_options")
-    private String answerOptions;
+    @Column(name = "answer_options", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List<Map<String, Object>> answerOptions;
 
     @Column(name="scoring_rubric", nullable = false)
     private String scoringRubric;
@@ -40,43 +47,18 @@ public class AssessmentQuestion {
     @Column(name="is_active", nullable = false)
     private boolean isActive;
 
-    public UUID getId() {
-        return id;
+    @Column(name="order_index", nullable = false)
+    private int orderIndex;
+
+    // Constructors
+    public AssessmentQuestion() {
+        // Default constructor required by JPA
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (o == null || getClass() != o.getClass()) return false;
-        AssessmentQuestion that = (AssessmentQuestion) o;
-        return isActive() == that.isActive() && getOrderIndex() == that.getOrderIndex() && Objects.equals(getId(), that.getId()) && Objects.equals(getBehavioralIndicator(), that.getBehavioralIndicator()) && Objects.equals(getQuestionText(), that.getQuestionText()) && getQuestionType() == that.getQuestionType() && Objects.equals(getAnswerOptions(), that.getAnswerOptions()) && Objects.equals(getScoringRubric(), that.getScoringRubric()) && Objects.equals(getTimeLimit(), that.getTimeLimit()) && getDifficultyLevel() == that.getDifficultyLevel();
-    }
-
-    @Override
-    public String toString() {
-        return "AssesmentQuestion{" +
-                "id=" + id +
-                ", behavioralIndicator=" + behavioralIndicator +
-                ", questionText='" + questionText + '\'' +
-                ", questionType=" + questionType +
-                ", answerOptions='" + answerOptions + '\'' +
-                ", scoringRubric='" + scoringRubric + '\'' +
-                ", timeLimit=" + timeLimit +
-                ", difficultyLevel=" + difficultyLevel +
-                ", isActive=" + isActive +
-                ", orderIndex=" + orderIndex +
-                '}';
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(getId(), getBehavioralIndicator(), getQuestionText(), getQuestionType(), getAnswerOptions(), getScoringRubric(), getTimeLimit(), getDifficultyLevel(), isActive(), getOrderIndex());
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public AssessmentQuestion(UUID id, BehavioralIndicator behavioralIndicator, String questionText, QuestionType questionType, String answerOptions, String scoringRubric, Integer timeLimit, DifficultyLevel difficultyLevel, boolean isActive, int orderIndex) {
+    public AssessmentQuestion(UUID id, BehavioralIndicator behavioralIndicator, String questionText, 
+                             QuestionType questionType, List<Map<String, Object>> answerOptions, 
+                             String scoringRubric, Integer timeLimit, DifficultyLevel difficultyLevel, 
+                             boolean isActive, int orderIndex) {
         this.id = id;
         this.behavioralIndicator = behavioralIndicator;
         this.questionText = questionText;
@@ -88,8 +70,14 @@ public class AssessmentQuestion {
         this.isActive = isActive;
         this.orderIndex = orderIndex;
     }
-    public AssessmentQuestion() {
-        // Default constructor required by JPA
+
+    // Getters and Setters
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
     }
 
     public BehavioralIndicator getBehavioralIndicator() {
@@ -98,6 +86,27 @@ public class AssessmentQuestion {
 
     public void setBehavioralIndicator(BehavioralIndicator behavioralIndicator) {
         this.behavioralIndicator = behavioralIndicator;
+    }
+    
+    /**
+     * Convenience method for setting the behavioral indicator by ID
+     * Used primarily in tests and when entity relationships need to be managed manually
+     */
+    @Transient
+    public void setBehavioralIndicatorId(UUID id) {
+        if (this.behavioralIndicator == null) {
+            this.behavioralIndicator = new BehavioralIndicator();
+        }
+        this.behavioralIndicator.setId(id);
+    }
+    
+    /**
+     * Get the ID of the associated behavioral indicator
+     * @return UUID of the behavioral indicator or null if not set
+     */
+    @Transient
+    public UUID getBehavioralIndicatorId() {
+        return this.behavioralIndicator != null ? this.behavioralIndicator.getId() : null;
     }
 
     public String getQuestionText() {
@@ -116,11 +125,11 @@ public class AssessmentQuestion {
         this.questionType = questionType;
     }
 
-    public String getAnswerOptions() {
+    public List<Map<String, Object>> getAnswerOptions() {
         return answerOptions;
     }
 
-    public void setAnswerOptions(String answerOptions) {
+    public void setAnswerOptions(List<Map<String, Object>> answerOptions) {
         this.answerOptions = answerOptions;
     }
 
@@ -164,6 +173,42 @@ public class AssessmentQuestion {
         this.orderIndex = orderIndex;
     }
 
-    @Column(name="order_index", nullable = false)
-    private int orderIndex;
+    // Object methods
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        AssessmentQuestion that = (AssessmentQuestion) o;
+        return isActive() == that.isActive() && getOrderIndex() == that.getOrderIndex() && 
+               Objects.equals(getId(), that.getId()) && 
+               Objects.equals(getBehavioralIndicator(), that.getBehavioralIndicator()) && 
+               Objects.equals(getQuestionText(), that.getQuestionText()) && 
+               getQuestionType() == that.getQuestionType() && 
+               Objects.equals(getAnswerOptions(), that.getAnswerOptions()) && 
+               Objects.equals(getScoringRubric(), that.getScoringRubric()) && 
+               Objects.equals(getTimeLimit(), that.getTimeLimit()) && 
+               getDifficultyLevel() == that.getDifficultyLevel();
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getId(), getBehavioralIndicator(), getQuestionText(), 
+                           getQuestionType(), getAnswerOptions(), getScoringRubric(), 
+                           getTimeLimit(), getDifficultyLevel(), isActive(), getOrderIndex());
+    }
+
+    @Override
+    public String toString() {
+        return "AssessmentQuestion{" +
+                "id=" + id +
+                ", behavioralIndicator=" + behavioralIndicator +
+                ", questionText='" + questionText + '\'' +
+                ", questionType=" + questionType +
+                ", answerOptions=" + answerOptions +
+                ", scoringRubric='" + scoringRubric + '\'' +
+                ", timeLimit=" + timeLimit +
+                ", difficultyLevel=" + difficultyLevel +
+                ", isActive=" + isActive +
+                ", orderIndex=" + orderIndex +
+                '}';
+    }
 }

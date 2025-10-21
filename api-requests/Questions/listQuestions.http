@@ -1,2 +1,11 @@
-GET http://localhost:8080/api/competencies/3f87bdfd-e69d-47bc-9b56-75728abac65d/bi/476e6dcc-f1ba-4531-8aa2-db46729767a1/questions
+### List Assessment Questions - Valid Request
+GET http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
 
+### List Assessment Questions - Invalid Competency ID
+GET http://localhost:8080/api/competencies/00000000-0000-0000-0000-000000000000/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+
+### List Assessment Questions - Invalid Behavioral Indicator ID
+GET http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/00000000-0000-0000-0000-000000000000/questions
+
+### List Assessment Questions - Malformed UUID
+GET http://localhost:8080/api/competencies/invalid-uuid/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions

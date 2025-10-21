@@ -11,7 +11,7 @@ services:
       - postgres_dev_data:/var/lib/postgresql/data
       - ./database/init-scripts:/docker-entrypoint-initdb.d:ro
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       - skillsoft-network
     healthcheck:
