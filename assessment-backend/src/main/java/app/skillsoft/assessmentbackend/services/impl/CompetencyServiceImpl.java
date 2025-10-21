@@ -1,6 +1,5 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
-import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
@@ -52,6 +51,7 @@ public class CompetencyServiceImpl implements CompetencyService {
                 competency.getDescription(),
                 competency.getCategory(),
                 competency.getLevel(),
+                competency.getStandardCodes(),
                 competency.isActive(),
                 competency.getApprovalStatus(),
                 null,
@@ -77,6 +77,7 @@ public class CompetencyServiceImpl implements CompetencyService {
                     existingCompetency.setDescription(competencyDetails.getDescription());
                     existingCompetency.setCategory(competencyDetails.getCategory());
                     existingCompetency.setLevel(competencyDetails.getLevel());
+                    existingCompetency.setStandardCodes(competencyDetails.getStandardCodes());
                     existingCompetency.setActive(competencyDetails.isActive());
                     existingCompetency.setApprovalStatus(competencyDetails.getApprovalStatus());
 

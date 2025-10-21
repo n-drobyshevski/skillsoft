@@ -2,9 +2,12 @@ package app.skillsoft.assessmentbackend.domain.entities;
 
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -27,6 +30,10 @@ public class Competency {
     @Column(name="level", nullable = false)
     @Enumerated(EnumType.STRING)
     private ProficiencyLevel level;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name="standard_codes", columnDefinition = "jsonb")
+    private Map<String, Object> standardCodes;
 
     @Column(name="is_active", nullable = false)
     private boolean isActive;
@@ -51,12 +58,13 @@ public class Competency {
         // Default constructor required by JPA
     }
 
-    public Competency(UUID id, String name, String description, CompetencyCategory category, ProficiencyLevel level, boolean isActive, ApprovalStatus approvalStatus, List<BehavioralIndicator> behavioralIndicators, int version, LocalDateTime createdAt, LocalDateTime lastModified) {
+    public Competency(UUID id, String name, String description, CompetencyCategory category, ProficiencyLevel level, Map<String, Object> standardCodes, boolean isActive, ApprovalStatus approvalStatus, List<BehavioralIndicator> behavioralIndicators, int version, LocalDateTime createdAt, LocalDateTime lastModified) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.category = category;
         this.level = level;
+        this.standardCodes = standardCodes;
         this.isActive = isActive;
         this.approvalStatus = approvalStatus;
         this.behavioralIndicators = behavioralIndicators;
@@ -105,6 +113,14 @@ public class Competency {
         this.level = level;
     }
 
+    public Map<String, Object> getStandardCodes() {
+        return standardCodes;
+    }
+
+    public void setStandardCodes(Map<String, Object> standardCodes) {
+        this.standardCodes = standardCodes;
+    }
+
     public boolean isActive() {
         return isActive;
     }
@@ -137,6 +153,7 @@ public class Competency {
                 ", description='" + description + '\'' +
                 ", category=" + category +
                 ", level=" + level +
+                ", standardCodes=" + standardCodes +
                 ", isActive=" + isActive +
                 ", approvalStatus=" + approvalStatus +
                 ", behavioralIndicators=" + behavioralIndicators +

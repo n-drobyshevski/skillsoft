@@ -34,6 +34,7 @@ public class CompetencyMapperImpl implements CompetencyMapper {
         competency.setDescription(dto.description());
         competency.setCategory(dto.category());
         competency.setLevel(dto.level());
+        competency.setStandardCodes(dto.standardCodes());
         competency.setActive(dto.isActive());
         competency.setApprovalStatus(dto.approvalStatus());
         competency.setVersion(dto.version());
@@ -64,6 +65,7 @@ public class CompetencyMapperImpl implements CompetencyMapper {
                 entity.getDescription(),
                 entity.getCategory(),
                 entity.getLevel(),
+                entity.getStandardCodes(),
                 entity.isActive(),
                 entity.getApprovalStatus(),
                 behavioralIndicatorDtos,

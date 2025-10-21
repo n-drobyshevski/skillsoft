@@ -15,6 +15,7 @@ INSERT INTO competencies (
     description, 
     category, 
     level, 
+    standard_codes,
     is_active, 
     approval_status, 
     version
@@ -23,6 +24,7 @@ INSERT INTO competencies (
     'Способность определять долгосрочные цели, вдохновлять команду на их достижение и принимать стратегические решения в условиях неопределенности',
     'LEADERSHIP',
     'ADVANCED',
+    '{"ESCO": {"code": "S7.1.1", "name": "develop organisational strategies and policies", "confidence": "HIGH"}, "ONET": {"code": "2.B.3.c", "name": "Leadership - Job requires willingness to lead, take charge, and offer opinions", "confidence": "VERIFIED"}}',
     true,
     'APPROVED',
     1
@@ -34,6 +36,7 @@ INSERT INTO competencies (
     description, 
     category, 
     level, 
+    standard_codes,
     is_active, 
     approval_status, 
     version
@@ -42,6 +45,7 @@ INSERT INTO competencies (
     'Навыки четкого изложения идей, активного слушания и адаптации стиля общения к различным аудиториям. Включает как устную, так и письменную коммуникацию',
     'COMMUNICATION',
     'PROFICIENT',
+    '{"ESCO": {"code": "S2.1.1", "name": "communicate with others", "confidence": "HIGH"}, "BIG_FIVE": {"code": "EXTRAVERSION", "name": "Extraversion - Communication aspects", "confidence": "MODERATE"}}',
     true,
     'APPROVED',
     1
@@ -53,6 +57,7 @@ INSERT INTO competencies (
     description, 
     category, 
     level, 
+    standard_codes,
     is_active, 
     approval_status, 
     version
@@ -61,6 +66,7 @@ INSERT INTO competencies (
     'Способность понимать эмоции других людей, учитывать разные точки зрения и проявлять искреннюю заинтересованность в потребностях коллег и клиентов',
     'EMOTIONAL_INTELLIGENCE',
     'DEVELOPING',
+    '{"ESCO": {"code": "S4.7.1", "name": "demonstrate empathy", "confidence": "HIGH"}, "BIG_FIVE": {"code": "AGREEABLENESS", "name": "Agreeableness - Empathy and concern for others", "confidence": "HIGH"}}',
     true,
     'APPROVED',
     1
@@ -72,6 +78,7 @@ INSERT INTO competencies (
     description, 
     category, 
     level, 
+    standard_codes,
     is_active, 
     approval_status, 
     version
@@ -80,6 +87,7 @@ INSERT INTO competencies (
     'Способность объективно анализировать информацию, оценивать аргументы, распознавать шаблоны и делать обоснованные выводы для принятия решений',
     'COGNITIVE',
     'PROFICIENT',
+    '{"ESCO": {"code": "S4.9.1", "name": "apply critical thinking", "confidence": "VERIFIED"}, "ONET": {"code": "2.A.2.a", "name": "Critical Thinking - Using logic and reasoning", "confidence": "HIGH"}}',
     true,
     'APPROVED',
     1
@@ -91,6 +99,7 @@ INSERT INTO competencies (
     description, 
     category, 
     level, 
+    standard_codes,
     is_active, 
     approval_status, 
     version
@@ -99,6 +108,7 @@ INSERT INTO competencies (
     'Способность эффективно планировать, приоритизировать задачи и распределять время для достижения целей в установленные сроки',
     'TIME_MANAGEMENT',
     'DEVELOPING',
+    '{"ONET": {"code": "2.B.3.g", "name": "Initiative - Job requires a willingness to take on responsibilities", "confidence": "MODERATE"}}',
     true,
     'PENDING_REVIEW',
     1
@@ -110,6 +120,7 @@ INSERT INTO competencies (
     description, 
     category, 
     level, 
+    standard_codes,
     is_active, 
     approval_status, 
     version
@@ -118,6 +129,7 @@ INSERT INTO competencies (
     'Способность идентифицировать, анализировать и решать сложные проблемы, разрабатывая эффективные решения в условиях неопределенности и изменений',
     'COGNITIVE',
     'PROFICIENT',
+    '{"ESCO": {"code": "S4.4.1", "name": "problem solving - identifying and analyzing issues", "confidence": "VERIFIED"}, "ONET": {"code": "2.B.2.i", "name": "Complex Problem Solving", "confidence": "HIGH"}}',
     true,
     'APPROVED',
     1
@@ -1320,173 +1332,4 @@ BEGIN
 END;
 $$;
 
--- ----------------------------------------------------------------
--- 4. STANDARD MAPPINGS
--- ----------------------------------------------------------------
 
-DO $$
-DECLARE
-    leadership_id UUID;
-    communication_id UUID;
-    emotional_id UUID;
-    critical_id UUID;
-    problem_solving_id UUID;
-BEGIN
-    -- Get competency IDs
-    SELECT id INTO leadership_id FROM competencies WHERE name = 'Стратегическое лидерство';
-    SELECT id INTO communication_id FROM competencies WHERE name = 'Эффективная коммуникация';
-    SELECT id INTO emotional_id FROM competencies WHERE name = 'Эмпатия и социальная осознанность';
-    SELECT id INTO critical_id FROM competencies WHERE name = 'Критическое мышление';
-    SELECT id INTO problem_solving_id FROM competencies WHERE name = 'Решение проблем';
-    
-    -- Leadership ESCO mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        leadership_id,
-        'ESCO',
-        'S7.1.1',
-        'develop organisational strategies and policies',
-        'HIGH_CONFIDENCE'
-    );
-    
-    -- Leadership O*NET mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        leadership_id,
-        'ONET',
-        '2.B.3.c',
-        'Leadership - Job requires a willingness to lead, take charge, and offer opinions and direction',
-        'VERIFIED'
-    );
-    
-    -- Communication ESCO mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        communication_id,
-        'ESCO',
-        'S2.1.1',
-        'communicate with others',
-        'HIGH_CONFIDENCE'
-    );
-    
-    -- Communication Big Five mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        communication_id,
-        'BIG_FIVE',
-        'EXTRAVERSION',
-        'Extraversion - Communication aspects',
-        'MODERATE_CONFIDENCE'
-    );
-    
-    -- Emotional Intelligence ESCO mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        emotional_id,
-        'ESCO',
-        'S4.7.1',
-        'demonstrate empathy',
-        'HIGH_CONFIDENCE'
-    );
-    
-    -- Emotional Intelligence Big Five mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        emotional_id,
-        'BIG_FIVE',
-        'AGREEABLENESS',
-        'Agreeableness - Empathy and concern for others',
-        'HIGH_CONFIDENCE'
-    );
-    
-    -- Critical Thinking ESCO mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        critical_id,
-        'ESCO',
-        'S4.9.1',
-        'apply critical thinking',
-        'VERIFIED'
-    );
-    
-    -- Critical Thinking O*NET mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        critical_id,
-        'ONET',
-        '2.A.2.a',
-        'Critical Thinking - Using logic and reasoning to identify strengths and weaknesses of alternative solutions',
-        'HIGH_CONFIDENCE'
-    );
-    
-    -- Problem Solving ESCO mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        problem_solving_id,
-        'ESCO',
-        'S4.4.1',
-        'problem solving - identifying and analyzing issues, developing and implementing solutions',
-        'VERIFIED'
-    );
-    
-    -- Problem Solving O*NET mapping
-    INSERT INTO standard_mappings (
-        competency_id,
-        standard_type,
-        standard_code,
-        standard_name,
-        mapping_confidence
-    ) VALUES (
-        problem_solving_id,
-        'ONET',
-        '2.B.2.i',
-        'Complex Problem Solving - Identifying complex problems and reviewing related information to develop and evaluate options',
-        'HIGH_CONFIDENCE'
-    );
-END;
-$$;

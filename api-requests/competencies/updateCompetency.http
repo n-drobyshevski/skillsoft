@@ -1,12 +1,30 @@
+### Обновить компетенцию
 PUT http://localhost:8080/api/competencies/3d0c8f56-eb48-4770-83f5-76b7bc451d5e
 Content-Type: application/json
 
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "name": "Strategic TEST ",
-  "description": "Updated description: Ability to set direction and inspire others to achieve organizational goals",
+  "name": "Стратегическое лидерство",
+  "description": "Обновленное описание: Способность определять направление и вдохновлять других на достижение организационных целей",
   "category": "LEADERSHIP",
   "level": "EXPERT",
+  "standardCodes": {
+    "ESCO": {
+      "code": "S7.1.1",
+      "name": "develop organisational strategies and policies",
+      "confidence": "HIGH"
+    },
+    "ONET": {
+      "code": "2.B.3.c",
+      "name": "Leadership - Job requires willingness to lead, take charge",
+      "confidence": "VERIFIED"
+    },
+    "BIG_FIVE": {
+      "code": "EXTRAVERSION",
+      "name": "Extraversion - Leadership aspects",
+      "confidence": "MODERATE"
+    }
+  },
   "isActive": true,
   "approvalStatus": "APPROVED",
   "version": 1

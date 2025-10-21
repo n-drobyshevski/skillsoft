@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record CompetencyDto(
@@ -14,6 +15,7 @@ public record CompetencyDto(
         String description,
         CompetencyCategory category,
         ProficiencyLevel level,
+        Map<String, Object> standardCodes,
         boolean isActive,
         ApprovalStatus approvalStatus,
         List<BehavioralIndicatorDto> behavioralIndicators,

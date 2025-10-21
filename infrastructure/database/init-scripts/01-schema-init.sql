@@ -83,23 +83,12 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
    - SPECIALIZED
 */
 
-/* Standard mapping type:
-   - ESCO
-   - ONET
-   - BIG_FIVE
-   - ORGANIZATIONAL_FRAMEWORK
-   - INDUSTRY_STANDARD
-   - REGULATORY_REQUIREMENT
-   - PROFESSIONAL_CERTIFICATION
-   - COMPETENCY_MODEL
-*/
-
-/* Mapping confidence level:
-   - VERIFIED
-   - HIGH_CONFIDENCE
-   - MODERATE_CONFIDENCE
-   - LOW_CONFIDENCE
-   - PRELIMINARY
+/* Standard codes JSON structure format:
+   {
+     "ESCO": {"code": "S7.1.1", "name": "develop organisational strategies", "confidence": "HIGH"},
+     "ONET": {"code": "2.B.3.c", "name": "Leadership", "confidence": "VERIFIED"},
+     "BIG_FIVE": {"code": "EXTRAVERSION", "name": "Extraversion traits", "confidence": "MODERATE"}
+   }
 */
 
 -- ----------------------------------------------------------------
@@ -113,6 +102,7 @@ CREATE TABLE IF NOT EXISTS competencies (
     description TEXT NOT NULL,
     category VARCHAR(50) NOT NULL,
     level VARCHAR(50) NOT NULL,
+    standard_codes JSONB, -- JSON structure for standard mappings (ESCO, O*NET, Big Five, etc.)
     is_active BOOLEAN NOT NULL DEFAULT true,
     approval_status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
     version INTEGER NOT NULL DEFAULT 1,
@@ -175,25 +165,7 @@ CREATE TABLE IF NOT EXISTS assessment_questions (
     CONSTRAINT assessment_question_indicator_order UNIQUE (behavioral_indicator_id, order_index)
 );
 
--- Standard mappings for competencies
-CREATE TABLE IF NOT EXISTS standard_mappings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    competency_id UUID NOT NULL REFERENCES competencies(id) ON DELETE CASCADE,
-    standard_type VARCHAR(50) NOT NULL,
-    standard_code VARCHAR(50) NOT NULL,
-    standard_name VARCHAR(200) NOT NULL,
-    mapping_confidence VARCHAR(50) NOT NULL DEFAULT 'PRELIMINARY',
-    validated_by UUID, -- Reference to user who validated the mapping
-    validation_date TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Business constraints
-    CONSTRAINT standard_mapping_code_min_length CHECK (LENGTH(TRIM(standard_code)) >= 1),
-    CONSTRAINT standard_mapping_name_min_length CHECK (LENGTH(TRIM(standard_name)) >= 3),
-    
-    -- Unique mapping per competency and standard
-    CONSTRAINT standard_mapping_unique UNIQUE (competency_id, standard_type, standard_code)
-);
+
 
 -- ----------------------------------------------------------------
 -- 4. CREATE INDEXES
@@ -221,10 +193,8 @@ CREATE INDEX idx_assessment_questions_difficulty ON assessment_questions(difficu
 CREATE INDEX idx_assessment_questions_active ON assessment_questions(is_active) 
     WHERE is_active = true;
 
--- Standard mapping optimization
-CREATE INDEX idx_standard_mappings_competency ON standard_mappings(competency_id);
-CREATE INDEX idx_standard_mappings_type_code ON standard_mappings(standard_type, standard_code);
-CREATE INDEX idx_standard_mappings_confidence ON standard_mappings(mapping_confidence);
+-- Standard codes optimization (JSONB index for querying standard codes)
+CREATE INDEX idx_competencies_standard_codes ON competencies USING GIN (standard_codes);
 
 -- ----------------------------------------------------------------
 -- 5. TRIGGERS FOR AUDIT AND MAINTENANCE
@@ -344,7 +314,6 @@ COMMENT ON DATABASE skillsoft_assessment_dev IS 'SkillSoft Assessment Platform D
 COMMENT ON SCHEMA public IS 'Standard public schema for SkillSoft Assessment Platform';
 
 -- Add comments to tables
-COMMENT ON TABLE competencies IS 'Core competencies that represent measurable skills, abilities or knowledge';
+COMMENT ON TABLE competencies IS 'Core competencies that represent measurable skills, abilities or knowledge with embedded standard codes';
 COMMENT ON TABLE behavioral_indicators IS 'Observable behaviors that demonstrate competency proficiency';
 COMMENT ON TABLE assessment_questions IS 'Questions used to evaluate behavioral indicators';
-COMMENT ON TABLE standard_mappings IS 'Mappings between competencies and international standards';
