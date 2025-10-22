@@ -321,7 +321,7 @@ class CompetencyServiceTest {
         void shouldDeleteCompetencyWhenIdExists() {
             // Given
             UUID competencyId = sampleCompetency.getId();
-            when(competencyRepository.existsById(competencyId)).thenReturn(true);
+            // Note: No need to stub existsById since service doesn't use it
 
             // When
             competencyService.deleteCompetency(competencyId);
@@ -335,7 +335,7 @@ class CompetencyServiceTest {
         void shouldDeleteEvenWhenCompetencyDoesNotExist() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            when(competencyRepository.existsById(nonExistentId)).thenReturn(false);
+            // Note: No need to stub existsById since service doesn't use it
 
             // When
             competencyService.deleteCompetency(nonExistentId);
