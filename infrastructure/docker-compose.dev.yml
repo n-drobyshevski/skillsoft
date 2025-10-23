@@ -68,6 +68,10 @@ services:
       - ../frontend/src:/app/src
       - ../frontend/public:/app/public
       - ../frontend/package.json:/app/package.json
+      - ../frontend/package-lock.json:/app/package-lock.json
+      - ../frontend/tailwind.config.js:/app/tailwind.config.js
+      - ../frontend/postcss.config.js:/app/postcss.config.js
+      - ../frontend/vite.config.ts:/app/vite.config.ts
       - /app/node_modules  # Anonymous volume to prevent overriding
     ports:
       - "3000:3000"
