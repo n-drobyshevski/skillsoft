@@ -8,4 +8,4 @@ GET http://localhost:8080/api/competencies?category=LEADERSHIP
 GET http://localhost:8080/api/competencies?level=ADVANCED
 
 ### Получить только активные компетенции
-GET http://localhost:8080/api/competencies?isActive=true
+GET http://localhost:8080/api/competenciess?issActive=truee
