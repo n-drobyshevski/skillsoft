@@ -1,77 +1,75 @@
-'use client';
+"use client";
 
 import { Separator } from "@/components/ui/separator";
 import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
+	SidebarInset,
+	SidebarProvider,
+	SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar"
-import { ModeToggle } from "@/components/mode-toggle"
+import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "next-themes";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 import { usePathname } from "next/navigation";
 
-interface LayoutProviderProps {
-  children: React.ReactNode;
-}
-
 export function LayoutProvider({ children }: { children: React.ReactNode }) {
-  
-  const pathname = usePathname();
-  const segments = pathname.split("/");
-  return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <SidebarProvider defaultOpen={false}>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-            <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator
-                orientation="vertical"
-                className="mr-2 data-[orientation=vertical]:h-4"
-              />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  {segments.slice(0, -1).map((segment, index) => (
-                        <>
-                          <BreadcrumbItem
-                            className="hidden md:block"
-                            key={index}
-                          >
-                            <BreadcrumbLink
-                              href={segments.slice(0, index).join("/")}
-                            >
-                              {segment}
-                            </BreadcrumbLink>
-                          </BreadcrumbItem>
-                          {pathname.slice(1, -1).includes("/") && index > 0
-                            ? <BreadcrumbSeparator className="hidden md:block" />
-                            : null}
-                        </>
-                      ))}
+	const pathname = usePathname();
+	const segments = pathname.split("/");
+	return (
+		<ThemeProvider
+			attribute="class"
+			defaultTheme="system"
+			enableSystem
+			disableTransitionOnChange
+		>
+			<SidebarProvider defaultOpen={false}>
+				<AppSidebar />
+				<SidebarInset>
+					<header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+						<div className="flex items-center gap-2 px-4">
+							<SidebarTrigger className="-ml-1" />
+							<Separator
+								orientation="vertical"
+								className="mr-2 data-[orientation=vertical]:h-4"
+							/>
+							<Breadcrumb>
+								<BreadcrumbList>
+									{segments.slice(0, -1).map((segment, index) => (
+										<div key={index}>
+											<BreadcrumbItem className="hidden md:block">
+												<BreadcrumbLink
+													href={segments.slice(0, index).join("/")}
+												>
+													{segment}
+												</BreadcrumbLink>
+											</BreadcrumbItem>
+											{pathname.slice(1, -1).includes("/") && index > 0 ? (
+												<BreadcrumbSeparator className="hidden md:block" />
+											) : null}
+										</div>
+									))}
 
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>
-                      {segments[segments.length - 1].charAt(0).toUpperCase() +
-                        segments[segments.length - 1].slice(1)}
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-          </header>
+									<BreadcrumbItem>
+										<BreadcrumbPage>
+											{segments[segments.length - 1].charAt(0).toUpperCase() +
+												segments[segments.length - 1].slice(1)}
+										</BreadcrumbPage>
+									</BreadcrumbItem>
+								</BreadcrumbList>
+							</Breadcrumb>
+						</div>
+					</header>
 
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
-        </SidebarInset>
-      </SidebarProvider>
-    </ThemeProvider>
-  );
-};
+					<div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+				</SidebarInset>
+			</SidebarProvider>
+		</ThemeProvider>
+	);
+}

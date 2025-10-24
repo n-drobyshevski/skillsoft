@@ -23,16 +23,16 @@ export enum ApprovalStatus {
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   ARCHIVED = 'ARCHIVED',
-  UNDER_REVISION = 'UNDER_REVISION',
+  UNDER_REVISION = 'UNDER_REVISION'}
 
-export type IndicatorMeasurementType  {
+export enum IndicatorMeasurementType  {
   QUALITY= 'QUALITY',
   QUANTITY= 'QUANTITY',
   FREQUENCY= 'FREQUENCY',
   BINARY= 'BINARY',
 }
 
-export type QuestionType {
+export enum QuestionType {
   MULTIPLE_CHOICE= 'MULTIPLE_CHOICE',
   SINGLE_CHOICE= 'SINGLE_CHOICE',
   TRUE_FALSE= 'TRUE_FALSE',
@@ -42,7 +42,7 @@ export type QuestionType {
   SITUATIONAL_JUDGMENT= 'SITUATIONAL_JUDGMENT',
 }
 
-export type DifficultyLevel {
+export enum DifficultyLevel {
   BASIC= 'BASIC',
   INTERMEDIATE= 'INTERMEDIATE',
   ADVANCED= 'ADVANCED',
