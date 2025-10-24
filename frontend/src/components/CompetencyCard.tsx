@@ -1,17 +1,5 @@
 import React from 'react';
 import type { Competency } from '../types/competency';
-
-interface CompetencyCardProps {
-  competency: Competency;
-  onClick?: (competency: Competency) => void;
-}
-
-const getLevelColor = (level?: string) => {
-  switch (level) {
-    case 'BEGINNER':
-      return 'bg-[#1a1a1d] text-[#71717a] border-[#27272a]';
-    case 'INTERMEDIATE':
-      return 'bg-[#232326] text-[#a1a1aa] border-[#3b82f6]/20';
     case 'ADVANCED':
       return 'bg-[#3b82f6]/10 text-[#3b82f6] border-[#3b82f6]/30';
     case 'EXPERT':
