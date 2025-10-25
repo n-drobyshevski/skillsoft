@@ -26,6 +26,7 @@ public class AssessmentQuestionController {
         this.assessmentQuestionService = assessmentQuestionService;
     }
 
+
     @GetMapping
     public List<AssessmentQuestionDto> listAssessmentQuestions(@PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId) {
         List<AssessmentQuestion> assessmentQuestions = assessmentQuestionService.listAssessmentQuestions(behavioralIndicatorId);

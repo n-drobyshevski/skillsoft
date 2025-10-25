@@ -19,6 +19,11 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
     }
 
     @Override
+    public List<AssessmentQuestion> listAllQuestions() {
+        return this.assessmentQuestionRepository.findAll();
+    }
+
+    @Override
     public List<AssessmentQuestion> listAssessmentQuestions(UUID behavioralIndicatorId) {
         return assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId);
     }

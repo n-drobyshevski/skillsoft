@@ -2,8 +2,9 @@ import { cache } from 'react';
 import { revalidateCompetencyTags, revalidateIndicatorTags, revalidateQuestionTags } from '@/app/actions';
 import { Competency } from '../../app/interfaces/domain-interfaces';
 
-const API_BASE_URL = "https://backend-production-a6b6.up.railway.app/api";
+// const API_BASE_URL = "https://backend-production-a6b6.up.railway.app/api";
 
+const API_BASE_URL = "https://localhost:8080/api";
 // Types
 export interface ApiError extends Error {
     status?: number;

@@ -7,6 +7,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface BehavioralIndicatorService {
+
+    List<BehavioralIndicator> listAllBehavioralIndicators();
     List<BehavioralIndicator> listBehavioralIndicators(UUID competencyId);
 
     BehavioralIndicator createBehavioralIndicator(UUID competencyId, BehavioralIndicator behavioralIndicator);

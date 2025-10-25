@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface AssessmentQuestionService {
+    List<AssessmentQuestion> listAllQuestions();
     /**
      * List all assessment questions for a specific behavioral indicator
      */

@@ -27,6 +27,11 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
     }
 
     @Override
+    public List<BehavioralIndicator> listAllBehavioralIndicators() {
+        return this.behavioralIndicatorRepository.findAll();
+    }
+
+    @Override
     public List<BehavioralIndicator> listBehavioralIndicators(UUID competencyId) {
         return behavioralIndicatorRepository.findByCompetencyId(competencyId);
     }

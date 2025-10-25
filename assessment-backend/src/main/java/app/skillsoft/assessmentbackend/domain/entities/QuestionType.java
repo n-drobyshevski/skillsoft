@@ -8,7 +8,8 @@ public enum QuestionType {
     CAPABILITY_ASSESSMENT("Оценка способностей", "Демонстрация навыков"),
     SELF_REFLECTION("Самоанализ", "Личное понимание"),
     PEER_FEEDBACK("Обратная связь коллег", "Оценка от коллег"),
-    FREQUENCY_SCALE("Шкала частоты", "Как часто проявляется поведение");
+    FREQUENCY_SCALE("Шкала частоты", "Как часто проявляется поведение"),
+    OPEN_TEXT("Открытый вопрос", "Свободный ответ");
 
     QuestionType(String name, String desc) {
     }
