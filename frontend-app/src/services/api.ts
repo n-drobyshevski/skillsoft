@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { revalidateCompetencyTags, revalidateIndicatorTags, revalidateQuestionTags } from '@/app/actions';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8080/api';
 
 // Types
 export interface ApiError extends Error {
