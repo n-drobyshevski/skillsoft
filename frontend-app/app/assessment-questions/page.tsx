@@ -15,11 +15,6 @@ import {
 	ArrowUpDown,
 	ChevronLeft,
 	ChevronRight,
-	ListTodo,
-	Gavel,
-	ChartColumn,
-	Pencil,
-	BadgeQuestionMark,
 	BarChart3,
 	ListFilter,
 } from "lucide-react";
@@ -57,58 +52,9 @@ import { Input } from "../../src/components/ui/input";
 import { Badge } from "../../src/components/ui/badge";
 import { Card } from "../../src/components/ui/card";
 
-interface AssessmentQuestion {
-	id: string;
-	questionText: string;
-	questionType: string;
-	category: string;
-	difficulty: string;
-	points: number;
-	timeEstimate: number;
-	isActive: boolean;
-	behavioralIndicator: {
-		id: string;
-		title: string;
-		competency: {
-			id: string;
-			name: string;
-			category: string;
-		};
-	};
-	answerOptions?: {
-		id: string;
-		optionText: string;
-		isCorrect: boolean;
-		points: number;
-	}[];
-}
-
-const API_BASE_URL = "http://localhost:8080/api";
-
-const typeToIcon = (category: string) => {
-	const icons = {
-		MULTIPLE_CHOICE: ListTodo,
-		SITUATIONAL_JUDGMENT: Gavel,
-		LIKERT_SCALE: ChartColumn,
-		OPEN_ENDED: Pencil,
-		TRUE_FALSE: BadgeQuestionMark,
-	};
-	const IconComponent =
-		icons[category as keyof typeof icons] || BadgeQuestionMark;
-	return React.createElement(IconComponent, { className: "h-4 w-4" });
-};
-
-const difficultyToColor = (difficulty: string): string => {
-	const colors: { [key: string]: string } = {
-		BEGINNER:
-			"border-emerald-500/20 text-emerald-700 bg-emerald-50/90 dark:bg-emerald-950/90 dark:text-emerald-200 dark:border-emerald-400/30",
-		INTERMEDIATE:
-			"border-amber-500/20 text-amber-700 bg-amber-50/90 dark:bg-amber-950/90 dark:text-amber-200 dark:border-amber-400/30",
-		ADVANCED:
-			"border-red-500/20 text-red-700 bg-red-50/90 dark:bg-red-950/90 dark:text-red-200 dark:border-red-400/30",
-	};
-	return colors[difficulty] || colors["BEGINNER"];
-};
+import { AssessmentQuestion } from "../interfaces/domain-interfaces";
+import { questionTypeToIcon, questionDifficultyToColor } from "../utils";
+import { assessmentQuestionsApi } from "@/services/api";
 
 // Column definitions
 const columns: ColumnDef<AssessmentQuestion>[] = [
@@ -126,19 +72,19 @@ const columns: ColumnDef<AssessmentQuestion>[] = [
 			);
 		},
 		cell: ({ row }) => {
-			const indicator = row.original.behavioralIndicator;
+			const question = row.original;
 			return (
 				<div className="flex flex-col max-w-xl">
 					<div className="font-medium">{row.getValue("questionText")}</div>
 					<div className="text-sm text-muted-foreground">
 						<Link
-							href={`/competencies/${indicator.competency.id}`}
+							href={`/behavioral-indicators/${question.behavioralIndicatorId}`}
 							className="text-primary hover:underline"
 						>
-							{indicator.competency.name}
+							{question.behavioralIndicatorId}
 						</Link>
 						{" → "}
-						<span>{indicator.title}</span>
+						<span>{question.behavioralIndicatorId}</span>
 					</div>
 				</div>
 			);
@@ -159,7 +105,7 @@ const columns: ColumnDef<AssessmentQuestion>[] = [
 			const type = row.getValue("questionType") as string;
 			return (
 				<div className="flex items-center gap-2">
-					<span>{typeToIcon(type)}</span>
+					<span>{questionTypeToIcon(type)}</span>
 					<span className="font-medium">
 						{type
 							.split("_")
@@ -184,7 +130,7 @@ const columns: ColumnDef<AssessmentQuestion>[] = [
 		cell: ({ row }) => {
 			const difficulty = row.getValue("difficulty") as string;
 			return (
-				<Badge variant="outline" className={difficultyToColor(difficulty)}>
+				<Badge variant="outline" className={questionDifficultyToColor(difficulty)}>
 					{difficulty}
 				</Badge>
 			);
@@ -287,9 +233,8 @@ const AssessmentStats: React.FC<{ questions: AssessmentQuestion[] }> = ({
 		() => ({
 			totalQuestions: questions.length,
 			questionTypes: new Set(questions.map((q) => q.questionType)).size,
-			totalPoints: questions.reduce((sum, q) => sum + q.points, 0),
 			totalMinutes: Math.round(
-				questions.reduce((sum, q) => sum + q.timeEstimate, 0) / 60,
+				questions.reduce((sum, q) => sum + q.timeLimit, 0) / 60,
 			),
 		}),
 		[questions],
@@ -317,15 +262,6 @@ const AssessmentStats: React.FC<{ questions: AssessmentQuestion[] }> = ({
 			</Card>
 			<Card className="p-4 flex items-center space-x-4">
 				<div className="p-3 bg-primary/10 rounded-lg">
-					<Sparkles className="h-5 w-5 text-primary" />
-				</div>
-				<div>
-					<div className="text-2xl font-bold">{stats.totalPoints}</div>
-					<div className="text-xs text-muted-foreground">Total Points</div>
-				</div>
-			</Card>
-			<Card className="p-4 flex items-center space-x-4">
-				<div className="p-3 bg-primary/10 rounded-lg">
 					<Clock className="h-5 w-5 text-primary" />
 				</div>
 				<div>
@@ -338,7 +274,7 @@ const AssessmentStats: React.FC<{ questions: AssessmentQuestion[] }> = ({
 };
 
 // Main component
-const AssessmentQuestionsPage: React.FC = () => {
+export default function AssessmentQuestionsPage({}) {
 	const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
 	const [loading, setLoading] = useState<boolean>(true);
 	const [sorting, setSorting] = useState<SortingState>([]);
@@ -350,11 +286,10 @@ const AssessmentQuestionsPage: React.FC = () => {
 		const fetchQuestions = async () => {
 			try {
 				setLoading(true);
-				const response = await fetch(`${API_BASE_URL}/assessment-questions`);
-				if (!response.ok) {
-					throw new Error(`HTTP error! status: ${response.status}`);
+				const data : AssessmentQuestion[] | null =  await assessmentQuestionsApi.getAllQuestions();
+				if(!data){
+					throw new Error("No data received for questions");
 				}
-				const data = await response.json();
 				setQuestions(data);
 			} catch (error) {
 				console.error("Failed to fetch assessment questions:", error);
@@ -606,5 +541,3 @@ const AssessmentQuestionsPage: React.FC = () => {
 		</div>
 	);
 };
-
-export default AssessmentQuestionsPage;

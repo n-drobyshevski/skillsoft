@@ -1,10 +1,10 @@
 import { cache } from 'react';
 import { revalidateCompetencyTags, revalidateIndicatorTags, revalidateQuestionTags } from '@/app/actions';
-import { Competency } from '../../app/interfaces/domain-interfaces';
+import { AssessmentQuestion, BehavioralIndicator, Competency } from '../../app/interfaces/domain-interfaces';
 
-// const API_BASE_URL = "https://backend-production-a6b6.up.railway.app/api";
+const API_BASE_URL = "https://backend-production-a6b6.up.railway.app/api";
 
-const API_BASE_URL = "https://localhost:8080/api";
+// const API_BASE_URL = "https://localhost:8080/api";
 // Types
 export interface ApiError extends Error {
     status?: number;
@@ -105,60 +105,70 @@ export const competenciesApi = {
 };
 
 // Cached behavioral indicators fetcher
-const getIndicatorsCached = cache(async (competencyId: string) => {
+const getIndicatorsCached = cache(async (competencyId: string) : Promise<BehavioralIndicator[] | null> => {
     return fetchApi(`/competencies/${competencyId}/bi`, {
         tags: [`indicators-${competencyId}`],
         revalidate: 60,
     });
 });
+const getAllIndicatorsCached = cache(
+  async (): Promise<BehavioralIndicator[] | null> => {
+    return fetchApi(`/behavioral-indicators`, {
+      tags: [`indicators-all`],
+      revalidate: 60,
+    });
+  }
+);
 
 export const behavioralIndicatorsApi = {
-    getAllIndicators: getIndicatorsCached,
+  getIndicators: getIndicatorsCached,
+  getAllIndicators: getAllIndicatorsCached,
 
-    getIndicatorById: async (competencyId: string, indicatorId: string) => {
-        return fetchApi(
-            `/competencies/${competencyId}/bi/${indicatorId}`,
-            {
-                tags: [`indicator-${competencyId}-${indicatorId}`],
-                revalidate: 60,
-            }
-        );
-    },
+  getIndicatorById: async (competencyId: string, indicatorId: string) : Promise<BehavioralIndicator | null> => {
+    return fetchApi(`/competencies/${competencyId}/bi/${indicatorId}`, {
+      tags: [`indicator-${competencyId}-${indicatorId}`],
+      revalidate: 60,
+    });
+  },
 
-    createIndicator: async (competencyId: string, data: any) => {
-        const result = await fetchApi(`/competencies/${competencyId}/bi`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-            cache: 'no-store',
-        });
-        await revalidateIndicatorTags(competencyId);
-        return result;
-    },
+  createIndicator: async (competencyId: string, data: any) => {
+    const result = await fetchApi(`/competencies/${competencyId}/bi`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      cache: "no-store",
+    });
+    await revalidateIndicatorTags(competencyId);
+    return result;
+  },
 
-    updateIndicator: async (competencyId: string, indicatorId: string, data: any) => {
-        const result = await fetchApi(
-            `/competencies/${competencyId}/bi/${indicatorId}`,
-            {
-                method: 'PUT',
-                body: JSON.stringify(data),
-                cache: 'no-store',
-            }
-        );
-        await revalidateIndicatorTags(competencyId, indicatorId);
-        return result;
-    },
+  updateIndicator: async (
+    competencyId: string,
+    indicatorId: string,
+    data: any
+  ) => {
+    const result = await fetchApi(
+      `/competencies/${competencyId}/bi/${indicatorId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        cache: "no-store",
+      }
+    );
+    await revalidateIndicatorTags(competencyId, indicatorId);
+    return result;
+  },
 
-    deleteIndicator: async (competencyId: string, indicatorId: string) => {
-        await fetchApi(`/competencies/${competencyId}/bi/${indicatorId}`, {
-            method: 'DELETE',
-            cache: 'no-store',
-        });
-        await revalidateIndicatorTags(competencyId, indicatorId);
-    },
+  deleteIndicator: async (competencyId: string, indicatorId: string) => {
+    await fetchApi(`/competencies/${competencyId}/bi/${indicatorId}`, {
+      method: "DELETE",
+      cache: "no-store",
+    });
+    await revalidateIndicatorTags(competencyId, indicatorId);
+  },
 };
 
 // Cached assessment questions fetcher
-const getQuestionsCached = cache(async (competencyId: string, behavioralIndicatorId: string) => {
+const getQuestionsCached = cache(async (competencyId: string, behavioralIndicatorId: string) : Promise<AssessmentQuestion[] | null> => {
     return fetchApi(
         `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions`,
         {
@@ -167,53 +177,67 @@ const getQuestionsCached = cache(async (competencyId: string, behavioralIndicato
         }
     );
 });
-
+// Cached ALL assessment questions fetcher
+const getAllQuestionsCached = cache(async () : Promise<AssessmentQuestion[] | null> => {
+    return fetchApi(
+        `/assessment-questions`,
+        {
+            tags: [`questions-all`],
+            revalidate: 60,
+        }
+    );
+});
 export const assessmentQuestionsApi = {
-    getAllQuestions: getQuestionsCached,
+  getQuestions: getQuestionsCached,
+  getAllQuestions: getAllQuestionsCached,
 
-    getQuestionById: async (
-        competencyId: string,
-        behavioralIndicatorId: string,
-        questionId: string
-    ) => {
-        return fetchApi(
-            `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions/${questionId}`,
-            {
-                tags: [`question-${questionId}`],
-                revalidate: 60,
-            }
-        );
-    },
+  getQuestionById: async (
+    competencyId: string,
+    behavioralIndicatorId: string,
+    questionId: string
+  ) : Promise<AssessmentQuestion | null> => {
+    return fetchApi(
+      `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions/${questionId}`,
+      {
+        tags: [`question-${questionId}`],
+        revalidate: 60,
+      }
+    );
+  },
 
-    createQuestion: async (
-        competencyId: string,
-        behavioralIndicatorId: string,
-        data: any
-    ) => {
-        const result = await fetchApi(
-            `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions`,
-            {
-                method: 'POST',
-                body: JSON.stringify(data),
-                cache: 'no-store',
-            }
-        );
-        await revalidateQuestionTags(competencyId, behavioralIndicatorId);
-        return result;
-    },
+  createQuestion: async (
+    competencyId: string,
+    behavioralIndicatorId: string,
+    data: any
+  ) => {
+    const result = await fetchApi(
+      `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        cache: "no-store",
+      }
+    );
+    await revalidateQuestionTags(competencyId, behavioralIndicatorId);
+    return result;
+  },
 
-    deleteQuestion: async (
-        competencyId: string,
-        behavioralIndicatorId: string,
-        questionId: string
-    ) => {
-        await fetchApi(
-            `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions/${questionId}`,
-            {
-                method: 'DELETE',
-                cache: 'no-store',
-            }
-        );
-        await revalidateQuestionTags(competencyId, behavioralIndicatorId, questionId);
-    },
+  deleteQuestion: async (
+    competencyId: string,
+    behavioralIndicatorId: string,
+    questionId: string
+  ) => {
+    await fetchApi(
+      `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions/${questionId}`,
+      {
+        method: "DELETE",
+        cache: "no-store",
+      }
+    );
+    await revalidateQuestionTags(
+      competencyId,
+      behavioralIndicatorId,
+      questionId
+    );
+  },
 };

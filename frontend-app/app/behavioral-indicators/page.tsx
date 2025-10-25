@@ -49,182 +49,148 @@ import {
 	ChevronLeft as ChevronLeftIcon,
 	ChevronRight as ChevronRightIcon,
 } from "lucide-react";
+import { BehavioralIndicator } from "../interfaces/domain-interfaces";
+import { biLevelToColor } from "../utils";
+import { behavioralIndicatorsApi } from "@/services/api";
 
-// Helper functions
-const levelToColor = (level: string): string => {
-	const colors: { [key: string]: string } = {
-		NOVICE:
-			"border-red-500/20 text-red-700 bg-red-50/90 dark:bg-red-950/90 dark:text-red-200 dark:border-red-400/30",
-		DEVELOPING:
-			"border-amber-500/20 text-amber-700 bg-amber-50/90 dark:bg-amber-950/90 dark:text-amber-200 dark:border-amber-400/30",
-		PROFICIENT:
-			"border-emerald-500/20 text-emerald-700 bg-emerald-50/90 dark:bg-emerald-950/90 dark:text-emerald-200 dark:border-emerald-400/30",
-		ADVANCED:
-			"border-blue-500/20 text-blue-700 bg-blue-50/90 dark:bg-blue-950/90 dark:text-blue-200 dark:border-blue-400/30",
-		EXPERT:
-			"border-violet-500/20 text-violet-700 bg-violet-50/90 dark:bg-violet-950/90 dark:text-violet-200 dark:border-violet-400/30",
-	};
-	return colors[level] || colors["NOVICE"];
-};
-
-interface BehavioralIndicator {
-	id: string;
-	title: string;
-	description: string;
-	observabilityLevel: string;
-	measurementType: string;
-	weight: number;
-	examples: string;
-	counterExamples: string;
-	isActive: boolean;
-	approvalStatus: string;
-	orderIndex: number;
-	competency: {
-		id: string;
-		name: string;
-		category: string;
-	};
-}
-
-const API_BASE_URL = "http://localhost:8080/api";
 
 // Column definitions
 const columns: ColumnDef<BehavioralIndicator>[] = [
-	{
-		accessorKey: "title",
-		header: ({ column }: { column: any }) => {
-			return (
-				<Button
-					variant="ghost"
-					onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-					size="sm"
-					className="-ml-4"
-				>
-					Title
-					<ArrowUpDown className="ml-2 h-4 w-4" />
-				</Button>
-			);
-		},
-		cell: ({ row }: { row: any }) => (
-			<div className="flex flex-col">
-				<span className="font-medium">{row.getValue("title")}</span>
-				<span className="text-sm text-muted-foreground">
-					{row.original.description}
-				</span>
-			</div>
-		),
-	},
-	{
-		accessorKey: "competency",
-		header: ({ column }) => (
-			<Button
-				variant="ghost"
-				onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-			>
-				Competency
-				<ArrowUpDown className="ml-2 h-4 w-4" />
-			</Button>
-		),
-		cell: ({ row }: { row: any }) => (
-			<div className="flex items-center gap-2">
-				<Link
-					href={`/competencies/${row.original.competency.id}`}
-					className="text-primary hover:underline"
-				>
-					{row.original.competency.name}
-				</Link>
-				<Badge variant="secondary" className="capitalize">
-					{row.original.competency.category.toLowerCase().replace("_", " ")}
-				</Badge>
-			</div>
-		),
-		sortingFn: (a: any, b: any) =>
-			a.original.competency.name.localeCompare(b.original.competency.name),
-	},
-	{
-		accessorKey: "observabilityLevel",
-		header: ({ column }) => (
-			<Button
-				variant="ghost"
-				onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-			>
-				Level
-				<ArrowUpDown className="ml-2 h-4 w-4" />
-			</Button>
-		),
-		cell: ({ row }: { row: any }) => {
-			const level = row.getValue("observabilityLevel") as string;
-			return (
-				<Badge variant="outline" className={levelToColor(level)}>
-					{level}
-				</Badge>
-			);
-		},
-	},
-	{
-		accessorKey: "weight",
-		header: ({ column }) => (
-			<Button
-				variant="ghost"
-				onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-			>
-				Weight
-				<ArrowUpDown className="ml-2 h-4 w-4" />
-			</Button>
-		),
-		cell: ({ row }) => {
-			const weight = row.getValue("weight") as number;
-			return <span className="font-medium">{weight.toFixed(2)}</span>;
-		},
-	},
-	{
-		accessorKey: "isActive",
-		header: "Status",
-		cell: ({ row }) => {
-			const isActive = row.getValue("isActive") as boolean;
-			return (
-				<Badge variant={isActive ? "default" : "secondary"}>
-					{isActive ? "Active" : "Inactive"}
-				</Badge>
-			);
-		},
-	},
-	{
-		id: "actions",
-		cell: ({ row }) => {
-			const indicator = row.original;
-			return (
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="ghost" className="h-8 w-8 p-0">
-							<span className="sr-only">Open menu</span>
-							<MoreHorizontal className="h-4 w-4" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<DropdownMenuLabel>Actions</DropdownMenuLabel>
-						<DropdownMenuItem
-							onClick={() => navigator.clipboard.writeText(indicator.id)}
-						>
-							Copy ID
-						</DropdownMenuItem>
-						<DropdownMenuSeparator />
-						<DropdownMenuItem>
-							<Eye className="mr-2 h-4 w-4" />
-							View Details
-						</DropdownMenuItem>
-						<DropdownMenuItem>
-							<Settings2 className="mr-2 h-4 w-4" />
-							Edit Indicator
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			);
-		},
-	},
+  {
+    accessorKey: "title",
+    header: ({ column }: { column: any }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          size="sm"
+          className="-ml-4"
+        >
+          Title
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      );
+    },
+    cell: ({ row }: { row: any }) => (
+      <div className="flex flex-col">
+        <span className="font-medium">{row.getValue("title")}</span>
+        <span className="text-sm text-muted-foreground">
+          {row.original.description}
+        </span>
+      </div>
+    ),
+  },
+  {
+    accessorKey: "competency",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Competency
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    cell: ({ row }: { row: any }) => (
+      <div className="flex items-center gap-2">
+        <Link
+          href={`/behavioral-indicators/${row.original.id}`}
+          className="text-primary hover:underline"
+        >
+          {row.original.title}
+        </Link>
+        <Badge variant="secondary" className="capitalize">
+          {row.original.observabilityLevel.toLowerCase().replace("_", " ")}
+        </Badge>
+      </div>
+    ),
+    sortingFn: (a: any, b: any) =>
+      a.original.competency.name.localeCompare(b.original.competency.name),
+  },
+  {
+    accessorKey: "observabilityLevel",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Level
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    cell: ({ row }: { row: any }) => {
+      const level = row.getValue("observabilityLevel") as string;
+      return (
+        <Badge variant="outline" className={biLevelToColor(level)}>
+          {level}
+        </Badge>
+      );
+    },
+  },
+  {
+    accessorKey: "weight",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Weight
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const weight = row.getValue("weight") as number;
+      return <span className="font-medium">{weight.toFixed(2)}</span>;
+    },
+  },
+  {
+    accessorKey: "isActive",
+    header: "Status",
+    cell: ({ row }) => {
+      const isActive = row.getValue("isActive") as boolean;
+      return (
+        <Badge variant={isActive ? "default" : "secondary"}>
+          {isActive ? "Active" : "Inactive"}
+        </Badge>
+      );
+    },
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const indicator = row.original;
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0">
+              <span className="sr-only">Open menu</span>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => navigator.clipboard.writeText(indicator.id)}
+            >
+              Copy ID
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Eye className="mr-2 h-4 w-4" />
+              View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Settings2 className="mr-2 h-4 w-4" />
+              Edit Indicator
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    },
+  },
 ];
 
-const BehavioralIndicatorsPage: React.FC = () => {
+export default function BehavioralIndicatorsPage() {
 	const [indicators, setIndicators] = useState<BehavioralIndicator[]>([]);
 	const [loading, setLoading] = useState<boolean>(true);
 	const [sorting, setSorting] = useState<SortingState>([]);
@@ -236,11 +202,11 @@ const BehavioralIndicatorsPage: React.FC = () => {
 		const fetchIndicators = async () => {
 			try {
 				setLoading(true);
-				const response = await fetch(`${API_BASE_URL}/behavioral-indicators`);
-				if (!response.ok) {
-					throw new Error(`HTTP error! status: ${response.status}`);
+				const data: BehavioralIndicator[] | null = await behavioralIndicatorsApi.getAllIndicators();
+				if (data === null) {
+					throw new Error("No behavioral indicators found.");
 				}
-				const data = await response.json();
+
 				setIndicators(data);
 			} catch (error) {
 				console.error("Failed to fetch behavioral indicators:", error);
@@ -486,5 +452,3 @@ const BehavioralIndicatorsPage: React.FC = () => {
 		</div>
 	);
 };
-
-export default BehavioralIndicatorsPage;

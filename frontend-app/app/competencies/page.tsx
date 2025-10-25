@@ -14,14 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -38,44 +31,30 @@ import { CompetencyCategory, ProficiencyLevel, ApprovalStatus } from "../enums/d
 import { Competency, BehavioralIndicator } from "../interfaces/domain-interfaces";
 import {
   ArrowUpDown,
-  ChevronDown,
-  ChevronLeft,
-  GraduationCap,
-  Binary,
-  ChevronRight,
-  BrainCircuit,
-  MessageSquare,
-  Heart,
   Eye,
-  LightbulbIcon,
-  UsersRound,
   Search,
   Filter,
   MoreHorizontal,
-  Award,
-  BarChart3,
   Activity,
   Calendar,
   Settings2,
   Download,
-  Pencil,
   Plus,
   Target,
   Clock,
-  Users,
 } from "lucide-react";
 import { competenciesApi } from "@/services/api";
 import CompetencyStats from "./components/CompetencyStats";
+import { competencyCategoryToIcon, competencyProficiencyLevelToColor } from "../utils";
+import Table from "../components/Table";
+import Header from "../components/Header";
+import EntitiesTable from "../components/Table";
 
 
 // Main component
 export default function CompetenciesPage() {
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = useState({});
 
   // Column definitions
   const columns: ColumnDef<Competency>[] = [
@@ -97,7 +76,7 @@ export default function CompetenciesPage() {
         return (
           <div className="flex items-start gap-3">
             <div className="shrink-0 w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-              <span className="text-base">{categoryToIcon(category)}</span>
+              <span className="text-base">{competencyCategoryToIcon(category)}</span>
             </div>
             <div className="flex-1 min-w-0">
               <Link
@@ -129,7 +108,7 @@ export default function CompetenciesPage() {
         const category = row.getValue("category") as CompetencyCategory;
         return (
           <div className="flex items-center gap-2">
-            <span>{categoryToIcon(category)}</span>
+            <span>{competencyCategoryToIcon(category)}</span>
             <span className="font-medium capitalize">
               {category.toLowerCase().replace("_", " ")}
             </span>
@@ -151,7 +130,7 @@ export default function CompetenciesPage() {
       cell: ({ row }) => {
         const level = row.getValue("level") as ProficiencyLevel;
         return (
-          <Badge variant="outline" className={proficiencyLevelToColor(level)}>
+          <Badge variant="outline" className={competencyProficiencyLevelToColor(level)}>
             {level}
           </Badge>
         );
@@ -272,42 +251,15 @@ export default function CompetenciesPage() {
     },
   ]; // Helper functions
 
-  const categoryToIcon = (category: string) => {
-    const icons = {
-      COGNITIVE: BrainCircuit,
-      INTERPERSONAL: Users,
-      LEADERSHIP: GraduationCap,
-      ADAPTABILITY: Binary,
-      EMOTIONAL_INTELLIGENCE: Heart,
-      COMMUNICATION: MessageSquare,
-      COLLABORATION: UsersRound,
-      CRITICAL_THINKING: LightbulbIcon,
-      TIME_MANAGEMENT: Clock,
-    };
-    const IconComponent = icons[category as keyof typeof icons] || Award;
-    return React.createElement(IconComponent, { className: "h-4 w-4" });
-  };
-  const proficiencyLevelToColor = (level: ProficiencyLevel): string => {
-    const colors: { [key in ProficiencyLevel]: string } = {
-      [ProficiencyLevel.NOVICE]:
-        "border-red-500/20 text-red-700 bg-red-50/90 dark:bg-red-950/90 dark:text-red-200 dark:border-red-400/30",
-      [ProficiencyLevel.DEVELOPING]:
-        "border-amber-500/20 text-amber-700 bg-amber-50/90 dark:bg-amber-950/90 dark:text-amber-200 dark:border-amber-400/30",
-      [ProficiencyLevel.PROFICIENT]:
-        "border-emerald-500/20 text-emerald-700 bg-emerald-50/90 dark:bg-emerald-950/90 dark:text-emerald-200 dark:border-emerald-400/30",
-      [ProficiencyLevel.ADVANCED]:
-        "border-blue-500/20 text-blue-700 bg-blue-50/90 dark:bg-blue-950/90 dark:text-blue-200 dark:border-blue-400/30",
-      [ProficiencyLevel.EXPERT]:
-        "border-violet-500/20 text-violet-700 bg-violet-50/90 dark:bg-violet-950/90 dark:text-violet-200 dark:border-violet-400/30",
-    };
-    return colors[level];
-  };
-
+ 
   useEffect(() => {
     const fetchCompetencies = async () => {
       try {
         setLoading(true);
-        const data = await competenciesApi.getAllCompetencies();
+        const data: Competency[] | null = await competenciesApi.getAllCompetencies();
+        if (!data) {
+          throw new Error("No competencies found");
+        }
         setCompetencies(data);
       } catch (error) {
         console.error("Failed to fetch competencies:", error);
@@ -320,29 +272,7 @@ export default function CompetenciesPage() {
   }, []);
 
   // Initialize table
-  const table = useReactTable({
-    data: competencies,
-    columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
-    },
-  });
+ 
 
   // Stats component
 
@@ -350,75 +280,13 @@ export default function CompetenciesPage() {
   return (
     <div className="container mx-auto px-4 py-8 space-y-8 w-full">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Competencies</h1>
-          <p className="text-muted-foreground">
-            Manage and track organizational competencies and skills
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Competency
-          </Button>
-        </div>
-      </div>
+      <Header title="Competencies" subtitle="Manage and explore competencies" entityName="Competency" />
 
       {/* Stats Cards */}
       <CompetencyStats competencies={competencies} />
 
       {/* Table Controls */}
-      <div className="flex flex-1 items-center space-x-2">
-        <div className="flex flex-1 items-center space-x-2">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search competencies..."
-              value={
-                (table.getColumn("name")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(event) =>
-                table.getColumn("name")?.setFilterValue(event.target.value)
-              }
-              className="pl-9"
-            />
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="ml-auto">
-                <Filter className="mr-2 h-4 w-4" />
-                View
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {table
-                .getAllColumns()
-                .filter((column) => column.getCanHide())
-                .map((column) => {
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      className="capitalize"
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) =>
-                        column.toggleVisibility(!!value)
-                      }
-                    >
-                      {column.id}
-                    </DropdownMenuCheckboxItem>
-                  );
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      
 
       {/* Loading State */}
       {loading && (
@@ -432,128 +300,7 @@ export default function CompetenciesPage() {
 
       {/* Table */}
       {!loading && (
-        <>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => {
-                      return (
-                        <TableHead key={header.id}>
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
-                        </TableHead>
-                      );
-                    })}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      data-state={row.getIsSelected() && "selected"}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={columns.length}
-                      className="h-24 text-center"
-                    >
-                      No competencies found.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination */}
-          <div className="flex items-center justify-between space-x-2 py-4">
-            <div className="flex-1 text-sm text-muted-foreground">
-              {table.getFilteredSelectedRowModel().rows.length} of{" "}
-              {table.getFilteredRowModel().rows.length} row(s) selected.
-            </div>
-            <div className="flex items-center space-x-6 lg:space-x-8">
-              <div className="flex items-center space-x-2">
-                <p className="text-sm font-medium">Rows per page</p>
-                <select
-                  value={table.getState().pagination.pageSize}
-                  onChange={(e) => {
-                    table.setPageSize(Number(e.target.value));
-                  }}
-                  className="h-8 w-[70px] rounded-md border border-input bg-transparent"
-                >
-                  {[10, 20, 30, 40, 50].map((pageSize) => (
-                    <option key={pageSize} value={pageSize}>
-                      {pageSize}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex w-[100px] items-center justify-center text-sm font-medium">
-                Page {table.getState().pagination.pageIndex + 1} of{" "}
-                {table.getPageCount()}
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  className="hidden h-8 w-8 p-0 lg:flex"
-                  onClick={() => table.setPageIndex(0)}
-                  disabled={!table.getCanPreviousPage()}
-                >
-                  <span className="sr-only">Go to first page</span>
-                  <ChevronLeft className="h-4 w-4" />
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-8 w-8 p-0"
-                  onClick={() => table.previousPage()}
-                  disabled={!table.getCanPreviousPage()}
-                >
-                  <span className="sr-only">Go to previous page</span>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-8 w-8 p-0"
-                  onClick={() => table.nextPage()}
-                  disabled={!table.getCanNextPage()}
-                >
-                  <span className="sr-only">Go to next page</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="hidden h-8 w-8 p-0 lg:flex"
-                  onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-                  disabled={!table.getCanNextPage()}
-                >
-                  <span className="sr-only">Go to last page</span>
-                  <ChevronRight className="h-4 w-4" />
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </>
+        <EntitiesTable columns={columns} data={competencies} />
       )}
     </div>
   );

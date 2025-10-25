@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"; 
 import { Competency } from "../interfaces/domain-interfaces";
 import { levelToColor } from "../utils";
-import { categoryToIcon } from "../utils";
+import { competencyCategoryToIcon } from "../utils";
 
 import {
   MoreHorizontal,
@@ -34,7 +34,7 @@ export default function CompetencyCard({ competency }: { competency: Competency 
 				{/* Left Section - Icon and Primary Info */}
 				<div className="flex md:flex-col items-center justify-center md:w-24 shrink-0">
 					<div className="h-16 w-16 rounded-xl bg-muted flex items-center justify-center">
-						{React.cloneElement(categoryToIcon(competency.category), {
+						{React.cloneElement(competencyCategoryToIcon(competency.category), {
 							className: "h-8 w-8",
 						})}
 					</div>
