@@ -4,8 +4,8 @@ services:
     container_name: skillsoft-db-dev
     environment:
       POSTGRES_DB: skillsoft_assessment_dev
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-password}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=en_US.UTF-8"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
@@ -15,7 +15,7 @@ services:
     networks:
       - skillsoft-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d skillsoft_assessment_dev"]
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d skillsoft_assessment_dev"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,8 +28,8 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=dev
       - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/skillsoft_assessment_dev
-      - SPRING_DATASOURCE_USERNAME=${DB_USER:-postgres}
-      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-password}
+      - SPRING_DATASOURCE_USERNAME=${PGUSER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${PGPASSWORD:-password}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=update
       - SPRING_DEVTOOLS_RESTART_ENABLED=true
       - SPRING_DEVTOOLS_LIVERELOAD_ENABLED=true
@@ -47,7 +47,7 @@ services:
       database:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      test: ["CMD", "curl", "-f", "http://${SERVER_HOST:-localhost}:${SERVER_PORT:-8080}/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -59,7 +59,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: frontend-dev
     environment:
-      - REACT_APP_API_URL=http://localhost:8080/api
+      - REACT_APP_API_URL=http://${SERVER_HOST:-localhost}:${SERVER_PORT:-8080}/api
       - CHOKIDAR_USEPOLLING=true  # Enable file watching in Docker
       - FAST_REFRESH=true
       - WDS_SOCKET_HOST=localhost
@@ -74,13 +74,46 @@ services:
       - ../frontend/vite.config.ts:/app/vite.config.ts
       - /app/node_modules  # Anonymous volume to prevent overriding
     ports:
-      - "3000:3000"
+      - "3001:3000"
     networks:
       - skillsoft-network
     depends_on:
       - backend
     stdin_open: true
     tty: true
+
+  frontend-app:
+    build:
+      context: ../frontend-app
+      dockerfile: Dockerfile
+    container_name: frontend-app-dev
+    environment:
+      - REACT_APP_API_URL=http://${SERVER_HOST:-localhost}:${SERVER_PORT:-8080}/api
+      - CHOKIDAR_USEPOLLING=true  # Enable file watching in Docker
+      - FAST_REFRESH=true
+      - WDS_SOCKET_HOST=localhost
+    volumes:
+      # HOT RELOAD: Mount source code for live changes
+      - ../frontend-app/src:/app/src
+      - ../frontend-app/app:/app/app
+      - ../frontend-app/public:/app/public
+      - ../frontend-app/package.json:/app/package.json
+      - ../frontend-app/package-lock.json:/app/package-lock.json
+      - ../frontend-app/components.json:/app/components.json
+      - ../frontend-app/next.config.ts:/app/next.config.ts
+      - ../frontend-app/postcss.config.mjs:/app/postcss.config.mjs
+      - ../frontend-app/biome.js:/app/biome.js
+      - ../frontend-app/tsconfig.json:/app/tsconfig.json
+      - /app/node_modules  # Anonymous volume to prevent overriding
+    ports:
+      - "3002:3000"
+    networks:
+      - skillsoft-network
+    depends_on:
+      - backend
+    stdin_open: true
+    tty: true
+
 
 volumes:
   postgres_dev_data:

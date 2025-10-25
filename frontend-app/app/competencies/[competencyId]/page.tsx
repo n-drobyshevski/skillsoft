@@ -81,9 +81,9 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 				setLoading(true);
 
 				// Fetch competency details
-				const competencyData =
+				const competencyData: Competency | null =
 					await competenciesApi.getCompetencyById(competencyId);
-				if (!competency) {
+				if (!competencyData) {
 					setError("Competency not found");
 					setLoading(false);
 					return;

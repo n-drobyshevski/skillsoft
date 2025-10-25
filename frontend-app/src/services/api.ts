@@ -1,7 +1,8 @@
 import { cache } from 'react';
 import { revalidateCompetencyTags, revalidateIndicatorTags, revalidateQuestionTags } from '@/app/actions';
+import { Competency } from '../../app/interfaces/domain-interfaces';
 
-const API_BASE_URL = "http://localhost:8080/api";
+const API_BASE_URL = "https://backend-production-a6b6.up.railway.app/api";
 
 // Types
 export interface ApiError extends Error {
@@ -56,7 +57,7 @@ async function fetchApi<T>(
 }
 
 // Cached competencies fetcher
-const getCompetenciesCached = cache(async () => {
+const getCompetenciesCached = cache(async () : Promise<Competency[] | null> => {
     return fetchApi('/competencies', {
         tags: ['competencies'],
         revalidate: 60, // Revalidate every minute
@@ -65,8 +66,8 @@ const getCompetenciesCached = cache(async () => {
 
 export const competenciesApi = {
     getAllCompetencies: getCompetenciesCached,
-    
-    getCompetencyById: async (competencyId: string) => {
+
+    getCompetencyById: async (competencyId: string) : Promise<Competency | null> => {
         return fetchApi(`/competencies/${competencyId}`, {
             tags: [`competency-${competencyId}`],
             revalidate: 60,

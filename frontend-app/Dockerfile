@@ -7,11 +7,11 @@ COPY package*.json ./
 RUN npm ci
 
 # Copy configuration files
-COPY tailwind.config.js ./
-COPY postcss.config.js ./
-COPY vite.config.ts ./
+COPY postcss.config.mjs ./
+COPY next.config.ts ./
 COPY tsconfig*.json ./
-
+COPY biome.json ./
+COPY components.json ./
 
 # Copy source code
 COPY . .
@@ -20,4 +20,4 @@ COPY . .
 EXPOSE 3000
 
 # Start development server with hot reload
-CMD ["npm", "run", "dev", "--", "--port", "3000", "--host", "0.0.0.0"]
+CMD ["npm", "run", "dev"]
