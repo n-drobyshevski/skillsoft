@@ -3,16 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  type ColumnDef,
-  type ColumnFiltersState,
-  type SortingState,
-  type VisibilityState,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  type ColumnDef
 } from "@tanstack/react-table";
 
 import {
@@ -45,8 +36,7 @@ import {
 } from "lucide-react";
 import { competenciesApi } from "@/services/api";
 import CompetencyStats from "./components/CompetencyStats";
-import { competencyCategoryToIcon, competencyProficiencyLevelToColor } from "../utils";
-import Table from "../components/Table";
+import { approvalStatusToColor, competencyCategoryToIcon, competencyProficiencyLevelToColor } from "../utils";
 import Header from "../components/Header";
 import EntitiesTable from "../components/Table";
 
@@ -62,14 +52,16 @@ export default function CompetenciesPage() {
       accessorKey: "name",
       header: ({ column }) => {
         return (
-          <Button
+          <div className="text-left">
+            <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           >
             Competency
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
-        );
+        </div>)
+        
       },
       cell: ({ row }) => {
         const category = row.original.category;
@@ -85,7 +77,7 @@ export default function CompetenciesPage() {
               >
                 {row.getValue("name")}
               </Link>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
+              <p className="max-w-xs text-xs text-muted-foreground truncate mt-0.5">
                 {row.original.description}
               </p>
             </div>
@@ -108,7 +100,6 @@ export default function CompetenciesPage() {
         const category = row.getValue("category") as CompetencyCategory;
         return (
           <div className="flex items-center gap-2">
-            <span>{competencyCategoryToIcon(category)}</span>
             <span className="font-medium capitalize">
               {category.toLowerCase().replace("_", " ")}
             </span>
@@ -202,19 +193,29 @@ export default function CompetenciesPage() {
       accessorKey: "isActive",
       header: "Status",
       cell: ({ row }) => {
-        const isActive = row.getValue("isActive") as boolean;
-        const status = row.original.approvalStatus;
+        const isActive = row.original.isActive;
         return (
           <div className="flex items-center gap-2">
             <Badge variant={isActive ? "default" : "secondary"}>
               {isActive ? "Active" : "Inactive"}
             </Badge>
-            <Badge variant="outline" className="text-xs">
-              {status}
-            </Badge>
           </div>
         );
       },
+    },
+    {
+      accessorKey: "ApprovalStatus",
+      header: "Approval Status",
+      cell: ({ row }) => {
+        const status = row.original.approvalStatus;
+        return (
+          <div className="flex items-center gap-2">
+          <Badge variant="outline" className={approvalStatusToColor(status)}>
+            {status}
+          </Badge>
+          </div>
+        );
+      }
     },
     {
       id: "actions",
@@ -271,22 +272,18 @@ export default function CompetenciesPage() {
     fetchCompetencies();
   }, []);
 
-  // Initialize table
- 
-
-  // Stats component
-
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-8 w-full">
+    <div className="container mx-auto px-4 py-8 space-y-8 w-full max-w-none">
       {/* Header */}
-      <Header title="Competencies" subtitle="Manage and explore competencies" entityName="Competency" />
+      <Header
+        title="Competencies"
+        subtitle="Manage and explore competencies"
+        entityName="Competency"
+      />
 
       {/* Stats Cards */}
       <CompetencyStats competencies={competencies} />
-
-      {/* Table Controls */}
-      
 
       {/* Loading State */}
       {loading && (
@@ -299,9 +296,7 @@ export default function CompetenciesPage() {
       )}
 
       {/* Table */}
-      {!loading && (
-        <EntitiesTable columns={columns} data={competencies} />
-      )}
+      {!loading && <EntitiesTable columns={columns} data={competencies} />}
     </div>
   );
 };

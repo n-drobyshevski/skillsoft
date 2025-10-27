@@ -53,35 +53,6 @@ services:
       retries: 3
     command: ["./mvnw", "spring-boot:run", "-Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"]
 
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile.dev
-    container_name: frontend-dev
-    environment:
-      - REACT_APP_API_URL=http://${SERVER_HOST:-localhost}:${SERVER_PORT:-8080}/api
-      - CHOKIDAR_USEPOLLING=true  # Enable file watching in Docker
-      - FAST_REFRESH=true
-      - WDS_SOCKET_HOST=localhost
-    volumes:
-      # HOT RELOAD: Mount source code for live changes
-      - ../frontend/src:/app/src
-      - ../frontend/public:/app/public
-      - ../frontend/package.json:/app/package.json
-      - ../frontend/package-lock.json:/app/package-lock.json
-      - ../frontend/tailwind.config.js:/app/tailwind.config.js
-      - ../frontend/postcss.config.js:/app/postcss.config.js
-      - ../frontend/vite.config.ts:/app/vite.config.ts
-      - /app/node_modules  # Anonymous volume to prevent overriding
-    ports:
-      - "3001:3000"
-    networks:
-      - skillsoft-network
-    depends_on:
-      - backend
-    stdin_open: true
-    tty: true
-
   frontend-app:
     build:
       context: ../frontend-app

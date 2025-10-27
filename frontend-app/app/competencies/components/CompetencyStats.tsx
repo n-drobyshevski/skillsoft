@@ -1,20 +1,16 @@
 "use client";
 
+import React from "react";
 
-import { Card } from "@/components/ui/card";
+import { Activity, Target, Users } from "lucide-react";
+import { Competency } from "../../interfaces/domain-interfaces";
+import StatsCard, { StatsCardVariant } from "../../components/StatsCard";
 
-import React, { useState, useEffect } from "react";
-
-import {
-  Activity,
-  Target,
-  Users,
-} from "lucide-react";
-import {
-  Competency
-} from "../../interfaces/domain-interfaces";
-
-export default function CompetencyStats({ competencies }: { competencies: Competency[] }) {
+export default function CompetencyStats({
+  competencies,
+}: {
+  competencies: Competency[];
+}) {
   competencies = competencies || [];
 
   const stats = React.useMemo(() => {
@@ -31,46 +27,30 @@ export default function CompetencyStats({ competencies }: { competencies: Compet
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card className="p-4 flex items-center space-x-4">
-        <div className="p-3 bg-primary/10 rounded-lg">
-          <Target className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <div className="text-2xl font-bold">{stats.total}</div>
-          <div className="text-xs text-muted-foreground">
-            Total Competencies
-          </div>
-        </div>
-      </Card>
-      <Card className="p-4 flex items-center space-x-4">
-        <div className="p-3 bg-primary/10 rounded-lg">
-          <Activity className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <div className="text-2xl font-bold">{stats.active}</div>
-          <div className="text-xs text-muted-foreground">
-            Active Competencies
-          </div>
-        </div>
-      </Card>
-      <Card className="p-4 flex items-center space-x-4">
-        <div className="p-3 bg-primary/10 rounded-lg">
-          <Users className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <div className="text-2xl font-bold">{stats.categories}</div>
-          <div className="text-xs text-muted-foreground">Categories</div>
-        </div>
-      </Card>
-      <Card className="p-4 flex items-center space-x-4">
-        <div className="p-3 bg-primary/10 rounded-lg">
-          <Target className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <div className="text-2xl font-bold">{stats.totalIndicators}</div>
-          <div className="text-xs text-muted-foreground">Total Indicators</div>
-        </div>
-      </Card>
+      <StatsCard
+        title="Total Competencies"
+        value={stats.total}
+        icon={Target}
+        variant={StatsCardVariant.CONTAINED}
+      />
+      <StatsCard
+        title="Active Competencies"
+        value={stats.active}
+        icon={Activity}
+        variant={StatsCardVariant.CONTAINED}
+      />
+      <StatsCard
+        title="Categories"
+        value={stats.categories}
+        icon={Users}
+        variant={StatsCardVariant.CONTAINED}
+      />
+      <StatsCard
+        title="Total Indicators"
+        value={stats.totalIndicators}
+        icon={Target}
+        variant={StatsCardVariant.CONTAINED}
+      />
     </div>
   );
-};
+}

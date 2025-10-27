@@ -2,7 +2,8 @@ import { cache } from 'react';
 import { revalidateCompetencyTags, revalidateIndicatorTags, revalidateQuestionTags } from '@/app/actions';
 import { AssessmentQuestion, BehavioralIndicator, Competency } from '../../app/interfaces/domain-interfaces';
 
-const API_BASE_URL = "https://backend-production-a6b6.up.railway.app/api";
+const API_BASE_URL =
+  "https://backend-production-263e.up.railway.app/api";
 
 // const API_BASE_URL = "https://localhost:8080/api";
 // Types

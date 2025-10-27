@@ -27,6 +27,7 @@ export interface BehavioralIndicator {
   isActive: boolean;
   approvalStatus: ApprovalStatus;
   orderIndex: number;
+  competencyId: string;
 }
 
 export interface AssessmentQuestion {
