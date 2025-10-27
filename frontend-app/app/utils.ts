@@ -35,12 +35,12 @@ import { ProficiencyLevel } from "./enums/domain_enums";
   };
   const approvalStatusToColor = (status: string): string => {
     const colors: { [key: string]: string } = {
-      DRAFT:  "border-blue-500/20 text-blue-700 bg-blue-50/90 dark:bg-blue-950/90 dark:text-blue-200 dark:border-blue-400/30",
-      PENDING_REVIEW: "border-yellow-500/20 text-yellow-700 bg-yellow-50/90 dark:bg-yellow-950/90 dark:text-yellow-200 dark:border-yellow-400/30",
-      APPROVED: "border-green-500/20 text-green-700 bg-green-50/90 dark:bg-green-950/90 dark:text-green-200 dark:border-green-400/30",
-      REJECTED: "border-red-500/20 text-red-700 bg-red-50/90 dark:bg-red-950/90 dark:text-red-200 dark:border-red-400/30",
-      ARCHIVED: "border-blue-500/20 text-blue-700 bg-blue-50/90 dark:bg-blue-950/90 dark:text-blue-200 dark:border-blue-400/30",
-      UNDER_REVISION: "border-purple-500/20 text-purple-700 bg-purple-50/90 dark:bg-purple-950/90 dark:text-purple-200 dark:border-purple-400/30",
+      DRAFT:  "status-draft",
+      PENDING_REVIEW: "status-pending-review",
+      APPROVED: "status-approved",
+      REJECTED: "status-rejected",
+      ARCHIVED: "status-archived",
+      UNDER_REVISION: "status-under-revision",
     };
     return colors[status] || colors["DRAFT"];
   }

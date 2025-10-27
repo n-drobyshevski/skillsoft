@@ -4,7 +4,7 @@ import React from "react";
 
 import { Activity, Target, Users } from "lucide-react";
 import { Competency } from "../../interfaces/domain-interfaces";
-import StatsCard, { StatsCardVariant } from "../../components/StatsCard";
+import StatsCard from "../../components/StatsCard";
 
 export default function CompetencyStats({
   competencies,
@@ -31,25 +31,21 @@ export default function CompetencyStats({
         title="Total Competencies"
         value={stats.total}
         icon={Target}
-        variant={StatsCardVariant.CONTAINED}
       />
       <StatsCard
         title="Active Competencies"
         value={stats.active}
         icon={Activity}
-        variant={StatsCardVariant.CONTAINED}
       />
       <StatsCard
         title="Categories"
         value={stats.categories}
         icon={Users}
-        variant={StatsCardVariant.CONTAINED}
       />
       <StatsCard
         title="Total Indicators"
         value={stats.totalIndicators}
         icon={Target}
-        variant={StatsCardVariant.CONTAINED}
       />
     </div>
   );

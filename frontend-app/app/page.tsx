@@ -6,19 +6,24 @@ import {
 	CardDescription,
 	CardHeader,
 	CardTitle,
-	CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-
-import {
-	Activity
-} from "lucide-react";
+import { Activity, ArrowUpDown, MoreHorizontal } from "lucide-react";
 import { competenciesApi } from "@/services/api";
 import { Competency, DashboardStats } from "./interfaces/domain-interfaces";
-import CompetencyCardGrid from "./components/CompetencyCardGrid";
 import Header from "./components/Header";
 import DashboardStatsCards from "./components/DasboardStatsCards";
 import ErrorCard from "./components/ErrorCard";
+import CompetencyByCategoryBarChart from "@/components/charts/CompetencyByCategoryBarChart";
+import CompetencyByLevelBarChart from "@/components/charts/CompetencyByLevelBarChart";
+import AverageIndicatorsGauge from "@/components/charts/AverageIndicatorsGauge";
+import RecentActivityCard from "@/components/RecentActivityCard";
+import QuickActionsCard from "@/components/QuickActionsCard";
+import EntityTable from "./components/Table";
+import { ColumnDef } from "@tanstack/react-table";
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import TopCompetenciesCard from "@/components/TopCompetenciesCard";
 
 // Main Dashboard Component
 export default function Page() {
@@ -33,7 +38,6 @@ export default function Page() {
 			setLoading(true);
 			const competenciesData: Array<Competency> | null = await competenciesApi.getAllCompetencies();
 			
-			// Verify that competenciesData is an array and not empty
 			if (!Array.isArray(competenciesData)) {
 				throw new Error('Invalid response from server: data is not an array');
 			}
@@ -76,57 +80,97 @@ export default function Page() {
 		fetchData();
 	}, []);
 
+	const competencyColumns: ColumnDef<Competency>[] = [
+		{
+			accessorKey: "name",
+			header: ({ column }) => (
+				<Button
+					variant="link"
+					onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+					className="-ml-4 text-muted-foreground"
+				>
+					Name
+					<ArrowUpDown className="ml-2 h-4 w-4" />
+				</Button>
+			),
+			cell: ({ row }) => (
+				<Link href={`/competencies/${row.original.id}`} className="font-medium text-primary hover:underline">
+					{row.getValue("name")}
+				</Link>
+			),
+		},
+		{
+			accessorKey: "category",
+			header: "Category",
+		},
+		{
+			accessorKey: "level",
+			header: "Level",
+		},
+		{
+			accessorKey: "behavioralIndicators",
+			header: "Indicators",
+			cell: ({ row }) => row.original.behavioralIndicators?.length || 0,
+		},
+		{
+			accessorKey: "isActive",
+			header: "Status",
+			cell: ({ row }) => {
+				const isActive = row.getValue("isActive") as boolean;
+				return (
+					<Badge variant={isActive ? "default" : "secondary"}>
+						{isActive ? "Active" : "Inactive"}
+					</Badge>
+				);
+			},
+		},
+	];
+
 	if (error) {
-		return (
-			<div className="container mx-auto px-4 py-8 flex items-center justify-center min-h-[60vh]">
-							<Card className="max-w-md border-destructive/50">
-								<CardContent className="p-8 text-center">
-									<div className="text-4xl mb-4">⚠️</div>
-									<CardTitle className="text-destructive mb-2">
-										Error Loading Dashboard
-									</CardTitle>
-									<CardDescription className="mb-6">{error}</CardDescription>
-									<Button
-										onClick={fetchData}
-										variant="destructive"
-										className="w-full"
-									>
-										Try Again
-									</Button>
-								</CardContent>
-							</Card>
-						</div>
-		);
+		return <ErrorCard error={error} onRetry={fetchData} />;
 	}
 
 	return (
-    <div className="container mx-auto px-4 py-8 space-y-8">
-      {/* Header */}
-      <Header
-        title="Dashboard"
-        subtitle="Overview of competencies and statistics"
-      />
+		<div className="container mx-auto px-4 py-8 space-y-8">
+			<Header title="Dashboard" subtitle="Overview of competencies and statistics" />
 
-      {/* Statistics Overview */}
-      {stats && (
-       <DashboardStatsCards stats={stats} />
-      )}
+			{stats && <DashboardStatsCards stats={stats} />}
 
-      {/* Competency Cards */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Competencies Overview
-          </CardTitle>
-          <CardDescription>
-            Browse, search, and manage all competencies in your system
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CompetencyCardGrid data={competencies} loading={loading} />
-        </CardContent>
-      </Card>
-    </div>
-  );
+			<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+				<div className="lg:col-span-2 space-y-8">
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+						{stats && (
+							<CompetencyByCategoryBarChart
+								data={Object.entries(stats.competenciesByCategory).map(([name, value]) => ({ name, value }))}
+							/>
+						)}
+						{stats && (
+							<CompetencyByLevelBarChart
+								data={Object.entries(stats.competenciesByLevel).map(([name, value]) => ({ name, value }))}
+							/>
+						)}
+					</div>
+					<Card>
+						<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+								<Activity className="h-5 w-5" />
+								Competencies Overview
+							</CardTitle>
+							<CardDescription>
+								Browse, search, and manage all competencies in your system
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<EntityTable columns={competencyColumns} data={competencies} />
+						</CardContent>
+					</Card>
+				</div>
+				<div className="space-y-8">
+					<QuickActionsCard />
+					{stats && <AverageIndicatorsGauge value={stats.averageIndicatorsPerCompetency} />}
+					<TopCompetenciesCard competencies={competencies} />
+				</div>
+			</div>
+		</div>
+	);
 }

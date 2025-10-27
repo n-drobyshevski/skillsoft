@@ -40,7 +40,7 @@ import { Badge } from "../../src/components/ui/badge";
 import { AssessmentQuestion } from "../interfaces/domain-interfaces";
 import { questionTypeToIcon, questionDifficultyToColor } from "../utils";
 import { assessmentQuestionsApi } from "@/services/api";
-import StatsCard, { StatsCardVariant } from "../components/StatsCard";
+import StatsCard from "../components/StatsCard";
 import EntitiesTable from "../components/Table";
 import Header from "../components/Header";
 // Column definitions
@@ -220,19 +220,16 @@ const AssessmentStats: React.FC<{ questions: AssessmentQuestion[] }> = ({
         title="Total Questions"
         value={stats.totalQuestions}
         icon={BarChart3}
-        variant={StatsCardVariant.CONTAINED}
       />
       <StatsCard
         title="Question Types"
         value={stats.questionTypes}
         icon={ListFilter}
-        variant={StatsCardVariant.CONTAINED}
       />
       <StatsCard
         title="Est. Minutes"
         value={stats.totalMinutes}
         icon={Clock}
-        variant={StatsCardVariant.CONTAINED}
       />
     </div>
   );
