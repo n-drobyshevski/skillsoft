@@ -3,7 +3,6 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
-import app.skillsoft.assessmentbackend.domain.entities.QuestionType;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
 import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
 import org.springframework.http.ResponseEntity;
@@ -14,7 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @RestController
-@RequestMapping(value = "/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions")
+@RequestMapping(value = "/api/questions")
 public class AssessmentQuestionController {
 
     private final AssessmentQuestionMapper assessmentQuestionMapper;
@@ -26,19 +25,19 @@ public class AssessmentQuestionController {
         this.assessmentQuestionService = assessmentQuestionService;
     }
 
-
     @GetMapping
-    public List<AssessmentQuestionDto> listAssessmentQuestions(@PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId) {
-        List<AssessmentQuestion> assessmentQuestions = assessmentQuestionService.listAssessmentQuestions(behavioralIndicatorId);
-        return assessmentQuestions.stream().map(assessmentQuestionMapper::toDto).toList();
+    public List<AssessmentQuestionDto> listAssessmentQuestions() {
+        List<AssessmentQuestion> competencies = assessmentQuestionService.listAllQuestions();
+        return competencies.stream().map(assessmentQuestionMapper::toDto).toList();
     }
+
     
     @GetMapping("/{questionId}")
     public ResponseEntity<AssessmentQuestionDto> getQuestionById(
             @PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId,
             @PathVariable(name="questionId") UUID questionId) {
         
-        Optional<AssessmentQuestion> question = assessmentQuestionService.findAssesmentQuestionById(behavioralIndicatorId, questionId);
+        Optional<AssessmentQuestion> question = assessmentQuestionService.findAssesmentQuestionById(questionId);
         return question.map(q -> ResponseEntity.ok(assessmentQuestionMapper.toDto(q)))
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -54,12 +53,10 @@ public class AssessmentQuestionController {
     
     @PutMapping("/{questionId}")
     public ResponseEntity<AssessmentQuestionDto> updateQuestion(
-            @PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId,
             @PathVariable(name="questionId") UUID questionId,
             @RequestBody AssessmentQuestion question) {
         
-        AssessmentQuestion updatedQuestion = assessmentQuestionService.updateAssesmentQuestion(
-                behavioralIndicatorId, questionId, question);
+        AssessmentQuestion updatedQuestion = assessmentQuestionService.updateAssesmentQuestion(questionId, question);
                 
         if (updatedQuestion != null) {
             return ResponseEntity.ok(assessmentQuestionMapper.toDto(updatedQuestion));
@@ -70,10 +67,9 @@ public class AssessmentQuestionController {
     
     @DeleteMapping("/{questionId}")
     public ResponseEntity<Void> deleteQuestion(
-            @PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId,
             @PathVariable(name="questionId") UUID questionId) {
         
-        assessmentQuestionService.deleteAssesmentQuestion(behavioralIndicatorId, questionId);
+        assessmentQuestionService.deleteAssesmentQuestion(questionId);
         return ResponseEntity.noContent().build();
     }
 }

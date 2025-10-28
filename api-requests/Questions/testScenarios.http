@@ -1,128 +1,135 @@
-### Assessment Question Edge Cases and Validation Tests
+### Test Scenarios for Assessment Questions API
 
-### Create Question - Invalid JSON Format
-POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+### 1. Create new assessment question
+POST http://localhost:8080/api/questions/bi/{{behavioralIndicatorId}}
 Content-Type: application/json
 
 {
-  "questionText": "Test question with invalid enum"
-  "questionType": "INVALID_TYPE",
-  "answerOptions": [],
-  "scoringRubric": "Test rubric",
-  "difficultyLevel": "FOUNDATIONAL",
-  "isActive": true,
-  "orderIndex": 1
-}
-
-### Create Question - Missing Required Fields
-POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
-Content-Type: application/json
-
-{
-  "questionType": "MULTIPLE_CHOICE",
-  "answerOptions": []
-}
-
-### Create Question - Self-Reflection Type
-POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
-Content-Type: application/json
-
-{
-  "questionText": "Reflect on a time when you had to make a strategic decision with limited information. Describe your thought process and the outcome.",
-  "questionType": "SELF_REFLECTION",
+  "text": "How often do you analyze complex data before making decisions?",
   "answerOptions": [
     {
-      "type": "text_area",
-      "maxLength": 1000,
-      "placeholder": "Describe your experience in detail..."
+      "label": "Никогда",
+      "value": 1
+    },
+    {
+      "label": "Редко (в исключительных случаях)",
+      "value": 2
+    },
+    {
+      "label": "Иногда (для сложных проблем)",
+      "value": 3
+    },
+    {
+      "label": "Часто (для большинства задач)",
+      "value": 4
+    },
+    {
+      "label": "Всегда (систематический подход)",
+      "value": 5
     }
-  ],
-  "scoringRubric": "Evaluate depth of reflection, strategic thinking process, learning from outcomes, and ability to articulate thought process",
-  "timeLimit": 600,
-  "difficultyLevel": "EXPERT",
-  "isActive": true,
-  "orderIndex": 4
+  ]
 }
 
-### Create Question - Behavioral Example Type
-POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
+> {%
+client.test("Request executed successfully", function() {
+    client.assert(response.status === 201 || response.status === 200, "Response status is not 201 or 200");
+});
+client.test("Response has correct question data", function() {
+    client.assert(response.body.text === "How often do you analyze complex data before making decisions?", "Question text does not match");
+    client.assert(response.body.id !== null, "ID should not be null");
+    client.assert(response.body.answerOptions !== null, "Answer options should not be null");
+});
+%}
+
+### Store question id for further tests
+{% if (response.body.id) { %}
+{% client.global.set("questionId", response.body.id); %}
+{% } %}
+
+### 2. Get created question
+GET http://localhost:8080/api/questions/bi/{{behavioralIndicatorId}}/{{questionId}}
+Accept: application/json
+
+> {%
+client.test("Request executed successfully", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+});
+client.test("Response has correct question data", function() {
+    client.assert(response.body.text === "How often do you analyze complex data before making decisions?", "Question text does not match");
+    client.assert(response.body.id === client.global.get("questionId"), "ID does not match");
+    client.assert(response.body.answerOptions.length === 5, "Should have 5 answer options");
+});
+%}
+
+### 3. List all questions
+GET http://localhost:8080/api/questions
+Accept: application/json
+
+> {%
+client.test("Request executed successfully", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+});
+client.test("Response is array", function() {
+    client.assert(Array.isArray(response.body), "Response body is not an array");
+    client.assert(response.body.length > 0, "Array is empty");
+});
+%}
+
+### 4. Update question
+PUT http://localhost:8080/api/questions/{{questionId}}
 Content-Type: application/json
 
 {
-  "questionText": "Provide a specific example of when you identified a strategic opportunity that others missed. What steps did you take to capitalize on it?",
-  "questionType": "BEHAVIORAL_EXAMPLE",
+  "text": "Updated: How frequently do you utilize data analysis in your decision-making process?",
   "answerOptions": [
     {
-      "type": "structured_response",
-      "sections": [
-        {
-          "label": "Situation",
-          "description": "Describe the context and background"
-        },
-        {
-          "label": "Task",
-          "description": "What was your role and responsibility?"
-        },
-        {
-          "label": "Action",
-          "description": "What specific actions did you take?"
-        },
-        {
-          "label": "Result",
-          "description": "What was the outcome and impact?"
-        }
-      ]
+      "label": "Никогда",
+      "value": 1
+    },
+    {
+      "label": "Редко (в исключительных случаях)",
+      "value": 2
+    },
+    {
+      "label": "Иногда (для сложных проблем)",
+      "value": 3
+    },
+    {
+      "label": "Часто (для большинства задач)",
+      "value": 4
+    },
+    {
+      "label": "Всегда (систематический подход)",
+      "value": 5
     }
-  ],
-  "scoringRubric": "STAR method evaluation: Situation clarity, Task definition, Action specificity, Result measurement. Focus on strategic identification and execution",
-  "timeLimit": 900,
-  "difficultyLevel": "ADVANCED",
-  "isActive": true,
-  "orderIndex": 5
+  ]
 }
 
-### Create Question - Frequency Scale Type
-POST http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions
-Content-Type: application/json
+> {%
+client.test("Request executed successfully", function() {
+    client.assert(response.status === 200, "Response status is not 200");
+});
+client.test("Response has updated question data", function() {
+    client.assert(response.body.text === "Updated: How frequently do you utilize data analysis in your decision-making process?", "Question text not updated");
+    client.assert(response.body.id === client.global.get("questionId"), "ID changed after update");
+});
+%}
 
-{
-  "questionText": "How frequently do you seek input from diverse stakeholders before making strategic decisions?",
-  "questionType": "FREQUENCY_SCALE",
-  "answerOptions": [
-    {
-      "label": "Never",
-      "frequency": "0%",
-      "value": 1,
-      "description": "I make decisions independently without seeking input"
-    },
-    {
-      "label": "Rarely",
-      "frequency": "1-25%",
-      "value": 2,
-      "description": "I occasionally seek input for major decisions"
-    },
-    {
-      "label": "Sometimes",
-      "frequency": "26-50%",
-      "value": 3,
-      "description": "I regularly seek input for important decisions"
-    },
-    {
-      "label": "Often",
-      "frequency": "51-75%",
-      "value": 4,
-      "description": "I consistently seek diverse input for strategic decisions"
-    },
-    {
-      "label": "Always",
-      "frequency": "76-100%",
-      "value": 5,
-      "description": "I systematically gather stakeholder input for all strategic decisions"
-    }
-  ],
-  "scoringRubric": "5=Systematic stakeholder engagement, 4=Consistent consultation, 3=Regular input seeking, 2=Occasional consultation, 1=Independent decision-making",
-  "timeLimit": 90,
-  "difficultyLevel": "INTERMEDIATE",
-  "isActive": true,
-  "orderIndex": 6
-}
+### 5. Delete question
+DELETE http://localhost:8080/api/questions/{{questionId}}
+
+> {%
+client.test("Request executed successfully", function() {
+    client.assert(response.status === 204 || response.status === 200, "Response status is not 204 or 200");
+});
+%}
+
+### 6. Verify deletion
+GET http://localhost:8080/api/questions/{{questionId}}
+Accept: application/json
+
+> {%
+client.test("Request should return not found", function() {
+    client.assert(response.status === 404, "Response status is not 404");
+});
+%}

@@ -125,7 +125,7 @@ export const behavioralIndicatorsApi = {
   getIndicators: getIndicatorsCached,
   getAllIndicators: getAllIndicatorsCached,
 
-  getIndicatorById: async (competencyId: string, indicatorId: string) : Promise<BehavioralIndicator | null> => {
+  getIndicatorById: async (indicatorId: string) : Promise<BehavioralIndicator | null> => {
     return fetchApi(`/competencies/${competencyId}/bi/${indicatorId}`, {
       tags: [`indicator-${competencyId}-${indicatorId}`],
       revalidate: 60,

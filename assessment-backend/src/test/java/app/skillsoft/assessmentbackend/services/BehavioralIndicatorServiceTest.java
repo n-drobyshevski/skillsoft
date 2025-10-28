@@ -99,7 +99,7 @@ class BehavioralIndicatorServiceTest {
                 .thenReturn(expectedIndicators);
 
             // When
-            List<BehavioralIndicator> actualIndicators = behavioralIndicatorService.listBehavioralIndicators(competencyId);
+            List<BehavioralIndicator> actualIndicators = behavioralIndicatorService.listCompetencyBehavioralIndicators(competencyId);
 
             // Then
             assertThat(actualIndicators).isNotNull();
@@ -119,7 +119,7 @@ class BehavioralIndicatorServiceTest {
                 .thenReturn(Collections.emptyList());
 
             // When
-            List<BehavioralIndicator> actualIndicators = behavioralIndicatorService.listBehavioralIndicators(competencyId);
+            List<BehavioralIndicator> actualIndicators = behavioralIndicatorService.listCompetencyBehavioralIndicators(competencyId);
 
             // Then
             assertThat(actualIndicators).isNotNull();
@@ -137,7 +137,7 @@ class BehavioralIndicatorServiceTest {
                 .thenReturn(Collections.emptyList());
 
             // When
-            List<BehavioralIndicator> actualIndicators = behavioralIndicatorService.listBehavioralIndicators(nullCompetencyId);
+            List<BehavioralIndicator> actualIndicators = behavioralIndicatorService.listCompetencyBehavioralIndicators(nullCompetencyId);
 
             // Then
             assertThat(actualIndicators).isNotNull();

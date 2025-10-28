@@ -1,0 +1,4 @@
+### List behavioral indicators for competency
+GET http://localhost:8080/api/competencies/{{competencyId}}/bi
+Accept: application/json
+
