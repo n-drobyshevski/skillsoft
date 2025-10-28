@@ -39,12 +39,20 @@ import CompetencyStats from "./components/CompetencyStats";
 import { approvalStatusToColor, competencyCategoryToIcon, competencyProficiencyLevelToColor } from "../utils";
 import Header from "../components/Header";
 import EntitiesTable from "../components/Table";
+import CompetencyDrawer from "./components/CompetencyDrawer";
 
 
 // Main component
 export default function CompetenciesPage() {
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedCompetency, setSelectedCompetency] = useState<Competency | null>(null);
+
+  const handleViewDetails = (competency: Competency) => {
+    setSelectedCompetency(competency);
+    setIsDrawerOpen(true);
+  };
 
   // Column definitions
   const columns: ColumnDef<Competency>[] = [
@@ -237,7 +245,7 @@ export default function CompetenciesPage() {
                 Copy ID
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleViewDetails(competency)}>
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
@@ -296,7 +304,15 @@ export default function CompetenciesPage() {
       )}
 
       {/* Table */}
-      {!loading && <EntitiesTable columns={columns} data={competencies} />}
+      {!loading && <EntitiesTable columns={columns} data={competencies} onRowClick={handleViewDetails} />}
+
+      {selectedCompetency && (
+        <CompetencyDrawer
+          open={isDrawerOpen}
+          onOpenChange={setIsDrawerOpen}
+          competency={selectedCompetency}
+        />
+      )}
     </div>
   );
 };

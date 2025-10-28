@@ -497,110 +497,117 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 													</div>
 												</CollapsibleTrigger>
 
-												<CollapsibleContent>
-													<div className="border-t px-6 pb-6 pt-4">
-														<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-															{indicator.examples && (
-																<div>
-																	<h4 className="font-semibold mb-3 flex items-center gap-2">
-																		<Lightbulb className="w-4 h-4 text-emerald-500" />
-																		Examples
-																	</h4>
-																	<Card className="bg-emerald-500/5 border-emerald-500/20">
-																		<CardContent className="p-4">
-																			<p className="text-sm text-emerald-700 dark:text-emerald-300 leading-relaxed">
-																				{indicator.examples}
-																			</p>
-																		</CardContent>
-																	</Card>
-																</div>
-															)}
-
-															{indicator.counterExamples && (
-																<div>
-																	<h4 className="font-semibold mb-3 flex items-center gap-2">
-																		<X className="w-4 h-4 text-red-500" />
-																		Counter Examples
-																	</h4>
-																	<Card className="bg-red-500/5 border-red-500/20">
-																		<CardContent className="p-4">
-																			<p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">
-																				{indicator.counterExamples}
-																			</p>
-																		</CardContent>
-																	</Card>
-																</div>
-															)}
-														</div>
-
-														{/* Assessment Questions for this indicator */}
-														{assessmentQuestions.filter(
-															(q) => q.behavioralIndicatorId === indicator.id,
-														).length > 0 && (
-															<div className="mt-8">
-																<h4 className="font-semibold mb-4 flex items-center gap-2">
-																	<HelpCircle className="w-4 h-4" />
-																	Assessment Questions (
-																	{
-																		assessmentQuestions.filter(
-																			(q) =>
-																				q.behavioralIndicatorId ===
-																				indicator.id,
-																		).length
-																	}
-																	)
-																</h4>
-																<div className="space-y-3">
-																	{assessmentQuestions
-																		.filter(
-																			(q) =>
-																				q.behavioralIndicatorId ===
-																				indicator.id,
-																		)
-																		.sort((a, b) => a.orderIndex - b.orderIndex)
-																		.map((question) => (
-																			<Card
-																				key={question.id}
-																				className="border-muted"
-																			>
-																				<CardContent className="p-4">
-																					<div className="flex items-start justify-between mb-3">
-																						<p className="text-sm flex-1 leading-relaxed">
-																							{question.questionText}
-																						</p>
-																						<Badge
-																							variant="outline"
-																							className={
-																								question.difficultyLevel ===
-																								"BASIC"
-																									? "border-emerald-500/30 text-emerald-600 bg-emerald-500/8"
-																									: question.difficultyLevel ===
-																											"INTERMEDIATE"
-																										? "border-yellow-500/30 text-yellow-600 bg-yellow-500/8"
-																										: question.difficultyLevel ===
-																												"ADVANCED"
-																											? "border-orange-500/30 text-orange-600 bg-orange-500/8"
-																											: "border-red-500/30 text-red-600 bg-red-500/8"
-																							}
-																						>
-																							{question.difficultyLevel}
-																						</Badge>
-																					</div>
-																					<div className="text-xs text-muted-foreground font-medium">
-																						{question.questionType.replace(
-																							"_",
-																							" ",
+												                <CollapsibleContent>
+																					<div className="border-t px-6 pb-6 pt-4">
+																						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+																							{indicator.examples && (
+																								<div>
+																									<h4 className="font-semibold mb-3 flex items-center gap-2">
+																										<Lightbulb className="w-4 h-4 text-emerald-500" />
+																										Examples
+																									</h4>
+																									<Card className="bg-emerald-500/5 border-emerald-500/20">
+																										<CardContent className="p-4">
+																											<p className="text-sm text-emerald-700 dark:text-emerald-300 leading-relaxed">
+																												{indicator.examples}
+																											</p>
+																										</CardContent>
+																									</Card>
+																								</div>
+																							)}
+												
+																							{indicator.counterExamples && (
+																								<div>
+																									<h4 className="font-semibold mb-3 flex items-center gap-2">
+																										<X className="w-4 h-4 text-red-500" />
+																										Counter Examples
+																									</h4>
+																									<Card className="bg-red-500/5 border-red-500/20">
+																										<CardContent className="p-4">
+																											<p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">
+																												{indicator.counterExamples}
+																											</p>
+																										</CardContent>
+																									</Card>
+																								</div>
+																							)}
+																						</div>
+												
+																						{/* Assessment Questions for this indicator */}
+																						{assessmentQuestions.filter(
+																							(q) => q.behavioralIndicatorId === indicator.id,
+																						).length > 0 && (
+																							<div className="mt-8">
+																								<h4 className="font-semibold mb-4 flex items-center gap-2">
+																									<HelpCircle className="w-4 h-4" />
+																									Assessment Questions (
+																									{
+																										assessmentQuestions.filter(
+																											(q) =>
+																												q.behavioralIndicatorId ===
+																												indicator.id,
+																										).length
+																									}
+																									)
+																								</h4>
+																								<div className="space-y-3">
+																									{assessmentQuestions
+																										.filter(
+																											(q) =>
+																												q.behavioralIndicatorId ===
+																												indicator.id,
+																										)
+																										.sort((a, b) => a.orderIndex - b.orderIndex)
+																										.map((question) => (
+																											<Card
+																												key={question.id}
+																												className="border-muted"
+																											>
+																												<CardContent className="p-4">
+																													<div className="flex items-start justify-between mb-3">
+																														<p className="text-sm flex-1 leading-relaxed">
+																															{question.questionText}
+																														</p>
+																														<Badge
+																															variant="outline"
+																															className={
+																																question.difficultyLevel ===
+																																"BASIC"
+																																	? "border-emerald-500/30 text-emerald-600 bg-emerald-500/8"
+																																	: question.difficultyLevel ===
+																																			"INTERMEDIATE"
+																																		? "border-yellow-500/30 text-yellow-600 bg-yellow-500/8"
+																																		: question.difficultyLevel ===
+																																				"ADVANCED"
+																																			? "border-orange-500/30 text-orange-600 bg-orange-500/8"
+																																			: "border-red-500/30 text-red-600 bg-red-500/8"
+																															}
+																														>
+																															{question.difficultyLevel}
+																														</Badge>
+																													</div>
+																													<div className="text-xs text-muted-foreground font-medium">
+																														{question.questionType.replace(
+																															"_",
+																															" ",
+																														)}
+																													</div>
+																												</CardContent>
+																											</Card>
+																										))}
+																								</div>
+																							</div>
 																						)}
+												                                        <div className="mt-4 flex justify-end">
+												                                            <Link href={`/behavioral-indicators/${indicator.id}`} passHref>
+												                                                <Button variant="outline">
+												                                                    <Eye className="mr-2 h-4 w-4" />
+												                                                    View Details
+												                                                </Button>
+												                                            </Link>
+												                                        </div>
 																					</div>
-																				</CardContent>
-																			</Card>
-																		))}
-																</div>
-															</div>
-														)}
-													</div>
-												</CollapsibleContent>
-											</Card>
+																				</CollapsibleContent>											</Card>
 										</Collapsible>
 									))}
 							</div>

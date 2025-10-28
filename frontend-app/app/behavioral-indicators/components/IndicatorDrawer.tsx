@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Settings2, X } from "lucide-react";
+import { Eye, Settings2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ import { AssessmentQuestion, BehavioralIndicator } from "../../interfaces/domain
 import { assessmentQuestionsApi } from "@/services/api";
 import QuestionCard from "./QuestionCard";
 import { Separator } from "@/components/ui/separator";
+import Link from "next/link";
 
 export default function IndicatorDrawer({
   open,
@@ -111,6 +112,12 @@ export default function IndicatorDrawer({
         </div>
         <SheetFooter className="p-6 bg-muted/40 border-t">
           <div className="flex flex-row gap-2 w-full">
+            <Link href={`/behavioral-indicators/${indicator.id}`} passHref>
+                <Button variant="outline" className="flex-grow">
+                    <Eye className="mr-2 h-4 w-4" />
+                    Go to page
+                </Button>
+            </Link>
             <Button variant="outline" className="flex-grow">
               <Settings2 className="mr-2 h-4 w-4" />
               Edit Indicator
