@@ -4,10 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import React from "react";
 import { AssessmentQuestion } from "../../interfaces/domain-interfaces";
 import { CheckCircle, HelpCircle } from "lucide-react";
+import Link from "next/link";
 
 export default function QuestionCard({ question }: { question: AssessmentQuestion }) {
   return (
-    <div key={question.id} className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors">
+    <Link href={`/assessment-questions/${question.id}`}>
+      <div
+        key={question.id}
+        className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors cursor-pointer"
+      >
         <div className="flex items-start justify-between">
           <Badge
             variant="outline"
@@ -25,9 +30,7 @@ export default function QuestionCard({ question }: { question: AssessmentQuestio
             {question.difficultyLevel}
           </Badge>
         </div>
-        <p className="text-sm font-normal">
-          {question.questionText}
-        </p>
+        <p className="text-sm font-normal">{question.questionText}</p>
         <div className="text-xs text-muted-foreground flex items-center gap-1.5">
           <HelpCircle className="w-3.5 h-3.5" />
           {question.questionType.replace("_", " ")}
@@ -53,6 +56,7 @@ export default function QuestionCard({ question }: { question: AssessmentQuestio
             </div>
           </div>
         )}
-    </div>
+      </div>
+    </Link>
   );
 }
