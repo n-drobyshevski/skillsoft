@@ -255,23 +255,22 @@ class BehavioralIndicatorServiceTest {
     class FindBehavioralIndicatorTests {
 
         @Test
-        @DisplayName("Should find behavioral indicator by ID and competency ID")
-        void shouldFindBehavioralIndicatorByIdAndCompetencyId() {
+        @DisplayName("Should find behavioral indicator by ID")
+        void shouldFindBehavioralIndicatorById() {
             // Given
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, competencyId))
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
                 .thenReturn(Optional.of(mockBehavioralIndicator));
 
             // When
             Optional<BehavioralIndicator> foundIndicator = behavioralIndicatorService
-                .findBehavioralIndicatorById(competencyId, behavioralIndicatorId);
+                .findBehavioralIndicatorById(behavioralIndicatorId);
 
             // Then
             assertThat(foundIndicator).isPresent();
             assertThat(foundIndicator.get()).isEqualTo(mockBehavioralIndicator);
             assertThat(foundIndicator.get().getId()).isEqualTo(behavioralIndicatorId);
-            assertThat(foundIndicator.get().getCompetency().getId()).isEqualTo(competencyId);
             
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(behavioralIndicatorId, competencyId);
+            verify(behavioralIndicatorRepository).findById(behavioralIndicatorId);
         }
 
         @Test
@@ -279,35 +278,17 @@ class BehavioralIndicatorServiceTest {
         void shouldReturnEmptyWhenBehavioralIndicatorNotFound() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(nonExistentId, competencyId))
+            when(behavioralIndicatorRepository.findById(nonExistentId))
                 .thenReturn(Optional.empty());
 
             // When
             Optional<BehavioralIndicator> foundIndicator = behavioralIndicatorService
-                .findBehavioralIndicatorById(competencyId, nonExistentId);
+                .findBehavioralIndicatorById(nonExistentId);
 
             // Then
             assertThat(foundIndicator).isEmpty();
             
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(nonExistentId, competencyId);
-        }
-
-        @Test
-        @DisplayName("Should return empty when competency ID doesn't match")
-        void shouldReturnEmptyWhenCompetencyIdDoesNotMatch() {
-            // Given
-            UUID wrongCompetencyId = UUID.randomUUID();
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, wrongCompetencyId))
-                .thenReturn(Optional.empty());
-
-            // When
-            Optional<BehavioralIndicator> foundIndicator = behavioralIndicatorService
-                .findBehavioralIndicatorById(wrongCompetencyId, behavioralIndicatorId);
-
-            // Then
-            assertThat(foundIndicator).isEmpty();
-            
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(behavioralIndicatorId, wrongCompetencyId);
+            verify(behavioralIndicatorRepository).findById(nonExistentId);
         }
     }
 
@@ -336,14 +317,14 @@ class BehavioralIndicatorServiceTest {
             existingIndicator.setTitle("Original Title");
             existingIndicator.setCompetency(mockCompetency);
 
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, competencyId))
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
                 .thenReturn(Optional.of(existingIndicator));
             when(behavioralIndicatorRepository.save(any(BehavioralIndicator.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
             // When
             BehavioralIndicator updatedIndicator = behavioralIndicatorService
-                .updateBehavioralIndicator(competencyId, behavioralIndicatorId, updateDetails);
+                .updateBehavioralIndicator(behavioralIndicatorId, updateDetails);
 
             // Then
             assertThat(updatedIndicator).isNotNull();
@@ -358,7 +339,7 @@ class BehavioralIndicatorServiceTest {
             assertThat(updatedIndicator.getApprovalStatus()).isEqualTo(ApprovalStatus.PENDING_REVIEW);
             assertThat(updatedIndicator.getOrderIndex()).isEqualTo(5);
             
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(behavioralIndicatorId, competencyId);
+            verify(behavioralIndicatorRepository).findById(behavioralIndicatorId);
             verify(behavioralIndicatorRepository).save(existingIndicator);
         }
 
@@ -370,16 +351,16 @@ class BehavioralIndicatorServiceTest {
             BehavioralIndicator updateDetails = new BehavioralIndicator();
             updateDetails.setTitle("Updated Title");
 
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(nonExistentId, competencyId))
+            when(behavioralIndicatorRepository.findById(nonExistentId))
                 .thenReturn(Optional.empty());
 
             // When & Then
             assertThatThrownBy(() -> behavioralIndicatorService
-                .updateBehavioralIndicator(competencyId, nonExistentId, updateDetails))
+                .updateBehavioralIndicator(nonExistentId, updateDetails))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Behavioral indicator not found with id: " + nonExistentId + " for competency: " + competencyId);
+                .hasMessageContaining("Behavioral indicator not found with id: " + nonExistentId);
             
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(nonExistentId, competencyId);
+            verify(behavioralIndicatorRepository).findById(nonExistentId);
             verify(behavioralIndicatorRepository, never()).save(any());
         }
 
@@ -398,14 +379,14 @@ class BehavioralIndicatorServiceTest {
             existingIndicator.setWeight(0.5f);
             existingIndicator.setCompetency(mockCompetency);
 
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, competencyId))
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
                 .thenReturn(Optional.of(existingIndicator));
             when(behavioralIndicatorRepository.save(any(BehavioralIndicator.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
             // When
             BehavioralIndicator updatedIndicator = behavioralIndicatorService
-                .updateBehavioralIndicator(competencyId, behavioralIndicatorId, updateDetails);
+                .updateBehavioralIndicator(behavioralIndicatorId, updateDetails);
 
             // Then
             assertThat(updatedIndicator).isNotNull();
@@ -424,16 +405,16 @@ class BehavioralIndicatorServiceTest {
         @DisplayName("Should delete behavioral indicator successfully")
         void shouldDeleteBehavioralIndicatorSuccessfully() {
             // Given
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, competencyId))
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
                 .thenReturn(Optional.of(mockBehavioralIndicator));
             doNothing().when(behavioralIndicatorRepository).delete(mockBehavioralIndicator);
 
             // When
-            assertThatCode(() -> behavioralIndicatorService.deleteBehavioralIndicator(competencyId, behavioralIndicatorId))
+            assertThatCode(() -> behavioralIndicatorService.deleteBehavioralIndicator(behavioralIndicatorId))
                 .doesNotThrowAnyException();
 
             // Then
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(behavioralIndicatorId, competencyId);
+            verify(behavioralIndicatorRepository).findById(behavioralIndicatorId);
             verify(behavioralIndicatorRepository).delete(mockBehavioralIndicator);
         }
 
@@ -442,35 +423,19 @@ class BehavioralIndicatorServiceTest {
         void shouldThrowExceptionWhenBehavioralIndicatorNotFound() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(nonExistentId, competencyId))
+            when(behavioralIndicatorRepository.findById(nonExistentId))
                 .thenReturn(Optional.empty());
 
             // When & Then
-            assertThatThrownBy(() -> behavioralIndicatorService.deleteBehavioralIndicator(competencyId, nonExistentId))
+            assertThatThrownBy(() -> behavioralIndicatorService.deleteBehavioralIndicator(nonExistentId))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Behavioral indicator not found with id: " + nonExistentId + " for competency: " + competencyId);
+                .hasMessageContaining("Behavioral indicator not found with id: " + nonExistentId);
             
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(nonExistentId, competencyId);
+            verify(behavioralIndicatorRepository).findById(nonExistentId);
             verify(behavioralIndicatorRepository, never()).delete(any());
         }
 
-        @Test
-        @DisplayName("Should throw exception when competency ID doesn't match")
-        void shouldThrowExceptionWhenCompetencyIdDoesNotMatch() {
-            // Given
-            UUID wrongCompetencyId = UUID.randomUUID();
-            when(behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, wrongCompetencyId))
-                .thenReturn(Optional.empty());
 
-            // When & Then
-            assertThatThrownBy(() -> behavioralIndicatorService
-                .deleteBehavioralIndicator(wrongCompetencyId, behavioralIndicatorId))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Behavioral indicator not found with id: " + behavioralIndicatorId + " for competency: " + wrongCompetencyId);
-            
-            verify(behavioralIndicatorRepository).findByIdAndCompetencyId(behavioralIndicatorId, wrongCompetencyId);
-            verify(behavioralIndicatorRepository, never()).delete(any());
-        }
     }
 
     @Nested

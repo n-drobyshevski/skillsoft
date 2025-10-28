@@ -19,7 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -42,41 +41,40 @@ class BehavioralIndicatorControllerTest {
     @MockBean
     private BehavioralIndicatorMapper behavioralIndicatorMapper;
 
-    @MockBean
-    private AssessmentQuestionMapper assessmentQuestionMapper;
-
     private BehavioralIndicator testIndicator;
     private BehavioralIndicatorDto testIndicatorDto;
     private UUID competencyId;
+    private Competency mockCompetency;
 
     @BeforeEach
     void setUp() {
         competencyId = UUID.randomUUID();
+        mockCompetency = new Competency();
+        mockCompetency.setId(competencyId);
 
         testIndicator = new BehavioralIndicator();
         testIndicator.setId(UUID.randomUUID());
-        testIndicator.setIndicatorText("Test Indicator");
+        testIndicator.setTitle("Test Indicator");
         testIndicator.setDescription("Test Description");
-        testIndicator.setProficiencyLevel(ProficiencyLevel.INTERMEDIATE);
+        testIndicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
         testIndicator.setMeasurementType(IndicatorMeasurementType.FREQUENCY);
         testIndicator.setWeight(1.0f);
-        testIndicator.setCompetencyId(competencyId);
-        testIndicator.setNotes("Test Notes");
+        testIndicator.setCompetency(mockCompetency);
         testIndicator.setExamples("Test Examples");
         testIndicator.setActive(true);
-        testIndicator.setApprovalStatus(ApprovalStatus.PENDING);
+        testIndicator.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
         testIndicator.setOrderIndex(1);
 
         testIndicatorDto = new BehavioralIndicatorDto(
             testIndicator.getId(),
-            testIndicator.getCompetencyId(),
-            testIndicator.getIndicatorText(),
+            testIndicator.getCompetency().getId(),
+            testIndicator.getTitle(),
             testIndicator.getDescription(),
-            testIndicator.getProficiencyLevel(),
+            testIndicator.getObservabilityLevel(),
             testIndicator.getMeasurementType(),
             testIndicator.getWeight(),
-            testIndicator.getNotes(),
             testIndicator.getExamples(),
+            testIndicator.getCounterExamples(),
             testIndicator.isActive(),
             testIndicator.getApprovalStatus(),
             testIndicator.getOrderIndex()
@@ -95,7 +93,7 @@ class BehavioralIndicatorControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$[0].id").value(testIndicator.getId().toString()))
-                .andExpect(jsonPath("$[0].indicatorText").value(testIndicator.getIndicatorText()));
+                .andExpect(jsonPath("$[0].title").value(testIndicator.getTitle()));
     }
 
     @Test
@@ -110,7 +108,7 @@ class BehavioralIndicatorControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(testIndicator.getId().toString()))
-                .andExpect(jsonPath("$.indicatorText").value(testIndicator.getIndicatorText()));
+                .andExpect(jsonPath("$.title").value(testIndicator.getTitle()));
     }
 
     @Test
@@ -121,19 +119,18 @@ class BehavioralIndicatorControllerTest {
         when(behavioralIndicatorMapper.toDto(any(BehavioralIndicator.class)))
                 .thenReturn(testIndicatorDto);
 
-        String requestBody = String.format("""
+        String requestBody = """
                 {
-                    "indicatorText": "Test Indicator",
+                    "title": "Test Indicator",
                     "description": "Test Description",
-                    "proficiencyLevel": "INTERMEDIATE",
+                    "observabilityLevel": "PROFICIENT",
                     "measurementType": "FREQUENCY",
                     "weight": 1.0,
-                    "notes": "Test Notes",
                     "examples": "Test Examples",
                     "active": true,
                     "approvalStatus": "PENDING",
                     "orderIndex": 1
-                }""");
+                }""";
 
         mockMvc.perform(post("/api/behavioral-indicators")
                 .param("competencyId", competencyId.toString())
@@ -141,7 +138,7 @@ class BehavioralIndicatorControllerTest {
                 .content(requestBody))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.indicatorText").value(testIndicator.getIndicatorText()));
+                .andExpect(jsonPath("$.title").value(testIndicator.getTitle()));
     }
 
     @Test
@@ -152,26 +149,25 @@ class BehavioralIndicatorControllerTest {
         when(behavioralIndicatorMapper.toDto(any(BehavioralIndicator.class)))
                 .thenReturn(testIndicatorDto);
 
-        String requestBody = String.format("""
+        String requestBody = """
                 {
-                    "indicatorText": "Updated Indicator",
+                    "title": "Updated Indicator",
                     "description": "Updated Description",
-                    "proficiencyLevel": "ADVANCED",
+                    "observabilityLevel": "ADVANCED",
                     "measurementType": "SCALE",
                     "weight": 2.0,
-                    "notes": "Updated Notes",
                     "examples": "Updated Examples",
                     "active": false,
                     "approvalStatus": "APPROVED",
                     "orderIndex": 2
-                }""");
+                }""";
 
         mockMvc.perform(put("/api/behavioral-indicators/" + testIndicator.getId())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.indicatorText").value(testIndicator.getIndicatorText()));
+                .andExpect(jsonPath("$.title").value(testIndicator.getTitle()));
     }
 
     @Test

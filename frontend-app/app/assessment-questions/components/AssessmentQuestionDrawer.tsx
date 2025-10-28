@@ -8,10 +8,14 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
+  SheetFooter,
 } from "@/components/ui/sheet";
 import { AssessmentQuestion } from "../../interfaces/domain-interfaces";
 import { questionDifficultyToColor, questionTypeToIcon } from "../../utils";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Eye } from "lucide-react";
 
 export default function AssessmentQuestionDrawer({
   open,
@@ -74,6 +78,14 @@ export default function AssessmentQuestionDrawer({
             </p>
           </div>
         </div>
+        <SheetFooter className="p-6 bg-muted/40 border-t">
+          <Link href={`/assessment-questions/${question.id}`} passHref>
+            <Button variant="outline" className="flex-grow">
+              <Eye className="mr-2 h-4 w-4" />
+              Go to page
+            </Button>
+          </Link>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

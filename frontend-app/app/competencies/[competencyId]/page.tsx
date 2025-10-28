@@ -105,7 +105,7 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 					const questionsPromises = competencyData.behavioralIndicators.map(
 						async (indicator: BehavioralIndicator) => {
 							try {
-								return await assessmentQuestionsApi.getQuestions(
+								return await assessmentQuestionsApi.getIndicatorQuestions(
 									competencyId,
 									indicator.id,
 								);

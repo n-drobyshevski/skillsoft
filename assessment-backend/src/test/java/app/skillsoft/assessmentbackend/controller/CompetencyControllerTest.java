@@ -1,7 +1,10 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
+import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
+import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import app.skillsoft.assessmentbackend.domain.mapper.CompetencyMapper;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,9 +16,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.Arrays;
-import java.util.Optional;
-import java.util.UUID;
+import java.time.LocalDateTime;
+import java.util.*;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -44,17 +46,36 @@ class CompetencyControllerTest {
         testCompetency.setId(UUID.randomUUID());
         testCompetency.setName("Test Competency");
         testCompetency.setDescription("Test Description");
+        testCompetency.setCategory(CompetencyCategory.LEADERSHIP);
+        testCompetency.setLevel(ProficiencyLevel.PROFICIENT);
+        testCompetency.setStandardCodes(new HashMap<>());
+        testCompetency.setActive(true);
+        testCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
+        testCompetency.setBehavioralIndicators(new ArrayList<>());
+        testCompetency.setVersion(1);
+        testCompetency.setCreatedAt(LocalDateTime.now());
+        testCompetency.setLastModified(LocalDateTime.now());
 
-        testCompetencyDto = new CompetencyDto();
-        testCompetencyDto.setId(testCompetency.getId());
-        testCompetencyDto.setName(testCompetency.getName());
-        testCompetencyDto.setDescription(testCompetency.getDescription());
+        testCompetencyDto = new CompetencyDto(
+                testCompetency.getId(),
+                testCompetency.getName(),
+                testCompetency.getDescription(),
+                testCompetency.getCategory(),
+                testCompetency.getLevel(),
+                testCompetency.getStandardCodes(),
+                testCompetency.isActive(),
+                testCompetency.getApprovalStatus(),
+                new ArrayList<>(),
+                testCompetency.getVersion(),
+                testCompetency.getCreatedAt(),
+                testCompetency.getLastModified()
+        );
     }
 
     @Test
     @DisplayName("GET /api/competencies - Should return all competencies")
     void shouldReturnAllCompetencies() throws Exception {
-        when(competencyService.listAllCompetencies())
+        when(competencyService.listCompetencies())
                 .thenReturn(Arrays.asList(testCompetency));
         when(competencyMapper.toDto(any(Competency.class)))
                 .thenReturn(testCompetencyDto);

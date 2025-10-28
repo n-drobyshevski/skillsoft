@@ -80,7 +80,7 @@ export default function Page({ params }: IndicatorDetailPageProps) {
 				setIndicator(indicatorData);
 
 				// Fetch assessment questions for the indicator
-				const questions = await assessmentQuestionsApi.getQuestions(
+				const questions = await assessmentQuestionsApi.getIndicatorQuestions(
 					indicatorData.competencyId,
 					indicatorId,
 				);

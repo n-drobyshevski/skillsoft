@@ -34,7 +34,6 @@ public class AssessmentQuestionController {
     
     @GetMapping("/{questionId}")
     public ResponseEntity<AssessmentQuestionDto> getQuestionById(
-            @PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId,
             @PathVariable(name="questionId") UUID questionId) {
         
         Optional<AssessmentQuestion> question = assessmentQuestionService.findAssesmentQuestionById(questionId);

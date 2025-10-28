@@ -56,9 +56,18 @@ class AssessmentQuestionServiceTest {
 
         mockAssessmentQuestion = new AssessmentQuestion();
         mockAssessmentQuestion.setId(assessmentQuestionId);
-        mockAssessmentQuestion.setText("Test Question");
+        mockAssessmentQuestion.setQuestionText("Test Question");
         mockAssessmentQuestion.setBehavioralIndicator(mockBehavioralIndicator);
-        mockAssessmentQuestion.setAnswerOptions("[{\"label\":\"Option 1\",\"value\":1},{\"label\":\"Option 2\",\"value\":2}]");
+        List<Map<String, Object>> answerOptions = new ArrayList<>();
+        Map<String, Object> option1 = new HashMap<>();
+        option1.put("label", "Option 1");
+        option1.put("value", 1);
+        answerOptions.add(option1);
+        Map<String, Object> option2 = new HashMap<>();
+        option2.put("label", "Option 2");
+        option2.put("value", 2);
+        answerOptions.add(option2);
+        mockAssessmentQuestion.setAnswerOptions(answerOptions);
     }
 
     @Nested
@@ -309,7 +318,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             Optional<AssessmentQuestion> foundQuestion = assessmentQuestionService
-                    .findAssesmentQuestionById(wrongBehavioralIndicatorId, assessmentQuestionId);
+                    .findAssesmentQuestionById(assessmentQuestionId);
 
             // Then
             assertThat(foundQuestion).isEmpty();
@@ -450,7 +459,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             AssessmentQuestion updatedQuestion = assessmentQuestionService
-                    .updateAssesmentQuestion(wrongBehavioralIndicatorId, assessmentQuestionId, updateDetails);
+                    .updateAssesmentQuestion(assessmentQuestionId, updateDetails);
 
             // Then
             assertThat(updatedQuestion).isNull();
@@ -542,7 +551,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             assertThatCode(() -> assessmentQuestionService
-                    .deleteAssesmentQuestion(wrongBehavioralIndicatorId, assessmentQuestionId))
+                    .deleteAssesmentQuestion(assessmentQuestionId))
                     .doesNotThrowAnyException();
 
             // Then
@@ -807,4 +816,3 @@ class AssessmentQuestionServiceTest {
         return options;
     }
 }
-
