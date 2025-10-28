@@ -1,9 +1,13 @@
 package app.skillsoft.assessmentbackend.controller;
 
 
+import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
+import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
 import app.skillsoft.assessmentbackend.domain.mapper.CompetencyMapper;
+import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,12 +26,16 @@ public class CompetencyController {
     private static final Logger logger = LoggerFactory.getLogger(CompetencyController.class);
 
     private final CompetencyService competencyService;
+    private final BehavioralIndicatorService behavioralIndicatorService;
     private final CompetencyMapper competencyMapper;
+    private final BehavioralIndicatorMapper behavioralIndicatorMapper;
 
     @Autowired
-    public CompetencyController(CompetencyService competencyService, CompetencyMapper competencyMapper) {
+    public CompetencyController(CompetencyService competencyService, BehavioralIndicatorService behavioralIndicatorService, CompetencyMapper competencyMapper, BehavioralIndicatorMapper behavioralIndicatorMapper) {
         this.competencyService = competencyService;
+        this.behavioralIndicatorService = behavioralIndicatorService;
         this.competencyMapper = competencyMapper;
+        this.behavioralIndicatorMapper = behavioralIndicatorMapper;
     }
 
     @GetMapping
@@ -47,6 +55,14 @@ public class CompetencyController {
                     logger.warn("Competency with id {} not found", id);
                     return ResponseEntity.notFound().build();
                 });
+    }
+
+    @GetMapping("/{competencyId}/bi")
+    public List<BehavioralIndicatorDto> listCompetencyBehavioralIndicators(@PathVariable("competencyId") UUID competencyId) {
+        logger.info("GET /api/competencies/{}/bi endpoint called", competencyId);
+        List<BehavioralIndicator> indicators = behavioralIndicatorService.listCompetencyBehavioralIndicators(competencyId);
+        logger.info("Found {} behavioral indicators for competency {}", indicators.size(), competencyId);
+        return indicators.stream().map(behavioralIndicatorMapper::toDto).toList();
     }
 
     @PostMapping

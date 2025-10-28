@@ -125,15 +125,15 @@ export const behavioralIndicatorsApi = {
   getIndicators: getIndicatorsCached,
   getAllIndicators: getAllIndicatorsCached,
 
-  getIndicatorById: async (competencyId: string, indicatorId: string) : Promise<BehavioralIndicator | null> => {
-    return fetchApi(`/competencies/${competencyId}/bi/${indicatorId}`, {
-      tags: [`indicator-${competencyId}-${indicatorId}`],
+  getIndicatorById: async (indicatorId: string) : Promise<BehavioralIndicator | null> => {
+    return fetchApi(`/behavioral-indicators/${indicatorId}`, {
+      tags: [`indicator-${indicatorId}`],
       revalidate: 60,
     });
   },
 
   createIndicator: async (competencyId: string, data: any) => {
-    const result = await fetchApi(`/competencies/${competencyId}/bi`, {
+    const result = await fetchApi(`/behavioral-indicators`, {
       method: "POST",
       body: JSON.stringify(data),
       cache: "no-store",
@@ -148,7 +148,7 @@ export const behavioralIndicatorsApi = {
     data: any
   ) => {
     const result = await fetchApi(
-      `/competencies/${competencyId}/bi/${indicatorId}`,
+      `/behavioral-indicators/${indicatorId}`,
       {
         method: "PUT",
         body: JSON.stringify(data),
@@ -160,7 +160,7 @@ export const behavioralIndicatorsApi = {
   },
 
   deleteIndicator: async (competencyId: string, indicatorId: string) => {
-    await fetchApi(`/competencies/${competencyId}/bi/${indicatorId}`, {
+    await fetchApi(`/behavioral-indicators/${indicatorId}`, {
       method: "DELETE",
       cache: "no-store",
     });
@@ -169,19 +169,19 @@ export const behavioralIndicatorsApi = {
 };
 
 // Cached assessment questions fetcher
-const getQuestionsCached = cache(async (competencyId: string, behavioralIndicatorId: string) : Promise<AssessmentQuestion[] | null> => {
+const getIndicatorQuestionsCached = cache(async (competencyId: string, behavioralIndicatorId: string) : Promise<AssessmentQuestion[] | null> => {
     return fetchApi(
-        `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions`,
-        {
-            tags: [`questions-${competencyId}-${behavioralIndicatorId}`],
-            revalidate: 60,
-        }
+      `/behavioral-indicators/${behavioralIndicatorId}/questions`,
+      {
+        tags: [`questions-${competencyId}-${behavioralIndicatorId}`],
+        revalidate: 60,
+      }
     );
 });
 // Cached ALL assessment questions fetcher
 const getAllQuestionsCached = cache(async () : Promise<AssessmentQuestion[] | null> => {
     return fetchApi(
-        `/assessment-questions`,
+        `/questions`,
         {
             tags: [`questions-all`],
             revalidate: 60,
@@ -189,16 +189,14 @@ const getAllQuestionsCached = cache(async () : Promise<AssessmentQuestion[] | nu
     );
 });
 export const assessmentQuestionsApi = {
-  getQuestions: getQuestionsCached,
+  getIndicatorQuestions: getIndicatorQuestionsCached,
   getAllQuestions: getAllQuestionsCached,
 
   getQuestionById: async (
-    competencyId: string,
-    behavioralIndicatorId: string,
     questionId: string
   ) : Promise<AssessmentQuestion | null> => {
     return fetchApi(
-      `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions/${questionId}`,
+      `/questions/${questionId}`,
       {
         tags: [`question-${questionId}`],
         revalidate: 60,
@@ -212,7 +210,7 @@ export const assessmentQuestionsApi = {
     data: any
   ) => {
     const result = await fetchApi(
-      `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions`,
+      `/questions`,
       {
         method: "POST",
         body: JSON.stringify(data),
@@ -229,16 +227,16 @@ export const assessmentQuestionsApi = {
     questionId: string
   ) => {
     await fetchApi(
-      `/competencies/${competencyId}/bi/${behavioralIndicatorId}/questions/${questionId}`,
+      `/questions/${questionId}`,
       {
         method: "DELETE",
         cache: "no-store",
       }
     );
     await revalidateQuestionTags(
+      questionId,
       competencyId,
       behavioralIndicatorId,
-      questionId
     );
   },
 };

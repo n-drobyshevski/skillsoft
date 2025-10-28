@@ -24,7 +24,7 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
     }
 
     @Override
-    public List<AssessmentQuestion> listAssessmentQuestions(UUID behavioralIndicatorId) {
+    public List<AssessmentQuestion> listIndicatorAssessmentQuestions(UUID behavioralIndicatorId) {
         return assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId);
     }
 
@@ -35,15 +35,14 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
     }
 
     @Override
-    public Optional<AssessmentQuestion> findAssesmentQuestionById(UUID behavioralIndicatorId, UUID assessmentQuestionId) {
-        Optional<AssessmentQuestion> question = assessmentQuestionRepository.findById(assessmentQuestionId);
-        return question.filter(q -> q.getBehavioralIndicatorId().equals(behavioralIndicatorId));
+    public Optional<AssessmentQuestion> findAssesmentQuestionById(UUID assessmentQuestionId) {
+        return assessmentQuestionRepository.findById(assessmentQuestionId);
     }
 
     @Override
-    public AssessmentQuestion updateAssesmentQuestion(UUID behavioralIndicatorId, UUID assessmentQuestionId,
+    public AssessmentQuestion updateAssesmentQuestion( UUID assessmentQuestionId,
             AssessmentQuestion assessmentQuestion) {
-        return findAssesmentQuestionById(behavioralIndicatorId, assessmentQuestionId)
+        return findAssesmentQuestionById( assessmentQuestionId)
             .map(existingQuestion -> {
                 existingQuestion.setQuestionText(assessmentQuestion.getQuestionText());
                 existingQuestion.setQuestionType(assessmentQuestion.getQuestionType());
@@ -60,8 +59,8 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
     }
 
     @Override
-    public void deleteAssesmentQuestion(UUID behavioralIndicatorId, UUID assessmentQuestionId) {
-        findAssesmentQuestionById(behavioralIndicatorId, assessmentQuestionId)
+    public void deleteAssesmentQuestion( UUID assessmentQuestionId) {
+        findAssesmentQuestionById(assessmentQuestionId)
             .ifPresent(assessmentQuestionRepository::delete);
     }
 }

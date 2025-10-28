@@ -1,5 +1,4 @@
-### Получить компетенцию по ID
-GET http://localhost:8080/api/competencies/3d0c8f56-eb48-4770-83f5-76b7bc451d5e
+### Get competency by ID
+GET http://localhost:8080/api/competencies/{{competencyId}}
+Accept: application/json
 
-### Получить компетенцию по ID - Тест на отсутствие
-GET http://localhost:8080/api/competencies/00000000-0000-0000-0000-000000000000

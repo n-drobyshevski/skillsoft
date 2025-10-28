@@ -1,132 +1,17 @@
-### Update Assessment Question - Full Update
-PUT http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions/550e8400-e29b-41d4-a716-446655440000
+### Update existing question
+PUT http://localhost:8080/api/questions/{{questionId}}
 Content-Type: application/json
 
 {
-  "questionText": "UPDATED: How effectively do you demonstrate strategic thinking in complex business scenarios?",
-  "questionType": "LIKERT_SCALE",
+  "text": "Updated question text",
   "answerOptions": [
     {
-      "label": "Not at all effectively",
-      "value": 1,
-      "description": "I struggle to apply strategic thinking in complex situations"
+      "label": "Updated Option 1",
+      "value": 1
     },
     {
-      "label": "Somewhat effectively",
-      "value": 2,
-      "description": "I can apply basic strategic thinking with guidance"
-    },
-    {
-      "label": "Moderately effectively",
-      "value": 3,
-      "description": "I demonstrate strategic thinking in most complex scenarios"
-    },
-    {
-      "label": "Very effectively",
-      "value": 4,
-      "description": "I consistently apply strategic thinking to complex problems"
-    },
-    {
-      "label": "Extremely effectively",
-      "value": 5,
-      "description": "I excel at strategic thinking in all complex business scenarios"
+      "label": "Updated Option 2",
+      "value": 2
     }
-  ],
-  "scoringRubric": "UPDATED: 5=Expert strategic leader, 4=Advanced strategic thinker, 3=Competent strategic contributor, 2=Developing strategic awareness, 1=Limited strategic capability",
-  "timeLimit": 150,
-  "difficultyLevel": "ADVANCED",
-  "isActive": true,
-  "orderIndex": 1
-}
-
-### Update Assessment Question - Change Type to Multiple Choice
-PUT http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions/550e8400-e29b-41d4-a716-446655440000
-Content-Type: application/json
-
-{
-  "questionText": "What is the most important element of strategic decision-making?",
-  "questionType": "MULTIPLE_CHOICE",
-  "answerOptions": [
-    {
-      "label": "Speed of decision-making",
-      "correct": false,
-      "explanation": "Speed is important but not the most critical element"
-    },
-    {
-      "label": "Comprehensive data analysis and long-term impact consideration",
-      "correct": true,
-      "explanation": "Strategic decisions require thorough analysis and future-focused thinking"
-    },
-    {
-      "label": "Consensus from all stakeholders",
-      "correct": false,
-      "explanation": "While input is valuable, consensus isn't always feasible or necessary"
-    },
-    {
-      "label": "Following established procedures",
-      "correct": false,
-      "explanation": "Strategic thinking often requires adapting or creating new approaches"
-    }
-  ],
-  "scoringRubric": "Correct answer demonstrates understanding of strategic decision-making principles",
-  "timeLimit": 120,
-  "difficultyLevel": "INTERMEDIATE",
-  "isActive": true,
-  "orderIndex": 2
-}
-
-### Update Assessment Question - Deactivate Question
-PUT http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions/550e8400-e29b-41d4-a716-446655440000
-Content-Type: application/json
-
-{
-  "questionText": "How effectively do you demonstrate strategic thinking in complex business scenarios?",
-  "questionType": "LIKERT_SCALE",
-  "answerOptions": [
-    {
-      "label": "Not at all effectively",
-      "value": 1,
-      "description": "I struggle to apply strategic thinking in complex situations"
-    },
-    {
-      "label": "Somewhat effectively",
-      "value": 2,
-      "description": "I can apply basic strategic thinking with guidance"
-    },
-    {
-      "label": "Moderately effectively",
-      "value": 3,
-      "description": "I demonstrate strategic thinking in most complex scenarios"
-    },
-    {
-      "label": "Very effectively",
-      "value": 4,
-      "description": "I consistently apply strategic thinking to complex problems"
-    },
-    {
-      "label": "Extremely effectively",
-      "value": 5,
-      "description": "I excel at strategic thinking in all complex business scenarios"
-    }
-  ],
-  "scoringRubric": "5=Expert strategic leader, 4=Advanced strategic thinker, 3=Competent strategic contributor, 2=Developing strategic awareness, 1=Limited strategic capability",
-  "timeLimit": 150,
-  "difficultyLevel": "ADVANCED",
-  "isActive": false,
-  "orderIndex": 1
-}
-
-### Update Assessment Question - Not Found Test
-PUT http://localhost:8080/api/competencies/f42a9202-8b62-4ed1-8224-3fb17fc43b33/bi/e6c158ba-2da7-453e-b63a-3935e4e5388f/questions/00000000-0000-0000-0000-000000000000
-Content-Type: application/json
-
-{
-  "questionText": "This should not be found",
-  "questionType": "MULTIPLE_CHOICE",
-  "answerOptions": [],
-  "scoringRubric": "Test for non-existent question",
-  "timeLimit": 60,
-  "difficultyLevel": "FOUNDATIONAL",
-  "isActive": false,
-  "orderIndex": 1
+  ]
 }

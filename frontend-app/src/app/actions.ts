@@ -16,8 +16,10 @@ export async function revalidateIndicatorTags(competencyId: string, indicatorId?
   }
 }
 
-export async function revalidateQuestionTags(competencyId: string, behavioralIndicatorId: string, questionId?: string) {
-  revalidateTag(`questions-${competencyId}-${behavioralIndicatorId}`);
+export async function revalidateQuestionTags(questionId: string, competencyId?: string, behavioralIndicatorId?: string ) {
+  if (competencyId && behavioralIndicatorId) {
+    revalidateTag(`questions-${competencyId}-${behavioralIndicatorId}`);
+  }
   if (questionId) {
     revalidateTag(`question-${questionId}`);
   }

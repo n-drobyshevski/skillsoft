@@ -40,10 +40,14 @@ export default function IndicatorDrawer({
         setLoading(true);
         setError(null);
         try {
-          const questionsData = await assessmentQuestionsApi.getQuestions(
+          if (!indicator.competencyId || !indicator.id) {
+            throw new Error("Indicator is not defined");
+          }
+          const questionsData = await assessmentQuestionsApi.getIndicatorQuestions(
             indicator.competencyId,
             indicator.id
           );
+          console.log("competencyId:", indicator.competencyId, "indicatorId:", indicator.id);
           if (!questionsData) {
             throw new Error("Failed to fetch assessment questions");
           }

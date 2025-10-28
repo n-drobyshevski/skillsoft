@@ -32,7 +32,7 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
     }
 
     @Override
-    public List<BehavioralIndicator> listBehavioralIndicators(UUID competencyId) {
+    public List<BehavioralIndicator> listCompetencyBehavioralIndicators(UUID competencyId) {
         return behavioralIndicatorRepository.findByCompetencyId(competencyId);
     }
 
@@ -60,14 +60,14 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
     }
 
     @Override
-    public Optional<BehavioralIndicator> findBehavioralIndicatorById(UUID competencyId, UUID behavioralIndicatorId) {
-        return behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, competencyId);
+    public Optional<BehavioralIndicator> findBehavioralIndicatorById( UUID behavioralIndicatorId) {
+        return behavioralIndicatorRepository.findById(behavioralIndicatorId);
     }
 
     @Override
     @Transactional
-    public BehavioralIndicator updateBehavioralIndicator(UUID competencyId, UUID behavioralIndicatorId, BehavioralIndicator behavioralIndicatorDetails) {
-        return behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, competencyId)
+    public BehavioralIndicator updateBehavioralIndicator(UUID behavioralIndicatorId, BehavioralIndicator behavioralIndicatorDetails) {
+        return behavioralIndicatorRepository.findById(behavioralIndicatorId)
                 .map(existingIndicator -> {
                     // Update fields
                     existingIndicator.setTitle(behavioralIndicatorDetails.getTitle());
@@ -84,14 +84,14 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
 
                     return behavioralIndicatorRepository.save(existingIndicator);
                 })
-                .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId + " for competency: " + competencyId));
+                .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId ));
     }
 
     @Override
     @Transactional
-    public void deleteBehavioralIndicator(UUID competencyId, UUID behavioralIndicatorId) {
-        BehavioralIndicator indicator = behavioralIndicatorRepository.findByIdAndCompetencyId(behavioralIndicatorId, competencyId)
-                .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId + " for competency: " + competencyId));
+    public void deleteBehavioralIndicator(UUID behavioralIndicatorId) {
+        BehavioralIndicator indicator = behavioralIndicatorRepository.findById(behavioralIndicatorId)
+                .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId));
 
         behavioralIndicatorRepository.delete(indicator);
     }

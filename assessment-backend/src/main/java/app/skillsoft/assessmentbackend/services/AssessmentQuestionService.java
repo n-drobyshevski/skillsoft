@@ -11,7 +11,7 @@ public interface AssessmentQuestionService {
     /**
      * List all assessment questions for a specific behavioral indicator
      */
-    List<AssessmentQuestion> listAssessmentQuestions(UUID behavioralIndicatorId);
+    List<AssessmentQuestion> listIndicatorAssessmentQuestions(UUID behavioralIndicatorId);
 
     /**
      * Create a new assessment question for a behavioral indicator
@@ -21,15 +21,15 @@ public interface AssessmentQuestionService {
     /**
      * Find an assessment question by ID within a specific behavioral indicator
      */
-    Optional<AssessmentQuestion> findAssesmentQuestionById(UUID behavioralIndicatorId, UUID assesmentQuestionId);
+    Optional<AssessmentQuestion> findAssesmentQuestionById(UUID assesmentQuestionId);
 
     /**
      * Update an existing assessment question
      */
-    AssessmentQuestion updateAssesmentQuestion(UUID behavioralIndicatorId, UUID assesmentQuestionId, AssessmentQuestion assesmentQuestion);
+    AssessmentQuestion updateAssesmentQuestion(UUID assesmentQuestionId, AssessmentQuestion assesmentQuestion);
 
     /**
      * Delete an assessment question
      */
-    void deleteAssesmentQuestion(UUID behavioralIndicatorId, UUID assesmentQuestionId);
+    void deleteAssesmentQuestion( UUID assesmentQuestionId);
 }

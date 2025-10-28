@@ -1,49 +1,8 @@
-### Создать новую компетенцию
+### Create new competency
 POST http://localhost:8080/api/competencies
 Content-Type: application/json
 
 {
-  "name": "Стратегическое мышление",
-  "description": "Способность разрабатывать долгосрочные цели и планы с учетом видения организации",
-  "category": "LEADERSHIP",
-  "level": "ADVANCED",
-  "standardCodes": {
-    "ESCO": {
-      "code": "S7.1.1",
-      "name": "develop organisational strategies and policies",
-      "confidence": "HIGH"
-    },
-    "ONET": {
-      "code": "2.B.3.c",
-      "name": "Leadership - Job requires willingness to lead, take charge",
-      "confidence": "VERIFIED"
-    }
-  },
-  "isActive": true,
-  "approvalStatus": "PENDING_REVIEW"
-}
-
-### Создать компетенцию по коммуникации
-POST http://localhost:8080/api/competencies
-Content-Type: application/json
-
-{
-  "name": "Эффективная коммуникация",
-  "description": "Навыки четкого изложения идей, активного слушания и адаптации стиля общения к различным аудиториям",
-  "category": "COMMUNICATION",
-  "level": "PROFICIENT",
-  "standardCodes": {
-    "ESCO": {
-      "code": "S2.1.1",
-      "name": "communicate with others",
-      "confidence": "HIGH"
-    },
-    "BIG_FIVE": {
-      "code": "EXTRAVERSION",
-      "name": "Extraversion - Communication aspects",
-      "confidence": "MODERATE"
-    }
-  },
-  "isActive": true,
-  "approvalStatus": "APPROVED"
+  "name": "Example Competency",
+  "description": "Description of the competency"
 }

@@ -40,33 +40,34 @@ class AssessmentQuestionServiceTest {
     @InjectMocks
     private AssessmentQuestionServiceImpl assessmentQuestionService;
 
-    private UUID behavioralIndicatorId;
     private UUID assessmentQuestionId;
     private AssessmentQuestion mockAssessmentQuestion;
     private BehavioralIndicator mockBehavioralIndicator;
+    private UUID behavioralIndicatorId;
 
     @BeforeEach
     void setUp() {
         behavioralIndicatorId = UUID.randomUUID();
         assessmentQuestionId = UUID.randomUUID();
 
-        // Create mock behavioral indicator
         mockBehavioralIndicator = new BehavioralIndicator();
         mockBehavioralIndicator.setId(behavioralIndicatorId);
         mockBehavioralIndicator.setTitle("Test Behavioral Indicator");
 
-        // Create mock assessment question
         mockAssessmentQuestion = new AssessmentQuestion();
         mockAssessmentQuestion.setId(assessmentQuestionId);
+        mockAssessmentQuestion.setQuestionText("Test Question");
         mockAssessmentQuestion.setBehavioralIndicator(mockBehavioralIndicator);
-        mockAssessmentQuestion.setQuestionText("Test question text");
-        mockAssessmentQuestion.setQuestionType(QuestionType.LIKERT_SCALE);
-        mockAssessmentQuestion.setAnswerOptions(createLikertScaleAnswerOptions());
-        mockAssessmentQuestion.setScoringRubric("Test scoring rubric");
-        mockAssessmentQuestion.setTimeLimit(300);
-        mockAssessmentQuestion.setDifficultyLevel(DifficultyLevel.INTERMEDIATE);
-        mockAssessmentQuestion.setActive(true);
-        mockAssessmentQuestion.setOrderIndex(1);
+        List<Map<String, Object>> answerOptions = new ArrayList<>();
+        Map<String, Object> option1 = new HashMap<>();
+        option1.put("label", "Option 1");
+        option1.put("value", 1);
+        answerOptions.add(option1);
+        Map<String, Object> option2 = new HashMap<>();
+        option2.put("label", "Option 2");
+        option2.put("value", 2);
+        answerOptions.add(option2);
+        mockAssessmentQuestion.setAnswerOptions(answerOptions);
     }
 
     @Nested
@@ -87,7 +88,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             List<AssessmentQuestion> actualQuestions = assessmentQuestionService
-                    .listAssessmentQuestions(behavioralIndicatorId);
+                    .listIndicatorAssessmentQuestions(behavioralIndicatorId);
 
             // Then
             assertThat(actualQuestions).isNotNull();
@@ -107,7 +108,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             List<AssessmentQuestion> actualQuestions = assessmentQuestionService
-                    .listAssessmentQuestions(behavioralIndicatorId);
+                    .listIndicatorAssessmentQuestions(behavioralIndicatorId);
 
             // Then
             assertThat(actualQuestions).isNotNull();
@@ -126,7 +127,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             List<AssessmentQuestion> actualQuestions = assessmentQuestionService
-                    .listAssessmentQuestions(nullBehavioralIndicatorId);
+                    .listIndicatorAssessmentQuestions(nullBehavioralIndicatorId);
 
             // Then
             assertThat(actualQuestions).isNotNull();
@@ -278,7 +279,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             Optional<AssessmentQuestion> foundQuestion = assessmentQuestionService
-                    .findAssesmentQuestionById(behavioralIndicatorId, assessmentQuestionId);
+                    .findAssesmentQuestionById(assessmentQuestionId);
 
             // Then
             assertThat(foundQuestion).isPresent();
@@ -299,7 +300,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             Optional<AssessmentQuestion> foundQuestion = assessmentQuestionService
-                    .findAssesmentQuestionById(behavioralIndicatorId, nonExistentId);
+                    .findAssesmentQuestionById(nonExistentId);
 
             // Then
             assertThat(foundQuestion).isEmpty();
@@ -317,7 +318,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             Optional<AssessmentQuestion> foundQuestion = assessmentQuestionService
-                    .findAssesmentQuestionById(wrongBehavioralIndicatorId, assessmentQuestionId);
+                    .findAssesmentQuestionById(assessmentQuestionId);
 
             // Then
             assertThat(foundQuestion).isEmpty();
@@ -339,7 +340,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             Optional<AssessmentQuestion> foundQuestion = assessmentQuestionService
-                    .findAssesmentQuestionById(behavioralIndicatorId, assessmentQuestionId);
+                    .findAssesmentQuestionById(assessmentQuestionId);
 
             // Then
             assertThat(foundQuestion).isPresent();
@@ -374,7 +375,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             AssessmentQuestion updatedQuestion = assessmentQuestionService
-                    .updateAssesmentQuestion(behavioralIndicatorId, assessmentQuestionId, updateDetails);
+                    .updateAssesmentQuestion(assessmentQuestionId, updateDetails);
 
             // Then
             assertThat(updatedQuestion).isNotNull();
@@ -411,7 +412,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             AssessmentQuestion updatedQuestion = assessmentQuestionService
-                    .updateAssesmentQuestion(behavioralIndicatorId, assessmentQuestionId, russianUpdate);
+                    .updateAssesmentQuestion(assessmentQuestionId, russianUpdate);
 
             // Then
             assertThat(updatedQuestion).isNotNull();
@@ -436,7 +437,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             AssessmentQuestion updatedQuestion = assessmentQuestionService
-                    .updateAssesmentQuestion(behavioralIndicatorId, nonExistentId, updateDetails);
+                    .updateAssesmentQuestion(nonExistentId, updateDetails);
 
             // Then
             assertThat(updatedQuestion).isNull();
@@ -458,7 +459,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             AssessmentQuestion updatedQuestion = assessmentQuestionService
-                    .updateAssesmentQuestion(wrongBehavioralIndicatorId, assessmentQuestionId, updateDetails);
+                    .updateAssesmentQuestion(assessmentQuestionId, updateDetails);
 
             // Then
             assertThat(updatedQuestion).isNull();
@@ -487,7 +488,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             AssessmentQuestion updatedQuestion = assessmentQuestionService
-                    .updateAssesmentQuestion(behavioralIndicatorId, assessmentQuestionId, complexUpdate);
+                    .updateAssesmentQuestion(assessmentQuestionId, complexUpdate);
 
             // Then
             assertThat(updatedQuestion).isNotNull();
@@ -514,7 +515,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             assertThatCode(() -> assessmentQuestionService
-                    .deleteAssesmentQuestion(behavioralIndicatorId, assessmentQuestionId))
+                    .deleteAssesmentQuestion(assessmentQuestionId))
                     .doesNotThrowAnyException();
 
             // Then
@@ -532,7 +533,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             assertThatCode(() -> assessmentQuestionService
-                    .deleteAssesmentQuestion(behavioralIndicatorId, nonExistentId))
+                    .deleteAssesmentQuestion(nonExistentId))
                     .doesNotThrowAnyException();
 
             // Then
@@ -550,7 +551,7 @@ class AssessmentQuestionServiceTest {
 
             // When
             assertThatCode(() -> assessmentQuestionService
-                    .deleteAssesmentQuestion(wrongBehavioralIndicatorId, assessmentQuestionId))
+                    .deleteAssesmentQuestion(assessmentQuestionId))
                     .doesNotThrowAnyException();
 
             // Then

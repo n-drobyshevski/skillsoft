@@ -1,11 +1,4 @@
-### Получить список всех компетенций
+### List all competencies
 GET http://localhost:8080/api/competencies
+Accept: application/json
 
-### Получить компетенции по категории
-GET http://localhost:8080/api/competencies?category=LEADERSHIP
-
-### Получить компетенции по уровню
-GET http://localhost:8080/api/competencies?level=ADVANCED
-
-### Получить только активные компетенции
-GET http://localhost:8080/api/competenciess?issActive=truee

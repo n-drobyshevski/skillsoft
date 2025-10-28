@@ -9,13 +9,13 @@ import java.util.UUID;
 public interface BehavioralIndicatorService {
 
     List<BehavioralIndicator> listAllBehavioralIndicators();
-    List<BehavioralIndicator> listBehavioralIndicators(UUID competencyId);
+    List<BehavioralIndicator> listCompetencyBehavioralIndicators(UUID competencyId);
 
     BehavioralIndicator createBehavioralIndicator(UUID competencyId, BehavioralIndicator behavioralIndicator);
 
-    Optional<BehavioralIndicator> findBehavioralIndicatorById(UUID competencyId, UUID behavioralIndicatorId);
+    Optional<BehavioralIndicator> findBehavioralIndicatorById(UUID behavioralIndicatorId);
 
-    BehavioralIndicator updateBehavioralIndicator(UUID competencyId, UUID behavioralIndicatorId, BehavioralIndicator behavioralIndicator);
+    BehavioralIndicator updateBehavioralIndicator(UUID behavioralIndicatorId, BehavioralIndicator behavioralIndicator);
 
-    void deleteBehavioralIndicator(UUID competencyId, UUID behavioralIndicatorId);
+    void deleteBehavioralIndicator( UUID behavioralIndicatorId);
 }
