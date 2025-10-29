@@ -28,8 +28,8 @@ import {
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "18rem";
-const SIDEBAR_WIDTH_ICON = "3rem";
+const SIDEBAR_WIDTH_MOBILE = "min(85vw, 20rem)"; // More responsive width
+const SIDEBAR_WIDTH_ICON = "3.5rem"; // Slightly larger for better touch targets
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
@@ -187,7 +187,13 @@ function Sidebar({
 					data-sidebar="sidebar"
 					data-slot="sidebar"
 					data-mobile="true"
-					className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+					className={cn(
+						"bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0",
+						"touch-pan-y overscroll-none", // Better touch handling
+						"[&>button]:opacity-70 [&>button]:hover:opacity-100", // Visible close button
+						"border-r shadow-lg", // Visual improvements
+						"transition-transform duration-300 ease-out" // Smooth transitions
+					)}
 					style={
 						{
 							"--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -195,11 +201,10 @@ function Sidebar({
 					}
 					side={side}
 				>
-					<SheetHeader className="sr-only">
-						<SheetTitle>Sidebar</SheetTitle>
-						<SheetDescription>Displays the mobile sidebar.</SheetDescription>
+					<SheetHeader className="px-4 py-2 border-b">
+						<SheetTitle>Menu</SheetTitle>
 					</SheetHeader>
-					<div className="flex h-full w-full flex-col">{children}</div>
+					<div className="flex h-full w-full flex-col overflow-y-auto">{children}</div>
 				</SheetContent>
 			</Sheet>
 		);
@@ -258,22 +263,27 @@ function SidebarTrigger({
 	onClick,
 	...props
 }: React.ComponentProps<typeof Button>) {
-	const { toggleSidebar } = useSidebar();
+	const { isMobile, toggleSidebar } = useSidebar();
 
 	return (
 		<Button
 			data-sidebar="trigger"
 			data-slot="sidebar-trigger"
 			variant="ghost"
-			size="icon"
-			className={cn("size-7", className)}
+			size={isMobile ? "default" : "icon"}
+			className={cn(
+				"size-9 md:size-7",
+				isMobile && "w-full justify-start md:w-auto md:justify-center",
+				className
+			)}
 			onClick={(event) => {
 				onClick?.(event);
 				toggleSidebar();
 			}}
 			{...props}
 		>
-			<PanelLeftIcon />
+			<PanelLeftIcon className="size-5 md:size-4" />
+			{isMobile && <span className="ml-2 md:hidden">Menu</span>}
 			<span className="sr-only">Toggle Sidebar</span>
 		</Button>
 	);
@@ -333,11 +343,16 @@ function SidebarInput({
 }
 
 function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
+	const { isMobile } = useSidebar();
 	return (
 		<div
 			data-slot="sidebar-header"
 			data-sidebar="header"
-			className={cn("flex flex-col gap-2 p-2", className)}
+			className={cn(
+				"flex flex-col gap-2",
+				isMobile ? "px-4 py-3" : "p-2",
+				className
+			)}
 			{...props}
 		/>
 	);
@@ -474,7 +489,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-	"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+	"peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 touch-manipulation touch-pan-y",
 	{
 		variants: {
 			variant: {

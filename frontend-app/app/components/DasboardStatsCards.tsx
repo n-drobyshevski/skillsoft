@@ -13,11 +13,12 @@ import { competencyCategoryToIcon } from "../utils";
 
 export default function DashboardStatsCards({ stats }: { stats: DashboardStats }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
       <StatsCard
         title="Total Competencies"
         value={stats.totalCompetencies}
         icon={TrendingUp}
+        className="hover:shadow-lg active:scale-[0.98] transition-all duration-200"
       >
         +12% from last month
       </StatsCard>

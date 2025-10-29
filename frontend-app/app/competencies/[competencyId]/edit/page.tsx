@@ -1,5 +1,5 @@
 import { competenciesApi } from "@/services/api";
-import { EditCompetencyForm } from "../../components/EditCompetencyForm";
+import { EditCompetencyForm } from "../components/EditCompetencyForm";
 import { notFound } from "next/navigation";
 
 export default async function EditCompetencyPage({ params }: { params: { competencyId: string } }) {

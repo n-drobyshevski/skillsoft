@@ -24,39 +24,43 @@ export default function CompetencyByCategoryBarChart({ data }: CompetencyByCateg
   }, []);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BrainCircuit className="w-5 h-5" />
-          Competencies by Category
-        </CardTitle>
+    <Card className="min-h-[300px] md:min-h-[400px]">
+      <CardHeader className="space-y-0 pb-2">
+        <div className="flex items-center gap-2">
+          <BrainCircuit className="h-4 w-4 md:h-5 md:w-5" />
+          <CardTitle className="text-base md:text-lg">Competencies by Category</CardTitle>
+        </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
+        <div className="h-[250px] md:h-[350px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
+            <BarChart data={data} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
               <XAxis
                 dataKey="name"
                 stroke="#888888"
-                fontSize={12}
+                fontSize={10}
                 tickLine={false}
                 axisLine={false}
+                interval={0}
+                tick={{ transform: 'translate(0, 8)' }}
+                height={50}
               />
               <YAxis
                 stroke="#888888"
-                fontSize={12}
+                fontSize={10}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(value) => `${value}`}
+                width={30}
               />
               <Tooltip
                 cursor={{ fill: "hsl(var(--muted))" }}
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
                     return (
-                      <div className="p-3 bg-background border rounded-lg shadow-lg">
-                        <p className="text-sm font-medium">{label}</p>
-                        <p className="text-xs text-muted-foreground">
+                      <div className="p-2 md:p-3 bg-background border rounded-lg shadow-lg">
+                        <p className="text-xs md:text-sm font-medium truncate max-w-[200px]">{label}</p>
+                        <p className="text-[10px] md:text-xs text-muted-foreground mt-0.5">
                           {`Competencies: ${payload[0].value}`}
                         </p>
                       </div>

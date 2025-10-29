@@ -35,7 +35,7 @@ type IndicatorFormValues = z.infer<typeof indicatorSchema>;
 
 const measurementTypes = ['QUALITY', 'QUANTITY', 'FREQUENCY', 'BINARY'] as const;
 
-export function EditIndicatorForm({ indicator, competencyId }: { indicator: BehavioralIndicator, competencyId: string }) {
+export function EditIndicatorForm({ indicator }: { indicator: BehavioralIndicator }) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export function EditIndicatorForm({ indicator, competencyId }: { indicator: Beha
     setIsLoading(true);
     setError(null);
     try {
-      await behavioralIndicatorsApi.updateIndicator(competencyId, indicator.id, data);
+      await behavioralIndicatorsApi.updateIndicator(indicator.competencyId, indicator.id, data);
       router.push(`/behavioral-indicators/${indicator.id}`);
     } catch (e: any) {
       setError(e.message || 'An error occurred.');
