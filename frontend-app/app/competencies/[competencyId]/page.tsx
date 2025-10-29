@@ -39,15 +39,17 @@ import {
 	AlertTriangle,
 	Lightbulb,
 	X,
+	Eye,
 	Target,
+	Pencil,
 } from "lucide-react";
+import Link from "next/link";
 import type {
 	Competency,
 	BehavioralIndicator,
 	AssessmentQuestion,
 } from "../../types/competency";
 import { competenciesApi, assessmentQuestionsApi } from "@/services/api";
-
 interface CompetencyDetailPageProps {
 	params: Promise<{ competencyId: string }>;
 }

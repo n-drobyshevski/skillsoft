@@ -20,9 +20,11 @@ import {
 	BarChart,
 	Info,
 	Type,
+	Pencil,
 } from "lucide-react";
-import type { AssessmentQuestion } from "../../../interfaces/domain-interfaces";
+import type { AssessmentQuestion } from "../../interfaces/domain-interfaces";
 import { assessmentQuestionsApi } from "@/services/api";
+import Link from "next/link";
 
 interface QuestionDetailPageProps {
 	params: Promise<{ questionId: string }>;
@@ -169,6 +171,12 @@ export default function Page({ params }: QuestionDetailPageProps) {
 						</div>
 					</div>
 				</div>
+				<Link href={`/assessment-questions/${questionId}/edit`} passHref>
+					<Button>
+						<Pencil className="mr-2 h-4 w-4" />
+						Edit
+					</Button>
+				</Link>
 			</div>
 
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
