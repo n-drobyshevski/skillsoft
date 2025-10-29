@@ -131,14 +131,14 @@ export default function Page() {
 	}
 
 	return (
-		<div className="container mx-auto px-4 py-8 space-y-8">
-			<Header title="Dashboard" subtitle="Overview of competencies and statistics" />
+		<div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
+			{/* <Header title="Dashboard" subtitle="Overview of competencies and statistics" /> */}
 
 			{stats && <DashboardStatsCards stats={stats} />}
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-				<div className="lg:col-span-2 space-y-8">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+			<div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+				<div className="lg:col-span-2 space-y-4 sm:space-y-6 lg:space-y-8">
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
 						{stats && (
 							<CompetencyByCategoryBarChart
 								data={Object.entries(stats.competenciesByCategory).map(([name, value]) => ({ name, value }))}
