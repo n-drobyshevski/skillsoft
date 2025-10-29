@@ -174,7 +174,7 @@ function CompetencyCard({ competency }: { competency: Competency }) {
 						<div>
 							<Link
 								href={`/competency/${competency.id}`}
-								className="font-semibold text-xl hover:text-primary transition-colors line-clamp-1"
+								className="font-semibold text-lg md:text-xl hover:text-primary transition-colors line-clamp-1"
 							>
 								{competency.name}
 							</Link>
@@ -387,7 +387,7 @@ function CompetencyCardGrid({
 								setSearchTerm(e.target.value);
 								setCurrentPage(1);
 							}}
-							className="pl-9 w-[300px]"
+							className="pl-9 w-full md:w-[300px]"
 						/>
 					</div>
 					<Select

@@ -11,6 +11,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.lang.NonNull;
 
 import org.springframework.core.env.Environment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -21,6 +23,8 @@ import java.util.List;
  */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
+
+    private static final Logger logger = LoggerFactory.getLogger(CorsConfig.class);
 
     @Autowired
     private Environment environment;
@@ -34,6 +38,8 @@ public class CorsConfig implements WebMvcConfigurer {
         
         // Check for ALLOWED_ORIGINS environment variable first
         String allowedOrigins = environment.getProperty("ALLOWED_ORIGINS");
+        logger.info("ALLOWED_ORIGINS environment variable: {}", allowedOrigins);
+        
         if (allowedOrigins != null && !allowedOrigins.trim().isEmpty()) {
             // Split by comma and trim each origin
             String[] originsArray = allowedOrigins.split(",");
@@ -43,28 +49,38 @@ public class CorsConfig implements WebMvcConfigurer {
                     origins.add(trimmedOrigin);
                 }
             }
+            logger.info("Using ALLOWED_ORIGINS: {}", origins);
             return origins;
         }
         
         // Fallback to SERVER_HOST-based origins for backward compatibility
-        String host = environment.getProperty("env.server.host", "localhost");
+        String host = environment.getProperty("SERVER_HOST", "localhost");
+        logger.info("SERVER_HOST: {}, using fallback origins", host);
         origins.addAll(Arrays.asList(
-            "http://outstanding-presence.railway.internal" +  ":3000",
-            "http://outstanding-presence.railway.internal" +  ":3001",
-            "http://outstanding-presence.railway.internal" + ":3002",
-                "http://outstanding-presence.railway.internal" + ":3003",
-            "http://outstanding-presence.railway.internal" + ":5173",
-                "http://" + "localhost" + ":3000",
-                "http://" + "localhost" + ":3001",
-                "http://" + "localhost" + ":3002",
-                "http://" + "localhost" + ":3003",
-                "http://" + "localhost" + ":5173",
+            // Railway production URLs (no ports needed)
+            "https://frontend-app-production-e74e.up.railway.app",
+            "http://frontend-app-production-e74e.up.railway.app",
+            
+            // Custom domain URLs  
+            "http://skillsoft.app",
+            "https://skillsoft.app",
+            
+            // Railway internal networking
+            "http://outstanding-presence.railway.internal",
+            "https://outstanding-presence.railway.internal",
+            
+            // Local development
+            "http://localhost:3000",
+            "http://localhost:3001", 
+            "http://localhost:3002",
+            "http://localhost:3003",
+            "http://localhost:5173",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:3001",
-            "http://127.0.0.1:3002",
-                "http://127.0.0.1:3002"
+            "http://127.0.0.1:3002"
         ));
         
+        logger.info("Final allowed origins: {}", origins);
         return origins;
     }
 

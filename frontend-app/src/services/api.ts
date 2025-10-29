@@ -2,8 +2,10 @@ import { cache } from 'react';
 import { revalidateCompetencyTags, revalidateIndicatorTags, revalidateQuestionTags } from '@/app/actions';
 import { AssessmentQuestion, BehavioralIndicator, Competency } from '../../app/interfaces/domain-interfaces';
 
-const API_BASE_URL =
-  "https://backend-production-263e.up.railway.app/api";
+// const API_BASE_URL = "http://outstanding-presence.railway.internal:8080/api";
+// const API_BASE_URL = "https://backend-production-263e.up.railway.app/api";
+const API_BASE_URL = "https://" + process.env.NEXT_PUBLIC_API_URL + "/api";
+
 
 // const API_BASE_URL = "https://localhost:8080/api";
 // Types
@@ -15,7 +17,7 @@ export interface ApiError extends Error {
 // Helper function to handle responses
 async function handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
-        const error: ApiError = new Error('API request failed');
+        const error: ApiError = new Error('API request failed for url: ' + response.url);
         error.status = response.status;
         try {
             const errorData = await response.json();
@@ -39,7 +41,7 @@ async function fetchApi<T>(
     } = {}
 ): Promise<T> {
     const { tags = [], revalidate, cache = 'force-cache', ...fetchOptions } = options;
-    
+    console.log(`Fetching API: ${API_BASE_URL}${endpoint} with options:`, options);
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...fetchOptions,
         headers: {

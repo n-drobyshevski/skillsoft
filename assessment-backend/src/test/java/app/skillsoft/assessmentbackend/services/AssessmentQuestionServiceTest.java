@@ -52,7 +52,7 @@ class AssessmentQuestionServiceTest {
 
         mockBehavioralIndicator = new BehavioralIndicator();
         mockBehavioralIndicator.setId(behavioralIndicatorId);
-        mockBehavioralIndicator.setName("Test Behavioral Indicator");
+        mockBehavioralIndicator.setTitle("Test Behavioral Indicator");
 
         mockAssessmentQuestion = new AssessmentQuestion();
         mockAssessmentQuestion.setId(assessmentQuestionId);
@@ -83,7 +83,7 @@ class AssessmentQuestionServiceTest {
                     createTestQuestion("Second Question", QuestionType.MULTIPLE_CHOICE, 2),
                     createTestQuestion("Third Question", QuestionType.SITUATIONAL_JUDGMENT, 3)
             );
-            when(assessmentQuestionRepository.findByBehavioralIndicatorId(behavioralIndicatorId))
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
                     .thenReturn(expectedQuestions);
 
             // When
@@ -95,7 +95,7 @@ class AssessmentQuestionServiceTest {
             assertThat(actualQuestions).hasSize(3);
             assertThat(actualQuestions).containsExactlyElementsOf(expectedQuestions);
             
-            verify(assessmentQuestionRepository).findByBehavioralIndicatorId(behavioralIndicatorId);
+            verify(assessmentQuestionRepository).findByBehavioralIndicator_Id(behavioralIndicatorId);
             verifyNoMoreInteractions(assessmentQuestionRepository);
         }
 
@@ -103,7 +103,7 @@ class AssessmentQuestionServiceTest {
         @DisplayName("Should return empty list when no assessment questions exist")
         void shouldReturnEmptyListWhenNoAssessmentQuestionsExist() {
             // Given
-            when(assessmentQuestionRepository.findByBehavioralIndicatorId(behavioralIndicatorId))
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
                     .thenReturn(Collections.emptyList());
 
             // When
@@ -114,7 +114,7 @@ class AssessmentQuestionServiceTest {
             assertThat(actualQuestions).isNotNull();
             assertThat(actualQuestions).isEmpty();
             
-            verify(assessmentQuestionRepository).findByBehavioralIndicatorId(behavioralIndicatorId);
+            verify(assessmentQuestionRepository).findByBehavioralIndicator_Id(behavioralIndicatorId);
         }
 
         @Test
@@ -122,7 +122,7 @@ class AssessmentQuestionServiceTest {
         void shouldHandleNullBehavioralIndicatorIdGracefully() {
             // Given
             UUID nullBehavioralIndicatorId = null;
-            when(assessmentQuestionRepository.findByBehavioralIndicatorId(nullBehavioralIndicatorId))
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(nullBehavioralIndicatorId))
                     .thenReturn(Collections.emptyList());
 
             // When
@@ -133,7 +133,7 @@ class AssessmentQuestionServiceTest {
             assertThat(actualQuestions).isNotNull();
             assertThat(actualQuestions).isEmpty();
             
-            verify(assessmentQuestionRepository).findByBehavioralIndicatorId(nullBehavioralIndicatorId);
+            verify(assessmentQuestionRepository).findByBehavioralIndicator_Id(nullBehavioralIndicatorId);
         }
     }
 
