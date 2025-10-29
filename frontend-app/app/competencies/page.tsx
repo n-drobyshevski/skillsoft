@@ -42,8 +42,17 @@ import EntitiesTable from "../components/Table";
 import CompetencyDrawer from "./components/CompetencyDrawer";
 
 
+import { useHeader } from "@/context/HeaderContext";
+
 // Main component
 export default function CompetenciesPage() {
+  const { setTitle, setSubtitle, setEntityName } = useHeader();
+
+  useEffect(() => {
+    setTitle("Competencies");
+    setSubtitle("Manage and explore competencies");
+    setEntityName("Competency");
+  }, [setTitle, setSubtitle, setEntityName]);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -282,13 +291,9 @@ export default function CompetenciesPage() {
 
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-8 w-full max-w-none">
+    <div className="container mx-auto py-8 space-y-8 w-full">
       {/* Header */}
-      <Header
-        title="Competencies"
-        subtitle="Manage and explore competencies"
-        entityName="Competency"
-      />
+
 
       {/* Stats Cards */}
       <CompetencyStats competencies={competencies} />

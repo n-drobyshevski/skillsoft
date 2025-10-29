@@ -221,6 +221,28 @@ export const assessmentQuestionsApi = {
     return result;
   },
 
+  updateQuestion: async (
+    questionId: string,
+    data: any,
+    competencyId: string,
+    behavioralIndicatorId: string,
+  ) => {
+    const result = await fetchApi(
+      `/questions/${questionId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        cache: "no-store",
+      }
+    );
+    await revalidateQuestionTags(
+      questionId,
+      competencyId,
+      behavioralIndicatorId
+    );
+    return result;
+  },
+
   deleteQuestion: async (
     competencyId: string,
     behavioralIndicatorId: string,

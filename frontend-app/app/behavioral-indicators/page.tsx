@@ -43,7 +43,16 @@ import { assessmentQuestionsApi, behavioralIndicatorsApi, competenciesApi } from
 import Header from "../components/Header";
 import IndicatorDrawer from "./components/IndicatorDrawer";
 
+import { useHeader } from "@/context/HeaderContext";
+
 export default function BehavioralIndicatorsPage() {
+  const { setTitle, setSubtitle, setEntityName } = useHeader();
+
+  useEffect(() => {
+    setTitle("Behavioral Indicators");
+    setSubtitle("Manage and track behavioral indicators across all competencies");
+    setEntityName("Indicator");
+  }, [setTitle, setSubtitle, setEntityName]);
   const [indicators, setIndicators] = useState<(BehavioralIndicator & {competencyName: string, questionCount: number})[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -290,11 +299,11 @@ export default function BehavioralIndicatorsPage() {
   return (
     <div className="w-full p-8 space-y-8">
       {/* Header */}
-      <Header
+      {/* <Header
         title="Behavioral Indicators"
-        subtitle="Manage and track behavioral indicators across all competencies"
+        subtitle="Manage and explore behavioral indicators"
         entityName="Indicator"
-      />
+      /> */}
 
       <div className="space-y-4">
         <EntityTable

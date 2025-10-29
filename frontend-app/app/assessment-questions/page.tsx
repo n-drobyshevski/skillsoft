@@ -82,8 +82,22 @@ const AssessmentStats: React.FC<{ questions: AssessmentQuestion[] }> = ({
 };
 
 // Main component
-export default function AssessmentQuestionsPage({}) {
-	const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
+import { useHeader } from "@/context/HeaderContext";
+
+// Define the shape of the data we'll be using
+interface EnrichedQuestion extends AssessmentQuestion {
+  competencyName: string;
+  indicatorName: string;
+}
+
+export default function AssessmentQuestionsPage() {
+  const { setTitle, setSubtitle, setEntityName } = useHeader();
+
+  useEffect(() => {
+    setTitle("Assessment Questions");
+    setSubtitle("Manage and organize all assessment questions");
+    setEntityName("Question");
+  }, [setTitle, setSubtitle, setEntityName]);	const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
 	const [loading, setLoading] = useState<boolean>(true);
 	const [sorting, setSorting] = useState<SortingState>([]);
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -307,13 +321,13 @@ export default function AssessmentQuestionsPage({}) {
 	}
 
 	return (
-    <div className="container mx-auto px-4 py-8 space-y-8 w-full max-w-none">
+    <div className="container mx-auto px-4 py-4 space-y-8 w-full max-w-none">
       {/* Header */}
-      <Header
+      {/* <Header
         title="Assessment Questions"
-        subtitle="Manage and organize assessment questions for competency evaluation"
+        subtitle="Manage and organize all assessment questions"
         entityName="Question"
-      />
+      /> */}
       
 
       {/* Stats Cards */}

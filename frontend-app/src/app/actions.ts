@@ -12,7 +12,7 @@ export async function revalidateCompetencyTags(competencyId?: string) {
 export async function revalidateIndicatorTags(competencyId: string, indicatorId?: string) {
   revalidateTag(`indicators-${competencyId}`);
   if (indicatorId) {
-    revalidateTag(`indicator-${competencyId}-${indicatorId}`);
+    revalidateTag(`indicator-${indicatorId}`);
   }
 }
 

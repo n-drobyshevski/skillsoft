@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, use } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
 	Card,
 	CardContent,
@@ -39,22 +39,24 @@ import {
 	AlertTriangle,
 	Lightbulb,
 	X,
+	Eye,
 	Target,
+	Pencil,
 } from "lucide-react";
+import Link from "next/link";
 import type {
 	Competency,
 	BehavioralIndicator,
 	AssessmentQuestion,
 } from "../../types/competency";
 import { competenciesApi, assessmentQuestionsApi } from "@/services/api";
-
 interface CompetencyDetailPageProps {
-	params: Promise<{ competencyId: string }>;
+	params: { competencyId: string };
 }
 
 export default function Page({ params }: CompetencyDetailPageProps) {
-	const { competencyId } = use(params);
 	const router = useRouter();
+  const { competencyId } = useParams();
 
 	const [competency, setCompetency] = useState<Competency | null>(null);
 	const [assessmentQuestions, setAssessmentQuestions] = useState<
@@ -82,7 +84,7 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 
 				// Fetch competency details
 				const competencyData: Competency | null =
-					await competenciesApi.getCompetencyById(competencyId);
+					await competenciesApi.getCompetencyById(competencyId as string);
 				if (!competencyData) {
 					setError("Competency not found");
 					setLoading(false);
@@ -106,7 +108,7 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 						async (indicator: BehavioralIndicator) => {
 							try {
 								return await assessmentQuestionsApi.getIndicatorQuestions(
-									competencyId,
+									competencyId as string,
 									indicator.id,
 								);
 							} catch (error) {
@@ -244,7 +246,7 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 	return (
 		<div className="container mx-auto px-6 py-8">
 			{/* Header */}
-			<div className="flex items-center justify-between mb-8">
+			{/* <div className="flex items-center justify-between mb-8">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" size="icon" onClick={() => router.push("/")}>
 						<ArrowLeft className="w-4 h-4" />
@@ -271,7 +273,7 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 						</div>
 					</div>
 				</div>
-			</div>
+			</div> */}
 
 			{/* Tabs */}
 			<Tabs
