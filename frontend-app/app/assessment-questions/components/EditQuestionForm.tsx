@@ -51,7 +51,13 @@ export function EditQuestionForm({ question, competencyId }: { question: Assessm
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionSchema),
     defaultValues: {
-      ...question,
+      questionText: question.questionText,
+      questionType: question.questionType,
+      scoringRubric: question.scoringRubric,
+      difficultyLevel: question.difficultyLevel,
+      isActive: question.isActive,
+      orderIndex: question.orderIndex,
+      timeLimit: question.timeLimit,
       answerOptions: question.answerOptions || [],
     },
   });

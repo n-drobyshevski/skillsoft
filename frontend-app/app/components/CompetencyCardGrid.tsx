@@ -36,7 +36,7 @@ export default function CompetencyCardGrid({
 
   // Filter and sort competencies
   const filteredAndSortedCompetencies = React.useMemo(() => {
-    let filtered = data.filter((comp: Competency) => {
+    const filtered = data.filter((comp: Competency) => {
       const matchesCategory =
         selectedCategory === "all" || comp.category === selectedCategory;
       const matchesSearch =

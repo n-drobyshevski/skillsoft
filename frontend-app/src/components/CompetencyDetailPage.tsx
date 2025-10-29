@@ -1,6 +1,7 @@
 import type React from "react";
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
 	Card,
 	CardContent,
@@ -8,7 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "./ui/card";
-import WeightDistributionPie from "@/components/charts/WeightDistributionPie";
+import WeightDistributionPie from "./charts/WeightDistributionPie";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -39,11 +40,11 @@ import type {
 	Competency,
 	BehavioralIndicator,
 	AssessmentQuestion,
-} from "../types/competency";
+} from "../../app/interfaces/domain-interfaces";
 
 const CompetencyDetailPage: React.FC = () => {
 	const { id: competencyId } = useParams<{ id: string }>();
-	const navigate = useNavigate();
+	const router = useRouter();
 
 	const [competency, setCompetency] = useState<Competency | null>(null);
 	const [assessmentQuestions, setAssessmentQuestions] = useState<
@@ -194,7 +195,7 @@ const CompetencyDetailPage: React.FC = () => {
 						</CardTitle>
 						<CardDescription className="mb-6">{error}</CardDescription>
 						<Button
-							onClick={() => navigate("/")}
+							onClick={() => router.push("/")}
 							variant="destructive"
 							className="w-full"
 						>
@@ -217,7 +218,7 @@ const CompetencyDetailPage: React.FC = () => {
 						<CardDescription className="mb-6">
 							The requested competency could not be found.
 						</CardDescription>
-						<Button onClick={() => navigate("/")} className="w-full">
+						<Button onClick={() => router.push("/")} className="w-full">
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Go Back
 						</Button>
@@ -232,7 +233,7 @@ const CompetencyDetailPage: React.FC = () => {
 			{/* Header */}
 			<div className="flex items-center justify-between mb-8">
 				<div className="flex items-center gap-4">
-					<Button variant="ghost" size="icon" onClick={() => navigate("/")}>
+					<Button variant="ghost" size="icon" onClick={() => router.push("/")}>
 						<ArrowLeft className="w-4 h-4" />
 						<span className="sr-only">Go back</span>
 					</Button>

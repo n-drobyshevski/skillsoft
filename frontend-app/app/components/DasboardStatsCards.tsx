@@ -18,7 +18,6 @@ export default function DashboardStatsCards({ stats }: { stats: DashboardStats }
         title="Total Competencies"
         value={stats.totalCompetencies}
         icon={TrendingUp}
-        className="hover:shadow-lg active:scale-[0.98] transition-all duration-200"
       >
         +12% from last month
       </StatsCard>

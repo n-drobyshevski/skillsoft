@@ -45,10 +45,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type {
-	Competency,
-	BehavioralIndicator,
-	AssessmentQuestion,
-} from "../../types/competency";
+ BehavioralIndicator,
+ AssessmentQuestion,
+ Competency,
+} from "../../interfaces/domain-interfaces";
 import { competenciesApi, assessmentQuestionsApi } from "@/services/api";
 interface CompetencyDetailPageProps {
 	params: { competencyId: string };
@@ -103,14 +103,15 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 				// setCompetency(competencyData);
 
 				// Fetch assessment questions for all behavioral indicators
-				if (competencyData.behavioralIndicators?.length > 0) {
+				if (competencyData.behavioralIndicators && competencyData.behavioralIndicators.length > 0) {
 					const questionsPromises = competencyData.behavioralIndicators.map(
 						async (indicator: BehavioralIndicator) => {
 							try {
-								return await assessmentQuestionsApi.getIndicatorQuestions(
+								const questions = await assessmentQuestionsApi.getIndicatorQuestions(
 									competencyId as string,
 									indicator.id,
 								);
+								return questions || [];
 							} catch (error) {
 								console.warn(
 									`Failed to fetch questions for indicator ${indicator.id}:`,
@@ -122,7 +123,7 @@ export default function Page({ params }: CompetencyDetailPageProps) {
 					);
 
 					const questionsArrays = await Promise.all(questionsPromises);
-					const allQuestions = questionsArrays.flat();
+					const allQuestions = questionsArrays.flat().filter(Boolean);
 					setAssessmentQuestions(allQuestions);
 				}
 			} catch (error) {

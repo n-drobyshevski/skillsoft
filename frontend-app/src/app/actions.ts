@@ -1,26 +1,44 @@
 'use server'
 
-import { revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 
 export async function revalidateCompetencyTags(competencyId?: string) {
-  revalidateTag('competencies');
-  if (competencyId) {
-    revalidateTag(`competency-${competencyId}`);
+  try {
+    revalidatePath('/competencies');
+    revalidatePath('/');
+    if (competencyId) {
+      revalidatePath(`/competencies/${competencyId}`);
+    }
+  } catch (error) {
+    console.error('Error revalidating competency paths:', error);
   }
 }
 
 export async function revalidateIndicatorTags(competencyId: string, indicatorId?: string) {
-  revalidateTag(`indicators-${competencyId}`);
-  if (indicatorId) {
-    revalidateTag(`indicator-${indicatorId}`);
+  try {
+    revalidatePath(`/competencies/${competencyId}`);
+    revalidatePath('/behavioral-indicators');
+    if (indicatorId) {
+      revalidatePath(`/behavioral-indicators/${indicatorId}`);
+    }
+  } catch (error) {
+    console.error('Error revalidating indicator paths:', error);
   }
 }
 
 export async function revalidateQuestionTags(questionId: string, competencyId?: string, behavioralIndicatorId?: string ) {
-  if (competencyId && behavioralIndicatorId) {
-    revalidateTag(`questions-${competencyId}-${behavioralIndicatorId}`);
-  }
-  if (questionId) {
-    revalidateTag(`question-${questionId}`);
+  try {
+    revalidatePath('/assessment-questions');
+    if (questionId) {
+      revalidatePath(`/assessment-questions/${questionId}`);
+    }
+    if (competencyId) {
+      revalidatePath(`/competencies/${competencyId}`);
+    }
+    if (behavioralIndicatorId) {
+      revalidatePath(`/behavioral-indicators/${behavioralIndicatorId}`);
+    }
+  } catch (error) {
+    console.error('Error revalidating question paths:', error);
   }
 }

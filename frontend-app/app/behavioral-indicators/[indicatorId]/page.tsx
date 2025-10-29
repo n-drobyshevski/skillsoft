@@ -87,7 +87,7 @@ export default function Page({ params }: IndicatorDetailPageProps) {
 					indicatorData.competencyId,
 					indicatorId as string,
 				);
-				setAssessmentQuestions(questions);
+				setAssessmentQuestions(questions || []);
 			} catch (error) {
 				console.error("Error fetching indicator data:", error);
 				setError(

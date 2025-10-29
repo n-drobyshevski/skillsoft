@@ -8,7 +8,7 @@ export const indicatorSchema = z.object({
   description: z.string().optional(),
   observabilityLevel: z.enum(Object.values(ProficiencyLevel) as [string, ...string[]]),
   measurementType: z.enum(measurementTypes),
-  weight: z.preprocess((val) => Number(val), z.number().min(0).max(1)),
+  weight: z.number().min(0).max(1),
   examples: z.string().optional(),
   counterExamples: z.string().optional(),
   isActive: z.boolean(),

@@ -94,3 +94,8 @@ logs/
 docs/
 !docs/output/.gitkeep
 infrastructure/database/postgres-data/
+
+
+
+# ====================
+frontend-app/

@@ -6,21 +6,55 @@ import { AssessmentQuestion, BehavioralIndicator, Competency } from '../../app/i
 // const API_BASE_URL = "https://backend-production-263e.up.railway.app/api";
 const API_BASE_URL = "https://" + process.env.NEXT_PUBLIC_API_URL + "/api";
 
+// Input types for API operations
+interface CompetencyInput {
+    name: string;
+    description?: string;
+    category?: string;
+    level?: string;
+    [key: string]: unknown;
+}
+
+interface IndicatorInput {
+    title: string;
+    description?: string;
+    competencyId?: string;
+    level?: string;
+    weight?: number;
+    [key: string]: unknown;
+}
+
+interface QuestionInput {
+    questionText: string;
+    questionType: string;
+    difficulty?: string;
+    behavioralIndicatorId?: string;
+    options?: string[];
+    correctAnswer?: string;
+    [key: string]: unknown;
+}
+
 
 // const API_BASE_URL = "https://localhost:8080/api";
-// Types
+// Types for API responses and errors
 export interface ApiError extends Error {
     status?: number;
     code?: string;
 }
 
-// Helper function to handle responses
+interface ErrorResponse {
+    message?: string;
+    code?: string;
+}
+
+// Helper function to handle responses with proper error typing
 async function handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
         const error: ApiError = new Error('API request failed for url: ' + response.url);
         error.status = response.status;
+        
         try {
-            const errorData = await response.json();
+            const errorData = await response.json() as ErrorResponse;
             error.message = errorData.message || `HTTP error! status: ${response.status}`;
             error.code = errorData.code;
         } catch {
@@ -28,7 +62,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
         }
         throw error;
     }
-    return response.json();
+    return response.json() as Promise<T>;
 }
 
 // API fetch wrapper with caching and revalidation
@@ -41,7 +75,7 @@ async function fetchApi<T>(
     } = {}
 ): Promise<T> {
     const { tags = [], revalidate, cache = 'force-cache', ...fetchOptions } = options;
-    console.log(`Fetching API: ${API_BASE_URL}${endpoint} with options:`, options);
+    // Note: Removed console.log for production security
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...fetchOptions,
         headers: {
@@ -78,8 +112,8 @@ export const competenciesApi = {
         });
     },
 
-    createCompetency: async (data: any) => {
-        const result = await fetchApi('/competencies', {
+    createCompetency: async (data: CompetencyInput): Promise<Competency> => {
+        const result = await fetchApi<Competency>('/competencies', {
             method: 'POST',
             body: JSON.stringify(data),
             cache: 'no-store',
@@ -88,8 +122,8 @@ export const competenciesApi = {
         return result;
     },
 
-    updateCompetency: async (competencyId: string, data: any) => {
-        const result = await fetchApi(`/competencies/${competencyId}`, {
+    updateCompetency: async (competencyId: string, data: CompetencyInput): Promise<Competency> => {
+        const result = await fetchApi<Competency>(`/competencies/${competencyId}`, {
             method: 'PUT',
             body: JSON.stringify(data),
             cache: 'no-store',
@@ -134,8 +168,8 @@ export const behavioralIndicatorsApi = {
     });
   },
 
-  createIndicator: async (competencyId: string, data: any) => {
-    const result = await fetchApi(`/behavioral-indicators`, {
+  createIndicator: async (competencyId: string, data: IndicatorInput): Promise<BehavioralIndicator> => {
+    const result = await fetchApi<BehavioralIndicator>(`/behavioral-indicators`, {
       method: "POST",
       body: JSON.stringify(data),
       cache: "no-store",
@@ -147,9 +181,9 @@ export const behavioralIndicatorsApi = {
   updateIndicator: async (
     competencyId: string,
     indicatorId: string,
-    data: any
-  ) => {
-    const result = await fetchApi(
+    data: IndicatorInput
+  ): Promise<BehavioralIndicator> => {
+    const result = await fetchApi<BehavioralIndicator>(
       `/behavioral-indicators/${indicatorId}`,
       {
         method: "PUT",
@@ -209,9 +243,9 @@ export const assessmentQuestionsApi = {
   createQuestion: async (
     competencyId: string,
     behavioralIndicatorId: string,
-    data: any
-  ) => {
-    const result = await fetchApi(
+    data: QuestionInput
+  ): Promise<AssessmentQuestion> => {
+    const result = await fetchApi<AssessmentQuestion>(
       `/questions`,
       {
         method: "POST",
@@ -225,11 +259,11 @@ export const assessmentQuestionsApi = {
 
   updateQuestion: async (
     questionId: string,
-    data: any,
+    data: QuestionInput,
     competencyId: string,
     behavioralIndicatorId: string,
-  ) => {
-    const result = await fetchApi(
+  ): Promise<AssessmentQuestion> => {
+    const result = await fetchApi<AssessmentQuestion>(
       `/questions/${questionId}`,
       {
         method: "PUT",

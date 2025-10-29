@@ -8,7 +8,7 @@ import {
 	Tooltip,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import type { BehavioralIndicator } from "../../types/competency";
+import type { BehavioralIndicator } from "../../../app/interfaces/domain-interfaces";
 import { BarChart3 } from "lucide-react";
 
 interface WeightDistributionPieProps {

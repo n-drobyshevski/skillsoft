@@ -2,9 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import {
-  type ColumnDef
-} from "@tanstack/react-table";
+import { type ColumnDef } from "@tanstack/react-table";
 
 import {
   DropdownMenu,
@@ -18,8 +16,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { CompetencyCategory, ProficiencyLevel, ApprovalStatus } from "../enums/domain_enums";
-import { Competency, BehavioralIndicator } from "../interfaces/domain-interfaces";
+import {
+  CompetencyCategory,
+  ProficiencyLevel,
+  ApprovalStatus,
+} from "../enums/domain_enums";
+import {
+  Competency,
+  BehavioralIndicator,
+} from "../interfaces/domain-interfaces";
 import {
   ArrowUpDown,
   Eye,
@@ -36,11 +41,14 @@ import {
 } from "lucide-react";
 import { competenciesApi } from "@/services/api";
 import CompetencyStats from "./components/CompetencyStats";
-import { approvalStatusToColor, competencyCategoryToIcon, competencyProficiencyLevelToColor } from "../utils";
+import {
+  approvalStatusToColor,
+  competencyCategoryToIcon,
+  competencyProficiencyLevelToColor,
+} from "../utils";
 import Header from "../components/Header";
 import EntitiesTable from "../components/Table";
 import CompetencyDrawer from "./components/CompetencyDrawer";
-
 
 import { useHeader } from "@/context/HeaderContext";
 
@@ -56,7 +64,8 @@ export default function CompetenciesPage() {
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedCompetency, setSelectedCompetency] = useState<Competency | null>(null);
+  const [selectedCompetency, setSelectedCompetency] =
+    useState<Competency | null>(null);
 
   const handleViewDetails = (competency: Competency) => {
     setSelectedCompetency(competency);
@@ -71,21 +80,25 @@ export default function CompetenciesPage() {
         return (
           <div className="text-left">
             <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Competency
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        </div>)
-        
+              variant="ghost"
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === "asc")
+              }
+            >
+              Competency
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        );
       },
       cell: ({ row }) => {
         const category = row.original.category;
         return (
           <div className="flex items-start gap-3">
             <div className="shrink-0 w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-              <span className="text-base">{competencyCategoryToIcon(category)}</span>
+              <span className="text-base">
+                {competencyCategoryToIcon(category)}
+              </span>
             </div>
             <div className="flex-1 min-w-0">
               <Link
@@ -138,7 +151,10 @@ export default function CompetenciesPage() {
       cell: ({ row }) => {
         const level = row.getValue("level") as ProficiencyLevel;
         return (
-          <Badge variant="outline" className={competencyProficiencyLevelToColor(level)}>
+          <Badge
+            variant="outline"
+            className={competencyProficiencyLevelToColor(level)}
+          >
             {level}
           </Badge>
         );
@@ -227,12 +243,12 @@ export default function CompetenciesPage() {
         const status = row.original.approvalStatus;
         return (
           <div className="flex items-center gap-2">
-          <Badge variant="outline" className={approvalStatusToColor(status)}>
-            {status}
-          </Badge>
+            <Badge variant="outline" className={approvalStatusToColor(status)}>
+              {status}
+            </Badge>
           </div>
         );
-      }
+      },
     },
     {
       id: "actions",
@@ -269,12 +285,12 @@ export default function CompetenciesPage() {
     },
   ]; // Helper functions
 
- 
   useEffect(() => {
     const fetchCompetencies = async () => {
       try {
         setLoading(true);
-        const data: Competency[] | null = await competenciesApi.getAllCompetencies();
+        const data: Competency[] | null =
+          await competenciesApi.getAllCompetencies();
         if (!data) {
           throw new Error("No competencies found");
         }
@@ -289,11 +305,9 @@ export default function CompetenciesPage() {
     fetchCompetencies();
   }, []);
 
-
   return (
     <div className="container mx-auto py-8 space-y-8 w-full">
       {/* Header */}
-
 
       {/* Stats Cards */}
       <CompetencyStats competencies={competencies} />
@@ -309,7 +323,13 @@ export default function CompetenciesPage() {
       )}
 
       {/* Table */}
-      {!loading && <EntitiesTable columns={columns} data={competencies} onRowClick={handleViewDetails} />}
+      {!loading && (
+        <EntitiesTable
+          columns={columns}
+          data={competencies}
+          onRowClick={handleViewDetails}
+        />
+      )}
 
       {selectedCompetency && (
         <CompetencyDrawer
@@ -320,4 +340,4 @@ export default function CompetenciesPage() {
       )}
     </div>
   );
-};
+}

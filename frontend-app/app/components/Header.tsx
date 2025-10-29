@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import { Button } from "@/components/ui/button";
 import { Download, Plus } from "lucide-react";
 import React from "react";
@@ -11,19 +11,14 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-export default function Header({
-  title,
-  subtitle,
-  entityName,
-  breadcrumbs,
-}: {
-  title: string;
-  subtitle?: string;
-  entityName?: string;
-  breadcrumbs?: { label: string; href: string }[];
-}) {
+import { useHeader } from "@/context/HeaderContext";
+import { useBreadcrumbs } from "@/lib/breadcrumbs";
+
+export default function Header() {
+  const { title, subtitle, entityName } = useHeader();
+  const { breadcrumbs } = useBreadcrumbs();
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 py-4 mb-4">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 py-4 mb-4 w-full">
       <div className="flex flex-col w-full">
         {breadcrumbs && (
           <Breadcrumb className="hidden md:flex mb-2">

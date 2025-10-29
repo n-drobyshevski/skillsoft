@@ -53,10 +53,27 @@ public class CorsConfig implements WebMvcConfigurer {
             return origins;
         }
         
+        // TEMPORARY: Allow all origins for testing (REMOVE IN PRODUCTION)
+        String isDev = environment.getProperty("SPRING_PROFILES_ACTIVE", "");
+        if (isDev.contains("dev") || isDev.contains("test")) {
+            logger.warn("DEV MODE: Allowing all origins - THIS IS NOT SECURE FOR PRODUCTION!");
+            origins.add("*");
+            return origins;
+        }
+        
         // Fallback to SERVER_HOST-based origins for backward compatibility
         String host = environment.getProperty("SERVER_HOST", "localhost");
         logger.info("SERVER_HOST: {}, using fallback origins", host);
         origins.addAll(Arrays.asList(
+            // Vercel deployment URLs - Replace with your actual Vercel URL
+            "https://skillsoft-frontend.vercel.app",
+            "https://frontend-app.vercel.app", 
+            "https://skillsoft.vercel.app",
+            "https://skillsoft-front.vercel.app",
+            "https://skillsoft-git-main.vercel.app",
+            "https://skillsoft-git-master.vercel.app",
+            "https://skillsoft-git-dev.vercel.app",
+            
             // Railway production URLs (no ports needed)
             "https://frontend-app-production-e74e.up.railway.app",
             "http://frontend-app-production-e74e.up.railway.app",
@@ -88,7 +105,7 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(@NonNull CorsRegistry registry) {
         List<String> allowedOrigins = getAllowedOrigins();
         
-        registry.addMapping("/**")  // Changed from /api/** to /** to cover all endpoints
+        registry.addMapping("/**")  // Apply to all endpoints
                 .allowedOrigins(allowedOrigins.toArray(new String[0]))
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
                 .allowedHeaders("*")
@@ -105,22 +122,33 @@ public class CorsConfig implements WebMvcConfigurer {
         // Allow specific origins (frontend URLs)
         configuration.setAllowedOrigins(allowedOrigins);
         
-        // Allow all headers
+        // Allow credentials for authentication
+        configuration.setAllowCredentials(true);
+        
+        // Allow all headers including custom ones
         configuration.setAllowedHeaders(Arrays.asList("*"));
+        
+        // Expose headers that the client can access
+        configuration.setExposedHeaders(Arrays.asList(
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Credentials",
+            "Access-Control-Allow-Headers",
+            "Access-Control-Allow-Methods",
+            "Access-Control-Max-Age",
+            "Access-Control-Request-Headers",
+            "Access-Control-Request-Method"
+        ));
         
         // Allow specific HTTP methods
         configuration.setAllowedMethods(Arrays.asList(
             "GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"
         ));
         
-        // Allow credentials (cookies, authorization headers)
-        configuration.setAllowCredentials(true);
-        
         // Configure how long the browser can cache preflight requests
         configuration.setMaxAge(3600L);
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);  // Changed from /api/** to /**
+        source.registerCorsConfiguration("/**", configuration);  // Apply to all endpoints
         return source;
     }
 }

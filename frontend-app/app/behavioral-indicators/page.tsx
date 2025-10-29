@@ -68,7 +68,7 @@ export default function BehavioralIndicatorsPage() {
     setIsDrawerOpen(true);
   };
 
-  const columns: ColumnDef<BehavioralIndicator & {competencyName: string}>[] = [
+  const columns: ColumnDef<BehavioralIndicator & {competencyName: string, questionCount: number}>[] = [
     {
       accessorKey: "title",
       header: ({ column }: { column: any }) => {

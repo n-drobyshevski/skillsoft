@@ -23,8 +23,8 @@ export const questionSchema = z.object({
     explanation: z.string().optional(),
   })).optional(),
   scoringRubric: z.string(),
-  timeLimit: z.preprocess((val) => Number(val), z.number().optional()),
+  timeLimit: z.number().optional(),
   difficultyLevel: z.enum(Object.values(DifficultyLevel) as [string, ...string[]]),
   isActive: z.boolean(),
-  orderIndex: z.preprocess((val) => Number(val), z.number()),
+  orderIndex: z.number(),
 });

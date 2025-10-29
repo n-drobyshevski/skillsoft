@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import Link from "next/link";
 import type {
 	ColumnDef,
 	ColumnFiltersState,
@@ -125,7 +125,7 @@ const columns: ColumnDef<BehavioralIndicator>[] = [
 		cell: ({ row }: { row: any }) => (
 			<div className="flex items-center gap-2">
 				<Link
-					to={`/competency/${row.original.competency.id}`}
+					href={`/competency/${row.original.competency.id}`}
 					className="text-primary hover:underline"
 				>
 					{row.original.competency.name}

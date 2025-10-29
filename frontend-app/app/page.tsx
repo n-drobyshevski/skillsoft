@@ -24,9 +24,17 @@ import { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import TopCompetenciesCard from "@/components/TopCompetenciesCard";
+import { useHeader } from "@/context/HeaderContext";
 
 // Main Dashboard Component
 export default function Page() {
+	const { setTitle, setSubtitle, setEntityName } = useHeader();
+	
+	  useEffect(() => {
+		setTitle("Dashboard");
+		setSubtitle("Overview of competencies and statistics");
+		setEntityName("Competency");
+	  }, [setTitle, setSubtitle, setEntityName]);
 	const [competencies, setCompetencies] = useState<Competency[]>([]);
 	const [stats, setStats] = useState<DashboardStats | null>(null);
 	const [loading, setLoading] = useState<boolean>(true);
@@ -127,12 +135,11 @@ export default function Page() {
 	];
 
 	if (error) {
-		return <ErrorCard error={error} onRetry={fetchData} />;
+		return <ErrorCard error={error} callback={fetchData} />;
 	}
 
 	return (
 		<div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
-			{/* <Header title="Dashboard" subtitle="Overview of competencies and statistics" /> */}
 
 			{stats && <DashboardStatsCards stats={stats} />}
 
