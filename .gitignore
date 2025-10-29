@@ -99,3 +99,5 @@ infrastructure/database/postgres-data/
 
 # ====================
 frontend-app/
+frontend-app/app/
+frontend-app/src/

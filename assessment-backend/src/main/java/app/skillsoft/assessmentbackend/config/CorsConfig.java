@@ -53,11 +53,34 @@ public class CorsConfig implements WebMvcConfigurer {
             return origins;
         }
         
-        // TEMPORARY: Allow all origins for testing (REMOVE IN PRODUCTION)
+        // TEMPORARY: Allow common origins for testing (including production domains)
         String isDev = environment.getProperty("SPRING_PROFILES_ACTIVE", "");
         if (isDev.contains("dev") || isDev.contains("test")) {
-            logger.warn("DEV MODE: Allowing all origins - THIS IS NOT SECURE FOR PRODUCTION!");
-            origins.add("*");
+            logger.warn("DEV MODE: Allowing common origins for testing");
+            origins.addAll(Arrays.asList(
+                // Primary custom domain (Vercel with custom domain)
+                "https://skillsoft.app",
+                "http://skillsoft.app",
+                
+                // Common Vercel patterns
+                "https://skillsoft-frontend.vercel.app",
+                "https://frontend-app.vercel.app", 
+                "https://skillsoft.vercel.app",
+                "https://skillsoft-front.vercel.app",
+                "https://skillsoft-git-main.vercel.app",
+                "https://skillsoft-git-master.vercel.app",
+                "https://skillsoft-git-dev.vercel.app",
+                
+                // Local development
+                "http://localhost:3000",
+                "http://localhost:3001", 
+                "http://localhost:3002",
+                "http://localhost:3003",
+                "http://localhost:5173",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:3001",
+                "http://127.0.0.1:3002"
+            ));
             return origins;
         }
         
@@ -65,7 +88,11 @@ public class CorsConfig implements WebMvcConfigurer {
         String host = environment.getProperty("SERVER_HOST", "localhost");
         logger.info("SERVER_HOST: {}, using fallback origins", host);
         origins.addAll(Arrays.asList(
-            // Vercel deployment URLs - Replace with your actual Vercel URL
+            // Primary custom domain (Vercel with custom domain)
+            "https://skillsoft.app",
+            "http://skillsoft.app",
+            
+            // Vercel default URLs (as backup)
             "https://skillsoft-frontend.vercel.app",
             "https://frontend-app.vercel.app", 
             "https://skillsoft.vercel.app",
@@ -77,10 +104,6 @@ public class CorsConfig implements WebMvcConfigurer {
             // Railway production URLs (no ports needed)
             "https://frontend-app-production-e74e.up.railway.app",
             "http://frontend-app-production-e74e.up.railway.app",
-            
-            // Custom domain URLs  
-            "http://skillsoft.app",
-            "https://skillsoft.app",
             
             // Railway internal networking
             "http://outstanding-presence.railway.internal",
@@ -104,12 +127,15 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(@NonNull CorsRegistry registry) {
         List<String> allowedOrigins = getAllowedOrigins();
+        logger.info("Adding CORS mappings with origins: {}", allowedOrigins);
+        
+        boolean hasWildcard = allowedOrigins.contains("*");
         
         registry.addMapping("/**")  // Apply to all endpoints
                 .allowedOrigins(allowedOrigins.toArray(new String[0]))
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
                 .allowedHeaders("*")
-                .allowCredentials(true)
+                .allowCredentials(!hasWildcard)  // Only allow credentials if not using wildcard
                 .maxAge(3600);
     }
 
@@ -118,12 +144,20 @@ public class CorsConfig implements WebMvcConfigurer {
         CorsConfiguration configuration = new CorsConfiguration();
         
         List<String> allowedOrigins = getAllowedOrigins();
+        logger.info("Configuring CORS with origins: {}", allowedOrigins);
 
         // Allow specific origins (frontend URLs)
         configuration.setAllowedOrigins(allowedOrigins);
         
-        // Allow credentials for authentication
-        configuration.setAllowCredentials(true);
+        // Only allow credentials if not using wildcard
+        boolean hasWildcard = allowedOrigins.contains("*");
+        if (!hasWildcard) {
+            configuration.setAllowCredentials(true);
+            logger.info("CORS: Credentials allowed (no wildcard)");
+        } else {
+            configuration.setAllowCredentials(false);
+            logger.warn("CORS: Credentials disabled due to wildcard origin");
+        }
         
         // Allow all headers including custom ones
         configuration.setAllowedHeaders(Arrays.asList("*"));
