@@ -11,13 +11,17 @@ import java.util.Map;
 import java.util.UUID;
 
 @Entity
-@Table(name = "competencies")
+@Table(name = "competencies",
+       uniqueConstraints = {
+           @UniqueConstraint(name = "uc_competency_name", columnNames = {"name"})
+       }
+)
 public class Competency {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name="name", nullable = false, unique = true)
+    @Column(name="name", nullable = false)
     private String name;
 
     @Column(name ="description", length = 1000)

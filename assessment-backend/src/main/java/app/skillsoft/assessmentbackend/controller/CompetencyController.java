@@ -68,18 +68,9 @@ public class CompetencyController {
     @PostMapping
     public ResponseEntity<CompetencyDto> createCompetency(@RequestBody CompetencyDto competencyDto) {
         logger.info("POST /api/competencies endpoint called");
-
-        try {
-            Competency createdCompetency = competencyService.createCompetency(competencyMapper.fromDto(competencyDto));
-            logger.info("Created competency with id: {}", createdCompetency.getId());
-            return ResponseEntity.status(HttpStatus.CREATED).body(competencyMapper.toDto(createdCompetency));
-        } catch (IllegalArgumentException e) {
-            logger.warn("Invalid competency data: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (Exception e) {
-            logger.error("Error creating competency: {}", e.getMessage());
-            throw e;
-        }
+        Competency createdCompetency = competencyService.createCompetency(competencyMapper.fromDto(competencyDto));
+        logger.info("Created competency with id: {}", createdCompetency.getId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(competencyMapper.toDto(createdCompetency));
     }
 
 
@@ -88,19 +79,10 @@ public class CompetencyController {
             @PathVariable UUID id,
             @RequestBody CompetencyDto competencyDto) {
         logger.info("PUT /api/competencies/{} endpoint called", id);
-        try {
-            Competency competencyDetails = competencyMapper.fromDto(competencyDto);
-            Competency updatedCompetency = competencyService.updateCompetency(id, competencyDetails);
-            logger.info("Updated competency with id: {}", updatedCompetency.getId());
-            return ResponseEntity.ok(competencyMapper.toDto(updatedCompetency));
-        } catch (RuntimeException e) {
-            if (e.getMessage().contains("Competency not found")) {
-                logger.warn("Competency with id {} not found for update", id);
-                return ResponseEntity.notFound().build();
-            }
-            logger.error("Error updating competency with id {}: {}", id, e.getMessage());
-            throw e;
-        }
+        Competency competencyDetails = competencyMapper.fromDto(competencyDto);
+        Competency updatedCompetency = competencyService.updateCompetency(id, competencyDetails);
+        logger.info("Updated competency with id: {}", updatedCompetency.getId());
+        return ResponseEntity.ok(competencyMapper.toDto(updatedCompetency));
     }
 
     @DeleteMapping("/{id}")
@@ -113,13 +95,8 @@ public class CompetencyController {
             return ResponseEntity.notFound().build();
         }
         
-        try {
-            competencyService.deleteCompetency(id);
-            logger.info("Deleted competency with id: {}", id);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            logger.error("Error deleting competency with id {}: {}", id, e.getMessage());
-            throw e;
-        }
+        competencyService.deleteCompetency(id);
+        logger.info("Deleted competency with id: {}", id);
+        return ResponseEntity.noContent().build();
     }
 }

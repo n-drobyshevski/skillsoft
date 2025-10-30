@@ -11,6 +11,8 @@ import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
 import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -59,44 +61,38 @@ public class BehavioralIndicatorController {
     }
 
     @PostMapping
-    public BehavioralIndicatorDto createBehavioralIndicator(
-            @RequestBody UUID competencyId,
+    public ResponseEntity<BehavioralIndicatorDto> createBehavioralIndicator(
+            @RequestParam("competencyId") UUID competencyId,
             @RequestBody BehavioralIndicatorDto behavioralIndicatorDto) {
         logger.info("POST /api/behavioral-indicators/ endpoint called");
-
-        BehavioralIndicator createdBI = behavioralIndicatorService.createBehavioralIndicator(competencyId, behavioralIndicatorMapper.fromDto(behavioralIndicatorDto));
-
-        logger.info("Created behavioral indicator with id: {} ", createdBI.getId());
-        return behavioralIndicatorMapper.toDto(createdBI);
+        try {
+            BehavioralIndicator createdBI = behavioralIndicatorService.createBehavioralIndicator(competencyId, behavioralIndicatorMapper.fromDto(behavioralIndicatorDto));
+            logger.info("Created behavioral indicator with id: {} ", createdBI.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(behavioralIndicatorMapper.toDto(createdBI));
+        } catch (RuntimeException e) {
+            logger.error("Error creating behavioral indicator: {}", e.getMessage());
+            // Assuming other runtime exceptions could be "Competency not found"
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @PutMapping("/{biId}")
-    public BehavioralIndicatorDto updateBehavioralIndicator(
+    public ResponseEntity<BehavioralIndicatorDto> updateBehavioralIndicator(
             @PathVariable("biId") UUID biId,
             @RequestBody BehavioralIndicatorDto behavioralIndicatorDto) {
         logger.info("PUT /api/behavioral-indicators/{} endpoint called", biId);
-        try {
-            BehavioralIndicator indicatorDetails = behavioralIndicatorMapper.fromDto(behavioralIndicatorDto);
-            BehavioralIndicator updatedIndicator = behavioralIndicatorService.updateBehavioralIndicator(biId, indicatorDetails);
-            logger.info("Updated behavioral indicator with id: {} for competency: {}", updatedIndicator.getId());
-            return behavioralIndicatorMapper.toDto(updatedIndicator);
-        } catch (RuntimeException e) {
-            logger.error("Error updating behavioral indicator with id {} for competency {}: {}", biId, e.getMessage());
-            throw e;
-        }
+        BehavioralIndicator indicatorDetails = behavioralIndicatorMapper.fromDto(behavioralIndicatorDto);
+        BehavioralIndicator updatedIndicator = behavioralIndicatorService.updateBehavioralIndicator(biId, indicatorDetails);
+        logger.info("Updated behavioral indicator with id: {}", updatedIndicator.getId());
+        return ResponseEntity.ok(behavioralIndicatorMapper.toDto(updatedIndicator));
     }
 
     @DeleteMapping("/{biId}")
-    public void deleteBehavioralIndicator(
+    public ResponseEntity<Void> deleteBehavioralIndicator(
             @PathVariable("biId") UUID biId) {
         logger.info("DELETE /api/behavioral-indicators/{} endpoint called",  biId);
-        try {
-            behavioralIndicatorService.deleteBehavioralIndicator( biId);
-            logger.info("Deleted behavioral indicator with id: {} ", biId);
-
-        } catch (RuntimeException e) {
-            logger.error("Error deleting behavioral indicator with id {} : {}", biId, e.getMessage());
-            throw e;
-        }
+        behavioralIndicatorService.deleteBehavioralIndicator(biId);
+        logger.info("Deleted behavioral indicator with id: {} ", biId);
+        return ResponseEntity.noContent().build();
     }
 }

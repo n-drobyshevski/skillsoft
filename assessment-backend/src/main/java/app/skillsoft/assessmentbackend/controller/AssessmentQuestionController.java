@@ -5,6 +5,7 @@ import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
 import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,26 +43,26 @@ public class AssessmentQuestionController {
     }
     
     @PostMapping
-    public AssessmentQuestionDto createQuestion(
-            @PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId,
-            @RequestBody AssessmentQuestion question) {
-        
-        AssessmentQuestion createdQuestion = assessmentQuestionService.createAssesmentQuestion(behavioralIndicatorId, question);
-        return assessmentQuestionMapper.toDto(createdQuestion);
+    public ResponseEntity<AssessmentQuestionDto> createQuestion(
+            @RequestParam(name="behavioralIndicatorId") UUID behavioralIndicatorId,
+            @RequestBody AssessmentQuestionDto questionDto) {
+        try {
+            AssessmentQuestion question = assessmentQuestionMapper.fromDto(questionDto);
+            AssessmentQuestion createdQuestion = assessmentQuestionService.createAssesmentQuestion(behavioralIndicatorId, question);
+            return ResponseEntity.status(HttpStatus.CREATED).body(assessmentQuestionMapper.toDto(createdQuestion));
+        } catch (RuntimeException e) {
+            // e.g. Behavioral Indicator not found
+            return ResponseEntity.badRequest().build();
+        }
     }
     
     @PutMapping("/{questionId}")
     public ResponseEntity<AssessmentQuestionDto> updateQuestion(
             @PathVariable(name="questionId") UUID questionId,
-            @RequestBody AssessmentQuestion question) {
-        
+            @RequestBody AssessmentQuestionDto questionDto) {
+        AssessmentQuestion question = assessmentQuestionMapper.fromDto(questionDto);
         AssessmentQuestion updatedQuestion = assessmentQuestionService.updateAssesmentQuestion(questionId, question);
-                
-        if (updatedQuestion != null) {
-            return ResponseEntity.ok(assessmentQuestionMapper.toDto(updatedQuestion));
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+        return ResponseEntity.ok(assessmentQuestionMapper.toDto(updatedQuestion));
     }
     
     @DeleteMapping("/{questionId}")
