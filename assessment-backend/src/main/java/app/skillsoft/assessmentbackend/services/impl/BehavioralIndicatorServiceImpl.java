@@ -81,10 +81,47 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
                     existingIndicator.setApprovalStatus(behavioralIndicatorDetails.getApprovalStatus());
                     existingIndicator.setOrderIndex(behavioralIndicatorDetails.getOrderIndex());
 
-
                     return behavioralIndicatorRepository.save(existingIndicator);
                 })
                 .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId ));
+    }
+
+    @Override
+    @Transactional
+    public BehavioralIndicator updateBehavioralIndicatorCompetency(UUID behavioralIndicatorId, UUID newCompetencyId, BehavioralIndicator behavioralIndicatorDetails) {
+        // Find the existing indicator
+        BehavioralIndicator existingIndicator = behavioralIndicatorRepository.findById(behavioralIndicatorId)
+                .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId));
+
+        // Find the new competency
+        Competency newCompetency = competencyRepository.findById(newCompetencyId)
+                .orElseThrow(() -> new RuntimeException("Competency not found with id: " + newCompetencyId));
+
+        // Check if title conflict exists in the new competency
+        // A title conflict occurs when the new competency already has an indicator with the same title
+        List<BehavioralIndicator> existingWithTitle = behavioralIndicatorRepository.findByCompetencyId(newCompetencyId)
+                .stream()
+                .filter(bi -> bi.getTitle().equalsIgnoreCase(behavioralIndicatorDetails.getTitle()) && !bi.getId().equals(behavioralIndicatorId))
+                .toList();
+        
+        if (!existingWithTitle.isEmpty()) {
+            throw new RuntimeException("An indicator with title '" + behavioralIndicatorDetails.getTitle() + "' already exists in the target competency. Please use a unique title for reattachment.");
+        }
+
+        // Update all fields including competency relationship
+        existingIndicator.setCompetency(newCompetency);
+        existingIndicator.setTitle(behavioralIndicatorDetails.getTitle());
+        existingIndicator.setDescription(behavioralIndicatorDetails.getDescription());
+        existingIndicator.setObservabilityLevel(behavioralIndicatorDetails.getObservabilityLevel());
+        existingIndicator.setMeasurementType(behavioralIndicatorDetails.getMeasurementType());
+        existingIndicator.setWeight(behavioralIndicatorDetails.getWeight());
+        existingIndicator.setExamples(behavioralIndicatorDetails.getExamples());
+        existingIndicator.setCounterExamples(behavioralIndicatorDetails.getCounterExamples());
+        existingIndicator.setActive(behavioralIndicatorDetails.isActive());
+        existingIndicator.setApprovalStatus(behavioralIndicatorDetails.getApprovalStatus());
+        existingIndicator.setOrderIndex(behavioralIndicatorDetails.getOrderIndex());
+
+        return behavioralIndicatorRepository.save(existingIndicator);
     }
 
     @Override

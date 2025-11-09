@@ -79,12 +79,28 @@ public class BehavioralIndicatorController {
     @PutMapping("/{biId}")
     public ResponseEntity<BehavioralIndicatorDto> updateBehavioralIndicator(
             @PathVariable("biId") UUID biId,
+            @RequestParam(value = "competencyId", required = false) UUID competencyId,
             @RequestBody BehavioralIndicatorDto behavioralIndicatorDto) {
-        logger.info("PUT /api/behavioral-indicators/{} endpoint called", biId);
-        BehavioralIndicator indicatorDetails = behavioralIndicatorMapper.fromDto(behavioralIndicatorDto);
-        BehavioralIndicator updatedIndicator = behavioralIndicatorService.updateBehavioralIndicator(biId, indicatorDetails);
-        logger.info("Updated behavioral indicator with id: {}", updatedIndicator.getId());
-        return ResponseEntity.ok(behavioralIndicatorMapper.toDto(updatedIndicator));
+        logger.info("PUT /api/behavioral-indicators/{} endpoint called with competencyId: {}", biId, competencyId);
+        try {
+            BehavioralIndicator indicatorDetails = behavioralIndicatorMapper.fromDto(behavioralIndicatorDto);
+            
+            BehavioralIndicator updatedIndicator;
+            if (competencyId != null) {
+                // Update with competency change (reattachment)
+                updatedIndicator = behavioralIndicatorService.updateBehavioralIndicatorCompetency(biId, competencyId, indicatorDetails);
+                logger.info("Updated behavioral indicator {} and reattached to competency {}", updatedIndicator.getId(), competencyId);
+            } else {
+                // Regular update without competency change
+                updatedIndicator = behavioralIndicatorService.updateBehavioralIndicator(biId, indicatorDetails);
+                logger.info("Updated behavioral indicator with id: {}", updatedIndicator.getId());
+            }
+            
+            return ResponseEntity.ok(behavioralIndicatorMapper.toDto(updatedIndicator));
+        } catch (RuntimeException e) {
+            logger.error("Error updating behavioral indicator: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @DeleteMapping("/{biId}")
