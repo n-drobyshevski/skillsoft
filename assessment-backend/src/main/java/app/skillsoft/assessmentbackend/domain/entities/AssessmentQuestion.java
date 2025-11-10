@@ -12,13 +12,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Entity
-@Table(name="assessment_questions",
-       uniqueConstraints = {
-           @UniqueConstraint(name = "uc_assessmentquestion_indicator_text",
-                             columnNames = {"behavioral_indicator_id", "question_text"}),
-           @UniqueConstraint(name = "uc_assessmentquestion_indicator_order",
-                             columnNames = {"behavioral_indicator_id", "order_index"})
-       })
+@Table(name="assessment_questions")
 public class AssessmentQuestion {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)

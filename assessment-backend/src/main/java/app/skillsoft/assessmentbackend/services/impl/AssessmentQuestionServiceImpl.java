@@ -1,9 +1,12 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
+import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -13,9 +16,12 @@ import java.util.UUID;
 public class AssessmentQuestionServiceImpl implements AssessmentQuestionService {
 
     private final AssessmentQuestionRepository assessmentQuestionRepository;
+    private final BehavioralIndicatorRepository behavioralIndicatorRepository;
 
-    public AssessmentQuestionServiceImpl(AssessmentQuestionRepository assessmentQuestionRepository) {
+    public AssessmentQuestionServiceImpl(AssessmentQuestionRepository assessmentQuestionRepository,
+                                        BehavioralIndicatorRepository behavioralIndicatorRepository) {
         this.assessmentQuestionRepository = assessmentQuestionRepository;
+        this.behavioralIndicatorRepository = behavioralIndicatorRepository;
     }
 
     @Override
@@ -29,8 +35,15 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
     }
 
     @Override
+    @Transactional
     public AssessmentQuestion createAssesmentQuestion(UUID behavioralIndicatorId, AssessmentQuestion assessmentQuestion) {
-        assessmentQuestion.setBehavioralIndicatorId(behavioralIndicatorId);
+        // Fetch the actual BehavioralIndicator entity within transaction
+        BehavioralIndicator behavioralIndicator = behavioralIndicatorRepository.findById(behavioralIndicatorId)
+                .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId));
+        
+        // Set the managed entity relationship
+        assessmentQuestion.setBehavioralIndicator(behavioralIndicator);
+        
         return assessmentQuestionRepository.save(assessmentQuestion);
     }
 

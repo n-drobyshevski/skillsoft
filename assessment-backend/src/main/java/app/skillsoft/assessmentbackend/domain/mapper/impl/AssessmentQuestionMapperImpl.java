@@ -3,21 +3,12 @@ package app.skillsoft.assessmentbackend.domain.mapper.impl;
 import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
-import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
 @Component
 public class AssessmentQuestionMapperImpl implements AssessmentQuestionMapper {
-
-    private final BehavioralIndicatorRepository behavioralIndicatorRepository;
-
-    @Autowired
-    public AssessmentQuestionMapperImpl(BehavioralIndicatorRepository behavioralIndicatorRepository) {
-        this.behavioralIndicatorRepository = behavioralIndicatorRepository;
-    }
 
     @Override
     public AssessmentQuestion fromDto(AssessmentQuestionDto dto) {
@@ -36,10 +27,8 @@ public class AssessmentQuestionMapperImpl implements AssessmentQuestionMapper {
         question.setActive(dto.isActive());
         question.setOrderIndex(dto.orderIndex());
 
-        if (dto.behavioralIndicatorId() != null) {
-            behavioralIndicatorRepository.findById(dto.behavioralIndicatorId())
-                    .ifPresent(question::setBehavioralIndicator);
-        }
+        // DO NOT set behavioralIndicator here - it will be set by the service within transaction
+        // The behavioralIndicatorId from DTO is passed separately to the service layer
 
         return question;
     }

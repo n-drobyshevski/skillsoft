@@ -27,9 +27,6 @@ public class ErrorResponse {
     @JsonProperty("status")
     private int status;
     
-    @JsonProperty("code")
-    private String code;
-    
     @JsonProperty("message")
     private String message;
     
@@ -71,24 +68,20 @@ public class ErrorResponse {
         this.message = message;
         this.details = details;
     }
-    
+
     /**
-     * Constructor with error code
+     * Constructor with full error information
      */
-    public ErrorResponse(int status, String code, String message, String details) {
-        this();
-        this.status = status;
-        this.code = code;
-        this.message = message;
-        this.details = details;
+    public ErrorResponse(int status, String message, String details, String path) {
+        this(status, message, details);
+        this.path = path;
     }
 
     /**
-     * Constructor with full error information including path
+     * Constructor with correlation ID
      */
     public ErrorResponse(int status, String message, String details, String path, String correlationId) {
-        this(status, message, details);
-        this.path = path;
+        this(status, message, details, path);
         this.correlationId = correlationId;
     }
 
@@ -99,14 +92,6 @@ public class ErrorResponse {
 
     public void setStatus(int status) {
         this.status = status;
-    }
-    
-    public String getCode() {
-        return code;
-    }
-
-    public void setCode(String code) {
-        this.code = code;
     }
 
     public String getMessage() {
@@ -177,7 +162,6 @@ public class ErrorResponse {
     public String toString() {
         return "ErrorResponse{" +
                 "status=" + status +
-                ", code='" + code + '\'' +
                 ", message='" + message + '\'' +
                 ", details='" + details + '\'' +
                 ", timestamp=" + timestamp +

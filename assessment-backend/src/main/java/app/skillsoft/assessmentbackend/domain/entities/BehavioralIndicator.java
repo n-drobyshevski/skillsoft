@@ -8,12 +8,7 @@ import jakarta.validation.constraints.Min;
 import java.util.UUID;
 
 @Entity
-@Table(name = "behavioral_indicators",
-       uniqueConstraints = {
-           @UniqueConstraint(name = "uc_behavioralindicator_competency_title",
-                             columnNames = {"competency_id", "title"})
-       }
-)
+@Table(name = "behavioral_indicators")
 public class BehavioralIndicator {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
@@ -52,11 +47,6 @@ public class BehavioralIndicator {
     @Column(name = "approval_status", nullable = false)
     @Enumerated(EnumType.STRING)
     private ApprovalStatus approvalStatus;
-
-    @Column(name = "order_index", nullable = false)
-    @Min(value = 1, message = "Order index must be positive")
-    @Max(value = 20, message = "Maximum 20 indicators per competency")
-    private Integer orderIndex;
 
     public BehavioralIndicator() {
 
@@ -190,4 +180,9 @@ public class BehavioralIndicator {
         this.approvalStatus = approvalStatus;
         this.orderIndex = orderIndex;
     }
+
+    @Column(name = "order_index", nullable = false)
+    @Min(value = 1, message = "Order index must be positive")
+    @Max(value = 20, message = "Maximum 20 indicators per competency")
+    private Integer orderIndex;
 }

@@ -1,7 +1,11 @@
 package app.skillsoft.assessmentbackend.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.lang.NonNull;
@@ -46,6 +50,14 @@ public class CorsConfig implements WebMvcConfigurer {
                 }
             }
             logger.info("Using ALLOWED_ORIGINS: {}", origins);
+            return origins;
+        }
+        
+        // TEMPORARY: Allow all origins for testing (REMOVE IN PRODUCTION)
+        String isDev = environment.getProperty("SPRING_PROFILES_ACTIVE", "");
+        if (isDev.contains("dev") || isDev.contains("test")) {
+            logger.warn("DEV MODE: Allowing all origins - THIS IS NOT SECURE FOR PRODUCTION!");
+            origins.add("*");
             return origins;
         }
         
@@ -98,6 +110,45 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
                 .allowedHeaders("*")
                 .allowCredentials(true)
-                .maxAge(3600L);
+                .maxAge(3600);
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        
+        List<String> allowedOrigins = getAllowedOrigins();
+
+        // Allow specific origins (frontend URLs)
+        configuration.setAllowedOrigins(allowedOrigins);
+        
+        // Allow credentials for authentication
+        configuration.setAllowCredentials(true);
+        
+        // Allow all headers including custom ones
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        
+        // Expose headers that the client can access
+        configuration.setExposedHeaders(Arrays.asList(
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Credentials",
+            "Access-Control-Allow-Headers",
+            "Access-Control-Allow-Methods",
+            "Access-Control-Max-Age",
+            "Access-Control-Request-Headers",
+            "Access-Control-Request-Method"
+        ));
+        
+        // Allow specific HTTP methods
+        configuration.setAllowedMethods(Arrays.asList(
+            "GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"
+        ));
+        
+        // Configure how long the browser can cache preflight requests
+        configuration.setMaxAge(3600L);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);  // Apply to all endpoints
+        return source;
     }
 }

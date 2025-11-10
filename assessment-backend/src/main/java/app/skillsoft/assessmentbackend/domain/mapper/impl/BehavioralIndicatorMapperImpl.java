@@ -2,24 +2,13 @@ package app.skillsoft.assessmentbackend.domain.mapper.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
-import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
 import java.util.UUID;
 
 @Component
 public class BehavioralIndicatorMapperImpl implements BehavioralIndicatorMapper {
-
-    private final CompetencyRepository competencyRepository;
-
-    @Autowired
-    public BehavioralIndicatorMapperImpl(CompetencyRepository competencyRepository) {
-        this.competencyRepository = competencyRepository;
-    }
 
     @Override
     public BehavioralIndicator fromDto(BehavioralIndicatorDto dto) {
@@ -40,11 +29,8 @@ public class BehavioralIndicatorMapperImpl implements BehavioralIndicatorMapper 
         indicator.setApprovalStatus(dto.approvalStatus());
         indicator.setOrderIndex(dto.orderIndex());
 
-        // Set competency if ID is provided
-        if (dto.competencyId() != null) {
-            Optional<Competency> competency = competencyRepository.findById(dto.competencyId());
-            competency.ifPresent(indicator::setCompetency);
-        }
+        // DO NOT set competency here - it will be set by the service within transaction
+        // The competencyId from DTO is passed separately to the service layer
 
         return indicator;
     }

@@ -94,7 +94,11 @@ public class CompetencyServiceImpl implements CompetencyService {
 
     @Override
     @Transactional
-    public void deleteCompetency(UUID id) {
-        competencyRepository.deleteById(id);
+    public boolean deleteCompetency(UUID id) {
+        if (competencyRepository.existsById(id)) {
+            competencyRepository.deleteById(id);
+            return true;
+        }
+        return false;
     }
 }
