@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.domain.entities;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -48,6 +50,8 @@ public class AssessmentQuestion {
     private boolean isActive;
 
     @Column(name="order_index", nullable = false)
+    @Min(value = 1, message = "Order index must be positive")
+    @Max(value = 50, message = "Maximum 50 questions per indicator")
     private int orderIndex;
 
     // Constructors
