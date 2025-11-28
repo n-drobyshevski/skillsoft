@@ -6,12 +6,20 @@ import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
 import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * REST Controller for Assessment Question management.
+ * 
+ * Security:
+ * - GET endpoints: All authenticated users (ROLE_USER)
+ * - POST/PUT/DELETE: ADMIN or EDITOR role required
+ */
 @RestController
 @RequestMapping(value = "/api/questions")
 public class AssessmentQuestionController {
@@ -42,6 +50,7 @@ public class AssessmentQuestionController {
     }
     
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public AssessmentQuestionDto createQuestion(
             @RequestParam(name="behavioralIndicatorId") UUID behavioralIndicatorId,
             @RequestBody AssessmentQuestion question) {
@@ -51,6 +60,7 @@ public class AssessmentQuestionController {
     }
     
     @PutMapping("/{questionId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<AssessmentQuestionDto> updateQuestion(
             @PathVariable(name="questionId") UUID questionId,
             @RequestBody AssessmentQuestion question) {
@@ -65,6 +75,7 @@ public class AssessmentQuestionController {
     }
     
     @DeleteMapping("/{questionId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<Void> deleteQuestion(
             @PathVariable(name="questionId") UUID questionId) {
         

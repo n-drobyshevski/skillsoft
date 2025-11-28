@@ -14,11 +14,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 import java.util.List;
 
+/**
+ * REST Controller for Competency management.
+ * 
+ * Security:
+ * - GET endpoints: All authenticated users (ROLE_USER)
+ * - POST/PUT/DELETE: ADMIN or EDITOR role required
+ */
 @RestController
 @RequestMapping("/api/competencies")
 public class CompetencyController {
@@ -66,6 +74,7 @@ public class CompetencyController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<CompetencyDto> createCompetency(@RequestBody CompetencyDto competencyDto) {
         logger.info("POST /api/competencies endpoint called");
 
@@ -84,6 +93,7 @@ public class CompetencyController {
 
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<CompetencyDto> updateCompetency(
             @PathVariable UUID id,
             @RequestBody CompetencyDto competencyDto) {
@@ -104,6 +114,7 @@ public class CompetencyController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<Void> deleteCompetency(@PathVariable UUID id) {
         logger.info("DELETE /api/competencies/{} endpoint called", id);
         

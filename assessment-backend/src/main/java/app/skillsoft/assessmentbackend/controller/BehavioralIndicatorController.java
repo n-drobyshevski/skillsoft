@@ -12,11 +12,19 @@ import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * REST Controller for Behavioral Indicator management.
+ * 
+ * Security:
+ * - GET endpoints: All authenticated users (ROLE_USER)
+ * - POST/PUT/DELETE: ADMIN or EDITOR role required
+ */
 @RestController
 @RequestMapping(value = "/api/behavioral-indicators")
 public class BehavioralIndicatorController {
@@ -60,6 +68,7 @@ public class BehavioralIndicatorController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public BehavioralIndicatorDto createBehavioralIndicator(
             @RequestBody BehavioralIndicatorDto behavioralIndicatorDto) {
         logger.info("POST /api/behavioral-indicators/ endpoint called");
@@ -73,6 +82,7 @@ public class BehavioralIndicatorController {
     }
 
     @PutMapping("/{biId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<BehavioralIndicatorDto> updateBehavioralIndicator(
             @PathVariable("biId") UUID biId,
             @RequestParam(value = "competencyId", required = false) UUID competencyId,
@@ -94,6 +104,7 @@ public class BehavioralIndicatorController {
     }
 
     @DeleteMapping("/{biId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<Void> deleteBehavioralIndicator(
             @PathVariable("biId") UUID biId) {
         logger.info("DELETE /api/behavioral-indicators/{} endpoint called",  biId);

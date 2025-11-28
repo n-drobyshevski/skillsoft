@@ -1,0 +1,104 @@
+package app.skillsoft.assessmentbackend.config;
+
+import app.skillsoft.assessmentbackend.security.RoleAuthenticationFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+/**
+ * Security configuration for the Skillsoft Assessment Backend.
+ * 
+ * This configuration:
+ * - Enables method-level security with @PreAuthorize annotations
+ * - Uses a custom filter to extract user roles from request headers
+ * - Works with Clerk.js authentication in the frontend
+ * - Maintains stateless session management (no server-side sessions)
+ * 
+ * Role-based access control is enforced at two levels:
+ * 1. Frontend (Next.js middleware) - Route-level protection
+ * 2. Backend (@PreAuthorize annotations) - Method-level protection
+ * 
+ * Note: This configuration is excluded during tests (profile != test).
+ * Tests use TestSecurityConfig instead.
+ * 
+ * @see RoleAuthenticationFilter
+ */
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)
+@Profile("!test")
+@Order(1)
+public class SecurityConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+
+    private final RoleAuthenticationFilter roleAuthenticationFilter;
+    private final CorsConfig corsConfig;
+
+    public SecurityConfig(RoleAuthenticationFilter roleAuthenticationFilter, CorsConfig corsConfig) {
+        this.roleAuthenticationFilter = roleAuthenticationFilter;
+        this.corsConfig = corsConfig;
+    }
+
+    /**
+     * Configure the security filter chain.
+     * 
+     * Security rules:
+     * - Clerk webhooks are public (no auth required)
+     * - Health endpoints are public
+     * - OPTIONS requests are allowed for CORS preflight
+     * - All other requests require authentication via role header
+     */
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        logger.info("Configuring Spring Security filter chain");
+
+        http
+            // Disable CSRF - we're using stateless API with header-based auth
+            .csrf(AbstractHttpConfigurer::disable)
+            
+            // Configure CORS using existing CorsConfig
+            .cors(cors -> cors.configurationSource(corsConfig.corsConfigurationSource()))
+            
+            // Stateless session management
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            
+            // Configure request authorization
+            .authorizeHttpRequests(authz -> authz
+                // Public endpoints - no authentication required
+                .requestMatchers("/api/webhooks/**").permitAll()
+                .requestMatchers("/actuator/health/**").permitAll()
+                .requestMatchers("/error").permitAll()
+                
+                // Allow CORS preflight requests
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                
+                // Allow public read access (GET) for content endpoints
+                .requestMatchers(HttpMethod.GET, "/api/competencies/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/behavioral-indicators/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/questions/**").permitAll()
+                
+                // All other requests require authentication
+                // Role-based access is handled by @PreAuthorize annotations
+                .anyRequest().authenticated()
+            )
+            
+            // Add our custom role authentication filter
+            .addFilterBefore(roleAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        logger.info("Security filter chain configured successfully");
+        return http.build();
+    }
+}

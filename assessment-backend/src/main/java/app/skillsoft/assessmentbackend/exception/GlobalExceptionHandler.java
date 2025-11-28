@@ -15,6 +15,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -329,6 +331,56 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
         
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    // ===============================
+    // SECURITY EXCEPTIONS
+    // ===============================
+
+    /**
+     * Handle AccessDeniedException (insufficient permissions/role).
+     * Returns HTTP 403 Forbidden when user lacks required role.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(
+            AccessDeniedException ex, WebRequest request) {
+        
+        String correlationId = getCorrelationId(request);
+        logger.warn("Access denied [{}]: {}", correlationId, ex.getMessage());
+        
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.FORBIDDEN,
+            "Access denied",
+            "You do not have sufficient permissions to access this resource",
+            request
+        );
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+    }
+
+    /**
+     * Handle AuthenticationException (user not authenticated).
+     * Returns HTTP 401 Unauthorized when authentication fails.
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleAuthenticationException(
+            AuthenticationException ex, WebRequest request) {
+        
+        String correlationId = getCorrelationId(request);
+        logger.warn("Authentication failed [{}]: {}", correlationId, ex.getMessage());
+        
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.UNAUTHORIZED,
+            "Authentication required",
+            "You must be authenticated to access this resource",
+            request
+        );
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
     }
 
     // ===============================

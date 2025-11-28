@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -21,9 +22,14 @@ import java.util.UUID;
 /**
  * REST Controller for User management operations.
  * Provides endpoints for user CRUD operations and Clerk.js integration.
+ * 
+ * Security:
+ * - All endpoints require ADMIN role
+ * - Uses @PreAuthorize for method-level security
  */
 @RestController
 @RequestMapping("/api/users")
+@PreAuthorize("hasRole('ADMIN')")
 public class UserController {
 
     private final UserService userService;
