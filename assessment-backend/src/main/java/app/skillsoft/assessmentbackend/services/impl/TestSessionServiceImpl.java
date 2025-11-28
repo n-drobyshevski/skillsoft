@@ -288,7 +288,7 @@ public class TestSessionServiceImpl implements TestSessionService {
         // For each competency in the template
         for (UUID competencyId : template.getCompetencyIds()) {
             // Get behavioral indicators for this competency
-            List<BehavioralIndicator> indicators = indicatorRepository.findByCompetency_Id(competencyId);
+            List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(competencyId);
 
             for (BehavioralIndicator indicator : indicators) {
                 // Get active questions for this indicator
@@ -326,23 +326,27 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         // Set the appropriate answer field based on question type
         switch (question.getQuestionType()) {
-            case SINGLE_CHOICE:
-                answer.setSelectedOptionIds(request.selectedOptionIds());
-                break;
             case MULTIPLE_CHOICE:
+            case SITUATIONAL_JUDGMENT:
                 answer.setSelectedOptionIds(request.selectedOptionIds());
                 break;
             case LIKERT_SCALE:
+            case FREQUENCY_SCALE:
                 answer.setLikertValue(request.likertValue());
                 break;
-            case RANKING:
-                answer.setRankingOrder(request.rankingOrder());
-                break;
-            case OPEN_ENDED:
+            case OPEN_TEXT:
+            case BEHAVIORAL_EXAMPLE:
+            case SELF_REFLECTION:
                 answer.setTextResponse(request.textResponse());
                 break;
-            case SITUATIONAL:
-                answer.setSelectedOptionIds(request.selectedOptionIds());
+            case CAPABILITY_ASSESSMENT:
+            case PEER_FEEDBACK:
+                // These may require specific handling
+                if (request.selectedOptionIds() != null) {
+                    answer.setSelectedOptionIds(request.selectedOptionIds());
+                } else if (request.textResponse() != null) {
+                    answer.setTextResponse(request.textResponse());
+                }
                 break;
         }
 
