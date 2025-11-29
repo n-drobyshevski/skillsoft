@@ -74,6 +74,7 @@ class AssessmentQuestionControllerTest {
             testQuestion.getScoringRubric(),
             testQuestion.getTimeLimit(),
             testQuestion.getDifficultyLevel(),
+            null,
             testQuestion.isActive(),
             testQuestion.getOrderIndex()
         );

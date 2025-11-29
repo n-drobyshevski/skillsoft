@@ -24,6 +24,7 @@ public class AssessmentQuestionMapperImpl implements AssessmentQuestionMapper {
         question.setScoringRubric(dto.scoringRubric());
         question.setTimeLimit(dto.timeLimit());
         question.setDifficultyLevel(dto.difficultyLevel());
+        question.setMetadata(dto.metadata());
         question.setActive(dto.isActive());
         question.setOrderIndex(dto.orderIndex());
 
@@ -53,6 +54,7 @@ public class AssessmentQuestionMapperImpl implements AssessmentQuestionMapper {
                 entity.getScoringRubric(),
                 entity.getTimeLimit(),
                 entity.getDifficultyLevel(),
+                entity.getMetadata(),
                 entity.isActive(),
                 entity.getOrderIndex()
         );

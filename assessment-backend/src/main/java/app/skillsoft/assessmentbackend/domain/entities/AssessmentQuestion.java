@@ -46,6 +46,26 @@ public class AssessmentQuestion {
     @Enumerated(EnumType.STRING)
     private DifficultyLevel difficultyLevel;
 
+    /**
+     * Metadata JSONB field for flexible tagging and context filtering.
+     * Per ROADMAP.md Section 1.B: "Allows filtering questions by context and difficulty"
+     * 
+     * Schema example:
+     * {
+     *   "tags": ["IT", "JUNIOR", "GENERAL"],
+     *   "difficulty": "HARD",
+     *   "time_limit_sec": 60,
+     *   "context": "UNIVERSAL",
+     *   "scenario_type": "WORKPLACE",
+     *   "measurement_target": "BEHAVIORAL"
+     * }
+     * 
+     * Used by Context Neutrality Filter in Scenario A (Universal Baseline)
+     */
+    @Column(name = "metadata", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> metadata;
+
     @Column(name="is_active", nullable = false)
     private boolean isActive;
 
@@ -61,8 +81,8 @@ public class AssessmentQuestion {
 
     public AssessmentQuestion(UUID id, BehavioralIndicator behavioralIndicator, String questionText, 
                              QuestionType questionType, List<Map<String, Object>> answerOptions, 
-                             String scoringRubric, Integer timeLimit, DifficultyLevel difficultyLevel, 
-                             boolean isActive, int orderIndex) {
+                             String scoringRubric, Integer timeLimit, DifficultyLevel difficultyLevel,
+                             Map<String, Object> metadata, boolean isActive, int orderIndex) {
         this.id = id;
         this.behavioralIndicator = behavioralIndicator;
         this.questionText = questionText;
@@ -71,6 +91,7 @@ public class AssessmentQuestion {
         this.scoringRubric = scoringRubric;
         this.timeLimit = timeLimit;
         this.difficultyLevel = difficultyLevel;
+        this.metadata = metadata;
         this.isActive = isActive;
         this.orderIndex = orderIndex;
     }
@@ -159,6 +180,54 @@ public class AssessmentQuestion {
 
     public void setDifficultyLevel(DifficultyLevel difficultyLevel) {
         this.difficultyLevel = difficultyLevel;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata;
+    }
+
+    /**
+     * Convenience method to get tags from metadata.
+     * Returns empty list if metadata or tags are null.
+     */
+    @SuppressWarnings("unchecked")
+    @Transient
+    public List<String> getTags() {
+        if (metadata == null || !metadata.containsKey("tags")) {
+            return List.of();
+        }
+        Object tags = metadata.get("tags");
+        if (tags instanceof List) {
+            return (List<String>) tags;
+        }
+        return List.of();
+    }
+
+    /**
+     * Check if question has a specific tag (case-insensitive).
+     * Used for Context Neutrality Filter in test assembly.
+     */
+    @Transient
+    public boolean hasTag(String tag) {
+        return getTags().stream()
+                .anyMatch(t -> t.equalsIgnoreCase(tag));
+    }
+
+    /**
+     * Check if this is a context-neutral question.
+     * Per ROADMAP.md: Questions with GENERAL/UNIVERSAL tags or without narrow tags (IT, SALES, FINANCE)
+     */
+    @Transient
+    public boolean isContextNeutral() {
+        List<String> tags = getTags();
+        if (tags.isEmpty()) return true;
+        if (hasTag("GENERAL") || hasTag("UNIVERSAL")) return true;
+        // Check for narrow context tags
+        return !hasTag("IT") && !hasTag("SALES") && !hasTag("FINANCE") && !hasTag("HEALTHCARE");
     }
 
     public boolean isActive() {

@@ -147,7 +147,7 @@ class TestSessionControllerTest {
         );
 
         // AssessmentQuestionDto: id, behavioralIndicatorId, questionText, questionType, answerOptions,
-        //                        scoringRubric, timeLimit, difficultyLevel, isActive, orderIndex
+        //                        scoringRubric, timeLimit, difficultyLevel, metadata, isActive, orderIndex
         assessmentQuestionDto = new AssessmentQuestionDto(
                 questionId,
                 UUID.randomUUID(),
@@ -160,6 +160,7 @@ class TestSessionControllerTest {
                 "Standard scoring",
                 60,
                 DifficultyLevel.INTERMEDIATE,
+                null,
                 true,
                 1
         );

@@ -461,6 +461,7 @@ public class TestSessionServiceImpl implements TestSessionService {
                 question.getScoringRubric(),
                 question.getTimeLimit(),
                 question.getDifficultyLevel(),
+                question.getMetadata(),
                 question.isActive(),
                 question.getOrderIndex()
         );

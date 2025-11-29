@@ -33,6 +33,34 @@ public class Competency {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name="standard_codes", columnDefinition = "jsonb")
+    /**
+     * Triple Standard Mapping for global competency alignment.
+     * Per ROADMAP.md Section 1.A "Mapping Strategy":
+     * 
+     * Schema (JSONB structure):
+     * {
+     *   // 1. Psychological Standard (Team Fit / Big Five)
+     *   "global_category": "BIG_FIVE_CONSCIENTIOUSNESS",
+     *   
+     *   // 2. Occupational Standard (Job Fit Baseline - O*NET)
+     *   "onet_ref": {
+     *     "code": "2.B.1.a",
+     *     "name": "Social Perceptiveness",
+     *     "similarity": 0.95
+     *   },
+     *   
+     *   // 3. Transversal Standard (Interoperability - ESCO)
+     *   "esco_ref": {
+     *     "uri": "http://data.europa.eu/esco/skill/S1.2",
+     *     "label": "Working with others"
+     *   }
+     * }
+     * 
+     * Benefits:
+     * - One answer feeds three analytical models simultaneously
+     * - Enables Competency Passport reuse across scenarios
+     * - Normalizes local competencies to global standards
+     */
     private Map<String, Object> standardCodes;
 
     @Column(name="is_active", nullable = false)
@@ -119,6 +147,78 @@ public class Competency {
 
     public void setStandardCodes(Map<String, Object> standardCodes) {
         this.standardCodes = standardCodes;
+    }
+
+    /**
+     * Get the Big Five psychological category mapping.
+     * Per ROADMAP.md: e.g., "BIG_FIVE_CONSCIENTIOUSNESS", "BIG_FIVE_AGREEABLENESS"
+     * @return Big Five category string or null if not mapped
+     */
+    @Transient
+    public String getBigFiveCategory() {
+        if (standardCodes == null) return null;
+        Object category = standardCodes.get("global_category");
+        return category != null ? category.toString() : null;
+    }
+
+    /**
+     * Get the O*NET reference mapping.
+     * Per ROADMAP.md: Contains code (e.g., "2.B.1.a"), name, and similarity score
+     * @return O*NET reference map or null if not mapped
+     */
+    @SuppressWarnings("unchecked")
+    @Transient
+    public Map<String, Object> getOnetRef() {
+        if (standardCodes == null) return null;
+        Object ref = standardCodes.get("onet_ref");
+        return ref instanceof Map ? (Map<String, Object>) ref : null;
+    }
+
+    /**
+     * Get the O*NET code (e.g., "2.B.1.a")
+     * @return O*NET code string or null
+     */
+    @Transient
+    public String getOnetCode() {
+        Map<String, Object> onetRef = getOnetRef();
+        if (onetRef == null) return null;
+        Object code = onetRef.get("code");
+        return code != null ? code.toString() : null;
+    }
+
+    /**
+     * Get the ESCO reference mapping.
+     * Per ROADMAP.md: Contains URI and label for transversal skill
+     * @return ESCO reference map or null if not mapped
+     */
+    @SuppressWarnings("unchecked")
+    @Transient
+    public Map<String, Object> getEscoRef() {
+        if (standardCodes == null) return null;
+        Object ref = standardCodes.get("esco_ref");
+        return ref instanceof Map ? (Map<String, Object>) ref : null;
+    }
+
+    /**
+     * Get the ESCO URI (e.g., "http://data.europa.eu/esco/skill/S1.2")
+     * @return ESCO URI string or null
+     */
+    @Transient
+    public String getEscoUri() {
+        Map<String, Object> escoRef = getEscoRef();
+        if (escoRef == null) return null;
+        Object uri = escoRef.get("uri");
+        return uri != null ? uri.toString() : null;
+    }
+
+    /**
+     * Check if this competency has complete Triple Standard mapping.
+     * Per ROADMAP.md: Required for Scenario A (Universal Baseline) to generate Competency Passport
+     * @return true if Big Five, O*NET, and ESCO mappings are all present
+     */
+    @Transient
+    public boolean hasTripleStandardMapping() {
+        return getBigFiveCategory() != null && getOnetRef() != null && getEscoRef() != null;
     }
 
     public boolean isActive() {
