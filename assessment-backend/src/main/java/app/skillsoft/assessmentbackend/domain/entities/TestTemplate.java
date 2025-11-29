@@ -7,12 +7,22 @@ import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Entity representing a test template configuration.
- * Templates define the structure and rules for competency assessment tests.
+ * Per ROADMAP.md Section 1.C: Stores the "recipe" for dynamic test generation.
+ * 
+ * Key fields:
+ * - goal: Assessment type (OVERVIEW, JOB_FIT, TEAM_FIT) - determines scoring strategy
+ * - blueprint: JSONB configuration for test assembly mechanics
+ * 
+ * Blueprint schema varies by goal:
+ * - OVERVIEW: { strategy, competencies, aggregationTargets, saveAsPassport }
+ * - JOB_FIT: { strategy, onetSocCode, useOnetBenchmarks, reusePassportData, requiredTags, excludeTypes }
+ * - TEAM_FIT: { strategy, teamId, normalizationStandard, checks, saturationThreshold, limit }
  */
 @Entity
 @Table(name = "test_templates")
@@ -28,6 +38,58 @@ public class TestTemplate {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /**
+     * Assessment goal type - determines the scoring strategy and test mechanics.
+     * Per ROADMAP.md Section 1.2: OVERVIEW, JOB_FIT, or TEAM_FIT
+     */
+    @Column(name = "goal")
+    @Enumerated(EnumType.STRING)
+    private AssessmentGoal goal = AssessmentGoal.OVERVIEW;
+
+    /**
+     * Blueprint JSONB configuration for test assembly.
+     * Per ROADMAP.md Section 1.2 - varies by goal:
+     * 
+     * OVERVIEW (Scenario A):
+     * {
+     *   "strategy": "UNIVERSAL_BASELINE",
+     *   "competencies": "CROSS_FUNCTIONAL_ONLY",
+     *   "aggregationTargets": ["BIG_FIVE", "ONET_CROSS_FUNCTIONAL", "ESCO_TRANSVERSAL"],
+     *   "saveAsPassport": true,
+     *   "indicatorsPerCompetency": 2,
+     *   "questionsPerIndicator": 2
+     * }
+     * 
+     * JOB_FIT (Scenario B):
+     * {
+     *   "strategy": "TARGETED_FIT",
+     *   "onetSocCode": "15-1132.00",
+     *   "useOnetBenchmarks": true,
+     *   "reusePassportData": true,
+     *   "requiredTags": ["IT", "MANAGEMENT"],
+     *   "excludeTypes": ["LIKERT"],
+     *   "targetProfile": { "Critical Thinking": 4, "Leadership": 3 }
+     * }
+     * 
+     * TEAM_FIT (Scenario C):
+     * {
+     *   "strategy": "DYNAMIC_GAP_ANALYSIS",
+     *   "teamId": "uuid-alpha-team",
+     *   "normalizationStandard": "ESCO_V1",
+     *   "checks": ["COMPLEMENTARY_SKILLS", "ROLE_SATURATION"],
+     *   "saturationThreshold": 0.75,
+     *   "limit": 20
+     * }
+     */
+    @Column(name = "blueprint", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> blueprint;
+
+    /**
+     * @deprecated Use blueprint field instead. Kept for backward compatibility.
+     * Will be removed in future versions.
+     */
+    @Deprecated
     @Column(name = "competency_ids", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private List<UUID> competencyIds = new ArrayList<>();
@@ -70,6 +132,21 @@ public class TestTemplate {
         // Default constructor required by JPA
     }
 
+    /**
+     * Full constructor with goal and blueprint.
+     * Per ROADMAP.md Section 1.C
+     */
+    public TestTemplate(String name, String description, AssessmentGoal goal, Map<String, Object> blueprint) {
+        this.name = name;
+        this.description = description;
+        this.goal = goal != null ? goal : AssessmentGoal.OVERVIEW;
+        this.blueprint = blueprint;
+    }
+
+    /**
+     * @deprecated Use constructor with goal and blueprint instead.
+     */
+    @Deprecated
     public TestTemplate(String name, String description, List<UUID> competencyIds) {
         this.name = name;
         this.description = description;
@@ -113,10 +190,96 @@ public class TestTemplate {
         this.description = description;
     }
 
+    public AssessmentGoal getGoal() {
+        return goal;
+    }
+
+    public void setGoal(AssessmentGoal goal) {
+        this.goal = goal;
+    }
+
+    public Map<String, Object> getBlueprint() {
+        return blueprint;
+    }
+
+    public void setBlueprint(Map<String, Object> blueprint) {
+        this.blueprint = blueprint;
+    }
+
+    // ============================================
+    // BLUEPRINT HELPER METHODS
+    // Per ROADMAP.md Section 1.2
+    // ============================================
+
+    /**
+     * Get the strategy from blueprint.
+     * @return Strategy string (e.g., "UNIVERSAL_BASELINE", "TARGETED_FIT", "DYNAMIC_GAP_ANALYSIS")
+     */
+    @Transient
+    public String getStrategy() {
+        if (blueprint == null) return null;
+        Object strategy = blueprint.get("strategy");
+        return strategy != null ? strategy.toString() : null;
+    }
+
+    /**
+     * Get the O*NET SOC code for JOB_FIT scenarios.
+     * @return SOC code (e.g., "15-1132.00") or null
+     */
+    @Transient
+    public String getOnetSocCode() {
+        if (blueprint == null) return null;
+        Object code = blueprint.get("onetSocCode");
+        return code != null ? code.toString() : null;
+    }
+
+    /**
+     * Get the team ID for TEAM_FIT scenarios.
+     * @return Team UUID or null
+     */
+    @Transient
+    public String getTeamId() {
+        if (blueprint == null) return null;
+        Object teamId = blueprint.get("teamId");
+        return teamId != null ? teamId.toString() : null;
+    }
+
+    /**
+     * Check if this template should save results as Competency Passport.
+     * Used in OVERVIEW scenario.
+     * @return true if results should be saved as reusable passport
+     */
+    @Transient
+    public boolean shouldSaveAsPassport() {
+        if (blueprint == null) return false;
+        Object save = blueprint.get("saveAsPassport");
+        return Boolean.TRUE.equals(save);
+    }
+
+    /**
+     * Check if this template should reuse existing Passport data.
+     * Used in JOB_FIT scenario for Delta Testing.
+     * @return true if existing passport data should be reused
+     */
+    @Transient
+    public boolean shouldReusePassportData() {
+        if (blueprint == null) return false;
+        Object reuse = blueprint.get("reusePassportData");
+        return Boolean.TRUE.equals(reuse);
+    }
+
+    /**
+     * @deprecated Use blueprint field instead.
+     */
+    @Deprecated
     public List<UUID> getCompetencyIds() {
         return competencyIds;
     }
 
+    /**
+     * @deprecated Use blueprint field instead.
+     */
+    @Deprecated
     public void setCompetencyIds(List<UUID> competencyIds) {
         this.competencyIds = competencyIds;
     }
@@ -228,7 +391,8 @@ public class TestTemplate {
         return "TestTemplate{" +
                 "id=" + id +
                 ", name='" + name + '\'' +
-                ", competencyIds=" + competencyIds +
+                ", goal=" + goal +
+                ", blueprint=" + blueprint +
                 ", isActive=" + isActive +
                 '}';
     }

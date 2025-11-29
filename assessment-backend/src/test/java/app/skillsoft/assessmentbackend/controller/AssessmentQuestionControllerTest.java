@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
@@ -23,6 +24,7 @@ import java.util.HashMap;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -81,6 +83,7 @@ class AssessmentQuestionControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/questions - Should return all questions")
     void shouldReturnAllQuestions() throws Exception {
         when(assessmentQuestionService.listAllQuestions())
@@ -96,6 +99,7 @@ class AssessmentQuestionControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/questions/{id} - Should return question by id")
     void shouldReturnQuestionById() throws Exception {
         when(assessmentQuestionService.findAssesmentQuestionById(testQuestion.getId()))
@@ -111,6 +115,7 @@ class AssessmentQuestionControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/questions - Should create new question")
     void shouldCreateNewQuestion() throws Exception {
         when(assessmentQuestionService.createAssesmentQuestion(any(UUID.class), any(AssessmentQuestion.class)))
@@ -134,6 +139,7 @@ class AssessmentQuestionControllerTest {
                 }""");
 
         mockMvc.perform(post("/api/questions")
+                .with(csrf())
                 .param("behavioralIndicatorId", behavioralIndicatorId.toString())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
@@ -143,6 +149,7 @@ class AssessmentQuestionControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("PUT /api/questions/{id} - Should update existing question")
     void shouldUpdateExistingQuestion() throws Exception {
         when(assessmentQuestionService.updateAssesmentQuestion(any(UUID.class), any(AssessmentQuestion.class)))
@@ -160,12 +167,13 @@ class AssessmentQuestionControllerTest {
                     "questionType": "MULTIPLE_CHOICE",
                     "scoringRubric": "Updated Rubric",
                     "timeLimit": 600,
-                    "difficultyLevel": "EASY",
+                    "difficultyLevel": "FOUNDATIONAL",
                     "active": false,
                     "orderIndex": 2
                 }""");
 
         mockMvc.perform(put("/api/questions/" + testQuestion.getId())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isOk())
@@ -174,13 +182,16 @@ class AssessmentQuestionControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("DELETE /api/questions/{id} - Should delete question")
     void shouldDeleteQuestion() throws Exception {
-        mockMvc.perform(delete("/api/questions/" + testQuestion.getId()))
+        mockMvc.perform(delete("/api/questions/" + testQuestion.getId())
+                .with(csrf()))
                 .andExpect(status().isNoContent());
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/questions/{id} - Should return 404 when question not found")
     void shouldReturn404WhenQuestionNotFound() throws Exception {
         when(assessmentQuestionService.findAssesmentQuestionById(any(UUID.class)))
@@ -191,6 +202,7 @@ class AssessmentQuestionControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     @DisplayName("PUT /api/questions/{id} - Should return 404 when updating non-existent question")
     void shouldReturn404WhenUpdatingNonExistentQuestion() throws Exception {
         when(assessmentQuestionService.updateAssesmentQuestion(any(UUID.class), any(AssessmentQuestion.class)))
@@ -206,12 +218,13 @@ class AssessmentQuestionControllerTest {
                     "questionType": "MULTIPLE_CHOICE",
                     "scoringRubric": "Updated Rubric",
                     "timeLimit": 600,
-                    "difficultyLevel": "EASY",
+                    "difficultyLevel": "FOUNDATIONAL",
                     "active": false,
                     "orderIndex": 2
                 }""");
 
         mockMvc.perform(put("/api/questions/" + UUID.randomUUID())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isNotFound());

@@ -58,8 +58,8 @@ class UserTest {
             assertThat(newUser.getFirstName()).isNull();
             assertThat(newUser.getLastName()).isNull();
             assertThat(newUser.getRole()).isNull();
-            assertThat(newUser.isActive()).isTrue(); // Default value
-            assertThat(newUser.getPreferences()).isNull();
+            assertThat(newUser.isActive()).isTrue(); // Default value is true (primitive boolean)
+            assertThat(newUser.getPreferences()).isEqualTo("{}"); // Default value is empty JSON
         }
 
         @Test

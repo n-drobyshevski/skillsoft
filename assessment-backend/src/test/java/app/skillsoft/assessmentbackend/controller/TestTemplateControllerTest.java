@@ -1,6 +1,7 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService.TemplateStatistics;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -66,13 +67,15 @@ class TestTemplateControllerTest {
         competencyId = UUID.randomUUID();
         now = LocalDateTime.now();
 
-        // TestTemplateDto: id, name, description, competencyIds, questionsPerIndicator, timeLimitMinutes,
+        // TestTemplateDto: id, name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,
         //                  passingScore, isActive, shuffleQuestions, shuffleOptions, allowSkip,
         //                  allowBackNavigation, showResultsImmediately, createdAt, updatedAt
         testTemplateDto = new TestTemplateDto(
                 templateId,
                 "Leadership Assessment Test",
                 "Comprehensive test for leadership competencies",
+                AssessmentGoal.OVERVIEW,  // goal
+                Map.of("strategy", "balanced"),  // blueprint
                 List.of(competencyId),
                 3,           // questionsPerIndicator
                 60,          // timeLimitMinutes
@@ -87,11 +90,12 @@ class TestTemplateControllerTest {
                 now          // updatedAt
         );
 
-        // TestTemplateSummaryDto: id, name, description, competencyCount, timeLimitMinutes, passingScore, isActive, createdAt
+        // TestTemplateSummaryDto: id, name, description, goal, competencyCount, timeLimitMinutes, passingScore, isActive, createdAt
         testTemplateSummaryDto = new TestTemplateSummaryDto(
                 templateId,
                 "Leadership Assessment Test",
                 "Comprehensive test for leadership competencies",
+                AssessmentGoal.OVERVIEW,  // goal
                 3,           // competencyCount
                 60,          // timeLimitMinutes
                 70.0,        // passingScore
@@ -99,11 +103,13 @@ class TestTemplateControllerTest {
                 now          // createdAt
         );
 
-        // CreateTestTemplateRequest: name, description, competencyIds, questionsPerIndicator, timeLimitMinutes,
+        // CreateTestTemplateRequest: name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,
         //                            passingScore, shuffleQuestions, shuffleOptions, allowSkip, allowBackNavigation, showResultsImmediately
         createRequest = new CreateTestTemplateRequest(
                 "New Template",
                 "Description",
+                AssessmentGoal.OVERVIEW,  // goal
+                Map.of("strategy", "balanced"),  // blueprint
                 List.of(competencyId),
                 3,           // questionsPerIndicator
                 60,          // timeLimitMinutes
@@ -115,11 +121,13 @@ class TestTemplateControllerTest {
                 true         // showResultsImmediately
         );
 
-        // UpdateTestTemplateRequest: name, description, competencyIds, questionsPerIndicator, timeLimitMinutes,
+        // UpdateTestTemplateRequest: name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,
         //                            passingScore, isActive, shuffleQuestions, shuffleOptions, allowSkip, allowBackNavigation, showResultsImmediately
         updateRequest = new UpdateTestTemplateRequest(
                 "Updated Template",
                 "Updated Description",
+                AssessmentGoal.JOB_FIT,   // goal
+                Map.of("onetSocCode", "15-1252.00"),  // blueprint
                 List.of(competencyId),
                 5,           // questionsPerIndicator
                 90,          // timeLimitMinutes
@@ -320,6 +328,8 @@ class TestTemplateControllerTest {
             CreateTestTemplateRequest invalidRequest = new CreateTestTemplateRequest(
                     null, // missing name
                     "Description",
+                    AssessmentGoal.OVERVIEW,  // goal
+                    null,  // blueprint
                     List.of(competencyId),
                     3, 60, 70.0, true, true, true, true, true
             );
@@ -359,6 +369,8 @@ class TestTemplateControllerTest {
                     templateId,
                     "Updated Template",
                     "Updated Description",
+                    AssessmentGoal.JOB_FIT,  // goal
+                    Map.of("onetSocCode", "15-1252.00"),  // blueprint
                     List.of(competencyId),
                     5, 90, 80.0, true, false, false, true, true, true,
                     now, LocalDateTime.now()
@@ -445,6 +457,8 @@ class TestTemplateControllerTest {
                     templateId,
                     testTemplateDto.name(),
                     testTemplateDto.description(),
+                    testTemplateDto.goal(),
+                    testTemplateDto.blueprint(),
                     testTemplateDto.competencyIds(),
                     testTemplateDto.questionsPerIndicator(),
                     testTemplateDto.timeLimitMinutes(),

@@ -1,6 +1,7 @@
 package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.impl.TestTemplateServiceImpl;
@@ -59,6 +60,8 @@ class TestTemplateServiceTest {
         mockTemplate.setId(templateId);
         mockTemplate.setName("Leadership Assessment Test");
         mockTemplate.setDescription("Comprehensive test for leadership competencies");
+        mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
+        mockTemplate.setBlueprint(Map.of("strategy", "balanced"));
         mockTemplate.setCompetencyIds(List.of(competencyId));
         mockTemplate.setQuestionsPerIndicator(3);
         mockTemplate.setTimeLimitMinutes(60);
@@ -72,12 +75,15 @@ class TestTemplateServiceTest {
         mockTemplate.setCreatedAt(LocalDateTime.now());
         mockTemplate.setUpdatedAt(LocalDateTime.now());
 
-        // CreateTestTemplateRequest: name, description, competencyIds, questionsPerIndicator, timeLimitMinutes,
-        //                            passingScore, shuffleQuestions, shuffleOptions, allowSkip, allowBackNavigation, showResultsImmediately
+        // CreateTestTemplateRequest: name, description, goal, blueprint, competencyIds, questionsPerIndicator,
+        //                            timeLimitMinutes, passingScore, shuffleQuestions, shuffleOptions,
+        //                            allowSkip, allowBackNavigation, showResultsImmediately
         createRequest = new CreateTestTemplateRequest(
                 "Leadership Assessment Test",
                 "Comprehensive test for leadership competencies",
-                List.of(competencyId),
+                AssessmentGoal.OVERVIEW, // goal
+                Map.of("strategy", "balanced"), // blueprint
+                List.of(competencyId), // competencyIds (deprecated)
                 3,    // questionsPerIndicator
                 60,   // timeLimitMinutes
                 70.0, // passingScore
@@ -88,12 +94,15 @@ class TestTemplateServiceTest {
                 true  // showResultsImmediately
         );
 
-        // UpdateTestTemplateRequest: name, description, competencyIds, questionsPerIndicator, timeLimitMinutes,
-        //                            passingScore, isActive, shuffleQuestions, shuffleOptions, allowSkip, allowBackNavigation, showResultsImmediately
+        // UpdateTestTemplateRequest: name, description, goal, blueprint, competencyIds, questionsPerIndicator,
+        //                            timeLimitMinutes, passingScore, isActive, shuffleQuestions, shuffleOptions,
+        //                            allowSkip, allowBackNavigation, showResultsImmediately
         updateRequest = new UpdateTestTemplateRequest(
                 "Updated Test",
                 "Updated description",
-                List.of(competencyId, UUID.randomUUID()),
+                AssessmentGoal.JOB_FIT, // goal
+                Map.of("onetSocCode", "15-1252.00"), // blueprint
+                List.of(competencyId, UUID.randomUUID()), // competencyIds (deprecated)
                 5,
                 90,
                 80.0,
@@ -314,6 +323,8 @@ class TestTemplateServiceTest {
             UpdateTestTemplateRequest partialUpdate = new UpdateTestTemplateRequest(
                     null,  // name - keep original
                     "New description only",
+                    null,  // goal - keep original
+                    null,  // blueprint - keep original
                     null,  // competencyIds - keep original
                     null,  // questionsPerIndicator - keep original
                     null,  // timeLimitMinutes - keep original

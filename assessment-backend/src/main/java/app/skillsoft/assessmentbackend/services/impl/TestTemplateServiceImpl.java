@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
+import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.dto.CreateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateSummaryDto;
@@ -55,7 +56,16 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         TestTemplate template = new TestTemplate();
         template.setName(request.name());
         template.setDescription(request.description());
+        
+        // Set assessment goal (defaults to OVERVIEW if not provided)
+        template.setGoal(request.goal() != null ? request.goal() : AssessmentGoal.OVERVIEW);
+        
+        // Set blueprint configuration (goal-specific assessment parameters)
+        template.setBlueprint(request.blueprint());
+        
+        // Legacy: Set competencyIds for backward compatibility
         template.setCompetencyIds(request.competencyIds());
+        
         template.setQuestionsPerIndicator(request.questionsPerIndicator());
         template.setTimeLimitMinutes(request.timeLimitMinutes());
         template.setPassingScore(request.passingScore());
@@ -88,6 +98,18 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         if (request.description() != null) {
             template.setDescription(request.description());
         }
+        
+        // Update assessment goal if provided
+        if (request.goal() != null) {
+            template.setGoal(request.goal());
+        }
+        
+        // Update blueprint configuration if provided
+        if (request.blueprint() != null) {
+            template.setBlueprint(request.blueprint());
+        }
+        
+        // Legacy: Update competencyIds for backward compatibility
         if (request.competencyIds() != null) {
             template.setCompetencyIds(request.competencyIds());
         }
@@ -180,6 +202,8 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getId(),
                 template.getName(),
                 template.getDescription(),
+                template.getGoal(),
+                template.getBlueprint(),
                 template.getCompetencyIds(),
                 template.getQuestionsPerIndicator(),
                 template.getTimeLimitMinutes(),
@@ -200,6 +224,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getId(),
                 template.getName(),
                 template.getDescription(),
+                template.getGoal(),
                 template.getCompetencyIds() != null ? template.getCompetencyIds().size() : 0,
                 template.getTimeLimitMinutes(),
                 template.getPassingScore(),
