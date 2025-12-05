@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.services.impl;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +16,8 @@ import java.util.UUID;
 
 @Service
 public class CompetencyServiceImpl implements CompetencyService {
+
+    private static final Logger logger = LoggerFactory.getLogger(CompetencyServiceImpl.class);
 
     private final CompetencyRepository competencyRepository;
 
@@ -72,6 +76,10 @@ public class CompetencyServiceImpl implements CompetencyService {
     public Competency updateCompetency(UUID id, Competency competencyDetails) {
         return competencyRepository.findById(id)
                 .map(existingCompetency -> {
+                    logger.debug("Updating competency {}, current standardCodes: {}", 
+                        id, existingCompetency.getStandardCodes());
+                    logger.debug("New standardCodes: {}", competencyDetails.getStandardCodes());
+                    
                     // Update fields
                     existingCompetency.setName(competencyDetails.getName());
                     existingCompetency.setDescription(competencyDetails.getDescription());
@@ -87,7 +95,13 @@ public class CompetencyServiceImpl implements CompetencyService {
                     // Update last modified timestamp
                     existingCompetency.setLastModified(LocalDateTime.now());
 
-                    return competencyRepository.save(existingCompetency);
+                    // Save and flush to ensure the update is persisted immediately
+                    Competency saved = competencyRepository.saveAndFlush(existingCompetency);
+                    
+                    logger.debug("Saved competency {}, standardCodes after save: {}", 
+                        saved.getId(), saved.getStandardCodes());
+                    
+                    return saved;
                 })
                 .orElseThrow(() -> new RuntimeException("Competency not found with id: " + id));
     }

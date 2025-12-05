@@ -1,6 +1,7 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
@@ -42,13 +43,15 @@ class CompetencyControllerTest {
 
     @BeforeEach
     void setUp() {
+        StandardCodesDto standardCodes = new StandardCodesDto(); // Empty DTO
+
         testCompetency = new Competency();
         testCompetency.setId(UUID.randomUUID());
         testCompetency.setName("Test Competency");
         testCompetency.setDescription("Test Description");
         testCompetency.setCategory(CompetencyCategory.LEADERSHIP);
         testCompetency.setLevel(ProficiencyLevel.PROFICIENT);
-        testCompetency.setStandardCodes(new HashMap<>());
+        testCompetency.setStandardCodes(standardCodes);
         testCompetency.setActive(true);
         testCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
         testCompetency.setBehavioralIndicators(new ArrayList<>());

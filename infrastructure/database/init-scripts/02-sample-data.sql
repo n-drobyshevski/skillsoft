@@ -24,7 +24,7 @@ INSERT INTO competencies (
     'Способность определять долгосрочные цели, вдохновлять команду на их достижение и принимать стратегические решения в условиях неопределенности',
     'LEADERSHIP',
     'ADVANCED',
-    '{"ESCO": {"code": "S7.1.1", "name": "develop organisational strategies and policies", "confidence": "HIGH"}, "ONET": {"code": "2.B.3.c", "name": "Leadership - Job requires willingness to lead, take charge, and offer opinions", "confidence": "VERIFIED"}}',
+    '{"onet_ref": {"code": "2.B.3.c", "title": "Leadership - Job requires willingness to lead, take charge, and offer opinions", "element_type": "work_style"}, "esco_ref": {"uri": "http://data.europa.eu/esco/skill/S7-1-1", "title": "develop organisational strategies and policies", "skill_type": "skill"}, "global_category": null}',
     true,
     'APPROVED',
     1
@@ -45,7 +45,7 @@ INSERT INTO competencies (
     'Навыки четкого изложения идей, активного слушания и адаптации стиля общения к различным аудиториям. Включает как устную, так и письменную коммуникацию',
     'COMMUNICATION',
     'PROFICIENT',
-    '{"ESCO": {"code": "S2.1.1", "name": "communicate with others", "confidence": "HIGH"}, "BIG_FIVE": {"code": "EXTRAVERSION", "name": "Extraversion - Communication aspects", "confidence": "MODERATE"}}',
+    '{"esco_ref": {"uri": "http://data.europa.eu/esco/skill/S2-1-1", "title": "communicate with others", "skill_type": "skill"}, "global_category": {"domain": "big_five", "trait": "extraversion", "facet": "communication"}, "onet_ref": null}',
     true,
     'APPROVED',
     1
@@ -66,7 +66,7 @@ INSERT INTO competencies (
     'Способность понимать эмоции других людей, учитывать разные точки зрения и проявлять искреннюю заинтересованность в потребностях коллег и клиентов',
     'EMOTIONAL_INTELLIGENCE',
     'DEVELOPING',
-    '{"ESCO": {"code": "S4.7.1", "name": "demonstrate empathy", "confidence": "HIGH"}, "BIG_FIVE": {"code": "AGREEABLENESS", "name": "Agreeableness - Empathy and concern for others", "confidence": "HIGH"}}',
+    '{"esco_ref": {"uri": "http://data.europa.eu/esco/skill/S4-7-1", "title": "demonstrate empathy", "skill_type": "skill"}, "global_category": {"domain": "big_five", "trait": "agreeableness", "facet": "empathy"}, "onet_ref": null}',
     true,
     'APPROVED',
     1
@@ -87,7 +87,7 @@ INSERT INTO competencies (
     'Способность объективно анализировать информацию, оценивать аргументы, распознавать шаблоны и делать обоснованные выводы для принятия решений',
     'COGNITIVE',
     'PROFICIENT',
-    '{"ESCO": {"code": "S4.9.1", "name": "apply critical thinking", "confidence": "VERIFIED"}, "ONET": {"code": "2.A.2.a", "name": "Critical Thinking - Using logic and reasoning", "confidence": "HIGH"}}',
+    '{"onet_ref": {"code": "2.A.2.a", "title": "Critical Thinking - Using logic and reasoning", "element_type": "ability"}, "esco_ref": {"uri": "http://data.europa.eu/esco/skill/S4-9-1", "title": "apply critical thinking", "skill_type": "skill"}, "global_category": null}',
     true,
     'APPROVED',
     1
@@ -108,7 +108,7 @@ INSERT INTO competencies (
     'Способность эффективно планировать, приоритизировать задачи и распределять время для достижения целей в установленные сроки',
     'TIME_MANAGEMENT',
     'DEVELOPING',
-    '{"ONET": {"code": "2.B.3.g", "name": "Initiative - Job requires a willingness to take on responsibilities", "confidence": "MODERATE"}}',
+    '{"onet_ref": {"code": "2.B.3.g", "title": "Initiative - Job requires a willingness to take on responsibilities", "element_type": "work_style"}, "esco_ref": null, "global_category": null}',
     true,
     'PENDING_REVIEW',
     1
@@ -129,7 +129,7 @@ INSERT INTO competencies (
     'Способность идентифицировать, анализировать и решать сложные проблемы, разрабатывая эффективные решения в условиях неопределенности и изменений',
     'COGNITIVE',
     'PROFICIENT',
-    '{"ESCO": {"code": "S4.4.1", "name": "problem solving - identifying and analyzing issues", "confidence": "VERIFIED"}, "ONET": {"code": "2.B.2.i", "name": "Complex Problem Solving", "confidence": "HIGH"}}',
+    '{"onet_ref": {"code": "2.B.2.i", "title": "Complex Problem Solving", "element_type": "skill"}, "esco_ref": {"uri": "http://data.europa.eu/esco/skill/S4-4-1", "title": "problem solving - identifying and analyzing issues", "skill_type": "skill"}, "global_category": null}',
     true,
     'APPROVED',
     1

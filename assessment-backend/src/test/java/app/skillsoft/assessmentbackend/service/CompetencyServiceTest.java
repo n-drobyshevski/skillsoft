@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.service;
 
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
@@ -44,17 +45,16 @@ class CompetencyServiceTest {
     private CompetencyServiceImpl competencyService;
 
     private Competency sampleCompetency;
-    private Map<String, Object> standardCodes;
+    private StandardCodesDto standardCodes;
 
     @BeforeEach
     void setUp() {
-        // Setup standard codes
-        standardCodes = new HashMap<>();
-        Map<String, Object> escoMapping = new HashMap<>();
-        escoMapping.put("code", "S7.1.1");
-        escoMapping.put("name", "develop organisational strategies");
-        escoMapping.put("confidence", "HIGH");
-        standardCodes.put("ESCO", escoMapping);
+        // Setup standard codes using the new DTO structure
+        standardCodes = StandardCodesDto.builder()
+                .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                        "develop organisational strategies", "skill")
+                .globalCategory("leadership", "strategic_thinking", null)
+                .build();
 
         // Setup sample competency entity
         sampleCompetency = new Competency();
@@ -115,7 +115,7 @@ class CompetencyServiceTest {
             assertThat(result.getCategory()).isEqualTo(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
             assertThat(result.getLevel()).isEqualTo(ProficiencyLevel.PROFICIENT);
             assertThat(result.getStandardCodes()).isNotNull();
-            assertThat(result.getStandardCodes().get("ESCO")).isNotNull();
+            assertThat(result.getStandardCodes().escoRef()).isNotNull();
             assertThat(result.isActive()).isTrue();
             assertThat(result.getVersion()).isEqualTo(1);
             assertThat(result.getId()).isNotNull();
@@ -172,7 +172,7 @@ class CompetencyServiceTest {
             // Then
             assertThat(result).hasSize(1);
             assertThat(result.getFirst().getName()).isEqualTo("Стратегическое планирование");
-            assertThat(result.getFirst().getStandardCodes()).containsKey("ESCO");
+            assertThat(result.getFirst().getStandardCodes().hasEscoMapping()).isTrue();
 
             verify(competencyRepository).findAll();
         }
@@ -210,7 +210,7 @@ class CompetencyServiceTest {
             assertThat(result).isPresent();
             assertThat(result.get().getId()).isEqualTo(competencyId);
             assertThat(result.get().getName()).isEqualTo("Стратегическое планирование");
-            assertThat(result.get().getStandardCodes()).containsKey("ESCO");
+            assertThat(result.get().getStandardCodes().hasEscoMapping()).isTrue();
 
             verify(competencyRepository).findById(competencyId);
         }
@@ -241,12 +241,11 @@ class CompetencyServiceTest {
             // Given
             UUID competencyId = sampleCompetency.getId();
             
-            Map<String, Object> newStandardCodes = new HashMap<>();
-            Map<String, Object> newEsco = new HashMap<>();
-            newEsco.put("code", "S4.7.1");
-            newEsco.put("name", "demonstrate empathy");
-            newEsco.put("confidence", "VERIFIED");
-            newStandardCodes.put("ESCO", newEsco);
+            StandardCodesDto newStandardCodes = StandardCodesDto.builder()
+                    .escoRef("http://data.europa.eu/esco/skill/def456-ghi789-012",
+                            "demonstrate empathy", "skill")
+                    .globalCategory("emotional_intelligence", "empathy", null)
+                    .build();
 
             Competency updateEntity = new Competency();
             updateEntity.setId(competencyId);
@@ -282,7 +281,7 @@ class CompetencyServiceTest {
             assertThat(result.getName()).isEqualTo("Обновленное название");
             assertThat(result.getDescription()).contains("новая функциональность");
             assertThat(result.getVersion()).isEqualTo(2);
-            assertThat(result.getStandardCodes().get("ESCO")).isNotNull();
+            assertThat(result.getStandardCodes().escoRef()).isNotNull();
 
             verify(competencyRepository).findById(competencyId);
             verify(competencyRepository).save(any(Competency.class));
@@ -353,19 +352,12 @@ class CompetencyServiceTest {
         @DisplayName("Should handle complex standard codes structure")
         void shouldHandleComplexStandardCodesStructure() {
             // Given
-            Map<String, Object> complexStandardCodes = new HashMap<>();
-            
-            Map<String, Object> esco = new HashMap<>();
-            esco.put("code", "S2.1.1");
-            esco.put("name", "communicate with others");
-            esco.put("confidence", "HIGH");
-            complexStandardCodes.put("ESCO", esco);
-            
-            Map<String, Object> onet = new HashMap<>();
-            onet.put("code", "2.A.1.b");
-            onet.put("name", "Oral Comprehension");
-            onet.put("confidence", "VERIFIED");
-            complexStandardCodes.put("ONET", onet);
+            StandardCodesDto complexStandardCodes = StandardCodesDto.builder()
+                    .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                            "communicate with others", "skill")
+                    .onetRef("2.A.1.b", "Oral Comprehension", "ability")
+                    .globalCategory("big_five", "extraversion", null)
+                    .build();
 
             Competency createEntity = new Competency();
             createEntity.setName("Комплексная коммуникация");

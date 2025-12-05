@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.controller;
 
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
@@ -62,7 +63,7 @@ class CompetencyControllerIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private Map<String, Object> standardCodes;
+    private StandardCodesDto standardCodes;
 
     @BeforeEach
     void setUp() {
@@ -73,13 +74,12 @@ class CompetencyControllerIntegrationTest {
         competencyRepository.deleteAll();
         competencyRepository.flush();
         
-        // Setup standard codes structure
-        standardCodes = new HashMap<>();
-        Map<String, Object> escoMapping = new HashMap<>();
-        escoMapping.put("code", "S7.1.1");
-        escoMapping.put("name", "develop organisational strategies");
-        escoMapping.put("confidence", "HIGH");
-        standardCodes.put("ESCO", escoMapping);
+        // Setup standard codes structure using the new DTO
+        standardCodes = StandardCodesDto.builder()
+                .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                        "develop organisational strategies", "skill")
+                .globalCategory("leadership", "strategic_thinking", null)
+                .build();
     }
 
     @Nested
@@ -124,8 +124,8 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$[0].description", containsString("цели")))
                     .andExpect(jsonPath("$[0].category", is("LEADERSHIP")))
                     .andExpect(jsonPath("$[0].level", is("ADVANCED")))
-                    .andExpect(jsonPath("$[0].standardCodes.ESCO.code", is("S7.1.1")))
-                    .andExpect(jsonPath("$[0].standardCodes.ESCO.confidence", is("HIGH")))
+                    .andExpect(jsonPath("$[0].standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
+                    .andExpect(jsonPath("$[0].standardCodes.esco_ref.title", is("develop organisational strategies")))
                     .andExpect(jsonPath("$[0].isActive", is(true)));
         }
     }
@@ -137,12 +137,21 @@ class CompetencyControllerIntegrationTest {
         @Test
         @DisplayName("Should create competency with Russian content and standard codes")
         void shouldCreateCompetencyWithRussianContentAndStandardCodes() throws Exception {
+            // Build JSON request using the new StandardCodesDto structure
+            Map<String, Object> escoRef = new HashMap<>();
+            escoRef.put("uri", "http://data.europa.eu/esco/skill/abc123-def456-789");
+            escoRef.put("title", "develop organisational strategies");
+            escoRef.put("skill_type", "skill");
+
+            Map<String, Object> standardCodesRequest = new HashMap<>();
+            standardCodesRequest.put("esco_ref", escoRef);
+
             Map<String, Object> competencyRequest = new HashMap<>();
             competencyRequest.put("name", "Эффективная коммуникация");
             competencyRequest.put("description", "Навыки четкого изложения идей и активного слушания");
             competencyRequest.put("category", "COMMUNICATION");
             competencyRequest.put("level", "PROFICIENT");
-            competencyRequest.put("standardCodes", standardCodes);
+            competencyRequest.put("standardCodes", standardCodesRequest);
             competencyRequest.put("isActive", true);
             competencyRequest.put("approvalStatus", "PENDING_REVIEW");
 
@@ -155,7 +164,7 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.description", containsString("идей")))
                     .andExpect(jsonPath("$.category", is("COMMUNICATION")))
                     .andExpect(jsonPath("$.level", is("PROFICIENT")))
-                    .andExpect(jsonPath("$.standardCodes.ESCO.code", is("S7.1.1")))
+                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
                     .andExpect(jsonPath("$.isActive", is(true)))
                     .andExpect(jsonPath("$.approvalStatus", is("PENDING_REVIEW")))
                     .andExpect(jsonPath("$.version", is(1)))
@@ -180,25 +189,25 @@ class CompetencyControllerIntegrationTest {
         @Test
         @DisplayName("Should create competency with complex standard codes")
         void shouldCreateCompetencyWithComplexStandardCodes() throws Exception {
+            // Build JSON request using the new StandardCodesDto structure
+            Map<String, Object> escoRef = new HashMap<>();
+            escoRef.put("uri", "http://data.europa.eu/esco/skill/abc123-def456-789");
+            escoRef.put("title", "communicate with others");
+            escoRef.put("skill_type", "skill");
+
+            Map<String, Object> onetRef = new HashMap<>();
+            onetRef.put("code", "2.A.1.b");
+            onetRef.put("title", "Oral Comprehension");
+            onetRef.put("element_type", "ability");
+
+            Map<String, Object> globalCategory = new HashMap<>();
+            globalCategory.put("domain", "big_five");
+            globalCategory.put("trait", "extraversion");
+
             Map<String, Object> complexStandardCodes = new HashMap<>();
-            
-            Map<String, Object> esco = new HashMap<>();
-            esco.put("code", "S2.1.1");
-            esco.put("name", "communicate with others");
-            esco.put("confidence", "HIGH");
-            complexStandardCodes.put("ESCO", esco);
-            
-            Map<String, Object> onet = new HashMap<>();
-            onet.put("code", "2.A.1.b");
-            onet.put("name", "Oral Comprehension");
-            onet.put("confidence", "VERIFIED");
-            complexStandardCodes.put("ONET", onet);
-            
-            Map<String, Object> bigFive = new HashMap<>();
-            bigFive.put("code", "EXTRAVERSION");
-            bigFive.put("name", "Extraversion traits");
-            bigFive.put("confidence", "MODERATE");
-            complexStandardCodes.put("BIG_FIVE", bigFive);
+            complexStandardCodes.put("esco_ref", escoRef);
+            complexStandardCodes.put("onet_ref", onetRef);
+            complexStandardCodes.put("global_category", globalCategory);
 
             Map<String, Object> competencyRequest = new HashMap<>();
             competencyRequest.put("name", "Комплексная коммуникация");
@@ -214,12 +223,11 @@ class CompetencyControllerIntegrationTest {
                             .content(objectMapper.writeValueAsString(competencyRequest)))
                     .andDo(print())
                     .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.standardCodes.ESCO.code", is("S2.1.1")))
-                    .andExpect(jsonPath("$.standardCodes.ONET.code", is("2.A.1.b")))
-                    .andExpect(jsonPath("$.standardCodes.BIG_FIVE.code", is("EXTRAVERSION")))
-                    .andExpect(jsonPath("$.standardCodes.ESCO.confidence", is("HIGH")))
-                    .andExpect(jsonPath("$.standardCodes.ONET.confidence", is("VERIFIED")))
-                    .andExpect(jsonPath("$.standardCodes.BIG_FIVE.confidence", is("MODERATE")));
+                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
+                    .andExpect(jsonPath("$.standardCodes.onet_ref.code", is("2.A.1.b")))
+                    .andExpect(jsonPath("$.standardCodes.global_category.domain", is("big_five")))
+                    .andExpect(jsonPath("$.standardCodes.esco_ref.title", is("communicate with others")))
+                    .andExpect(jsonPath("$.standardCodes.onet_ref.title", is("Oral Comprehension")));
         }
     }
 
@@ -253,7 +261,7 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.name", is("Критическое мышление")))
                     .andExpect(jsonPath("$.description", containsString("анализировать")))
                     .andExpect(jsonPath("$.category", is("COGNITIVE")))
-                    .andExpect(jsonPath("$.standardCodes.ESCO.code", is("S7.1.1")));
+                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")));
         }
 
         @Test
@@ -289,13 +297,14 @@ class CompetencyControllerIntegrationTest {
             
             Competency saved = competencyRepository.save(competency);
 
-            // Prepare update with new standard codes
+            // Prepare update with new standard codes using new DTO structure
+            Map<String, Object> newEscoRef = new HashMap<>();
+            newEscoRef.put("uri", "http://data.europa.eu/esco/skill/def456-ghi789-012");
+            newEscoRef.put("title", "demonstrate empathy");
+            newEscoRef.put("skill_type", "skill");
+
             Map<String, Object> newStandardCodes = new HashMap<>();
-            Map<String, Object> newEsco = new HashMap<>();
-            newEsco.put("code", "S4.7.1");
-            newEsco.put("name", "demonstrate empathy");
-            newEsco.put("confidence", "VERIFIED");
-            newStandardCodes.put("ESCO", newEsco);
+            newStandardCodes.put("esco_ref", newEscoRef);
 
             Map<String, Object> updateRequest = new HashMap<>();
             updateRequest.put("id", saved.getId().toString());
@@ -318,8 +327,8 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.description", containsString("эмоции")))
                     .andExpect(jsonPath("$.category", is("EMOTIONAL_INTELLIGENCE")))
                     .andExpect(jsonPath("$.level", is("PROFICIENT")))
-                    .andExpect(jsonPath("$.standardCodes.ESCO.code", is("S4.7.1")))
-                    .andExpect(jsonPath("$.standardCodes.ESCO.confidence", is("VERIFIED")))
+                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/def456-ghi789-012")))
+                    .andExpect(jsonPath("$.standardCodes.esco_ref.title", is("demonstrate empathy")))
                     .andExpect(jsonPath("$.isActive", is(true)))
                     .andExpect(jsonPath("$.approvalStatus", is("APPROVED")))
                     .andExpect(jsonPath("$.version", is(2))); // Version should increment

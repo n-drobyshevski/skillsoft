@@ -98,8 +98,13 @@ public class CompetencyController {
             @PathVariable UUID id,
             @RequestBody CompetencyDto competencyDto) {
         logger.info("PUT /api/competencies/{} endpoint called", id);
+        logger.info("Received CompetencyDto standardCodes: {}", competencyDto.standardCodes());
+        if (competencyDto.standardCodes() != null) {
+            logger.info("GlobalCategory: {}", competencyDto.standardCodes().globalCategory());
+        }
         try {
             Competency competencyDetails = competencyMapper.fromDto(competencyDto);
+            logger.info("Mapped Competency standardCodes: {}", competencyDetails.getStandardCodes());
             Competency updatedCompetency = competencyService.updateCompetency(id, competencyDetails);
             logger.info("Updated competency with id: {}", updatedCompetency.getId());
             return ResponseEntity.ok(competencyMapper.toDto(updatedCompetency));
