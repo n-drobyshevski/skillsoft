@@ -38,13 +38,18 @@ public class HibernateJsonConfig {
 
     /**
      * Creates a dedicated ObjectMapper for Hibernate JSONB serialization.
-     * This mapper uses snake_case naming strategy globally.
+     * 
+     * IMPORTANT: We do NOT set a global SNAKE_CASE naming strategy here because
+     * the DTOs already have @JsonNaming(SnakeCaseStrategy.class) annotations.
+     * Setting it globally would cause a conflict where Jackson looks for 
+     * already-converted field names (e.g., 'big_five') but finds Java record
+     * accessors with original names (e.g., 'bigFive()'), causing fields to be lost.
      */
     private ObjectMapper createHibernateObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         
-        // Use snake_case for all property names - this is critical for JSONB storage
-        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        // DO NOT set PropertyNamingStrategy here - DTOs have @JsonNaming annotations
+        // mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
         
         // Register Java 8 date/time module
         mapper.registerModule(new JavaTimeModule());
@@ -64,7 +69,7 @@ public class HibernateJsonConfig {
         // Find and register any additional modules
         mapper.findAndRegisterModules();
         
-        logger.debug("Created Hibernate ObjectMapper with SNAKE_CASE naming strategy");
+        logger.debug("Created Hibernate ObjectMapper (using @JsonNaming annotations from DTOs)");
         
         return mapper;
     }

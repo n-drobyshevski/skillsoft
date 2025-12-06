@@ -56,12 +56,15 @@ import java.util.Objects;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record StandardCodesDto(
         @Valid
+        @JsonProperty("global_category")
         GlobalCategoryDto globalCategory,
 
         @Valid
+        @JsonProperty("onet_ref")
         OnetRefDto onetRef,
 
         @Valid
+        @JsonProperty("esco_ref")
         EscoRefDto escoRef
 ) implements Serializable {
 
@@ -129,6 +132,7 @@ public record StandardCodesDto(
             @Size(max = 255, message = "O*NET title must not exceed 255 characters")
             String title,
 
+            @JsonProperty("element_type")
             @Pattern(
                     regexp = "^(ability|skill|knowledge|work_activity|work_style|interest|work_value|work_context)$",
                     message = "Element type must be one of: ability, skill, knowledge, work_activity, work_style, interest, work_value, work_context"
@@ -180,6 +184,7 @@ public record StandardCodesDto(
             @Size(max = 255, message = "ESCO title must not exceed 255 characters")
             String title,
 
+            @JsonProperty("skill_type")
             @Pattern(
                     regexp = "^(skill|competence|knowledge|language|transversal)$",
                     message = "Skill type must be one of: skill, competence, knowledge, language, transversal"
@@ -244,6 +249,7 @@ public record StandardCodesDto(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record GlobalCategoryDto(
+            @JsonProperty("big_five")
             @Pattern(
                     regexp = "^(OPENNESS|CONSCIENTIOUSNESS|EXTRAVERSION|AGREEABLENESS|EMOTIONAL_STABILITY)$",
                     message = "Big Five must be one of: OPENNESS, CONSCIENTIOUSNESS, EXTRAVERSION, AGREEABLENESS, EMOTIONAL_STABILITY"
