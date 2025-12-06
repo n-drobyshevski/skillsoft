@@ -15,9 +15,7 @@ import java.util.UUID;
  * Competency entity representing a skill or ability that can be assessed.
  * 
  * The standardCodes field uses JSONB storage for flexible taxonomy mappings.
- * 
- * Note: @DynamicUpdate ensures only modified columns are included in UPDATE statements,
- * which helps with JSONB dirty detection.
+ * Uses @JdbcTypeCode(SqlTypes.JSON) with HibernateJsonConfig for proper snake_case serialization.
  */
 @Entity
 @Table(name = "competencies")
@@ -41,8 +39,6 @@ public class Competency {
     @Enumerated(EnumType.STRING)
     private ProficiencyLevel level;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name="standard_codes", columnDefinition = "jsonb")
     /**
      * Triple Standard Mapping for global competency alignment.
      * Per ROADMAP.md Section 1.A "Mapping Strategy":
@@ -50,13 +46,12 @@ public class Competency {
      * Schema (JSONB structure):
      * {
      *   // 1. Psychological Standard (Team Fit / Big Five)
-     *   "global_category": "BIG_FIVE_CONSCIENTIOUSNESS",
+     *   "global_category": { "big_five": "CONSCIENTIOUSNESS" },
      *   
      *   // 2. Occupational Standard (Job Fit Baseline - O*NET)
      *   "onet_ref": {
      *     "code": "2.B.1.a",
-     *     "name": "Social Perceptiveness",
-     *     "similarity": 0.95
+     *     "name": "Social Perceptiveness"
      *   },
      *   
      *   // 3. Transversal Standard (Interoperability - ESCO)
@@ -71,6 +66,8 @@ public class Competency {
      * - Enables Competency Passport reuse across scenarios
      * - Normalizes local competencies to global standards
      */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name="standard_codes", columnDefinition = "jsonb")
     private StandardCodesDto standardCodes;
 
     @Column(name="is_active", nullable = false)

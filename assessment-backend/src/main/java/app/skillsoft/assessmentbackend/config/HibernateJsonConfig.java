@@ -8,9 +8,13 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.type.format.jackson.JacksonJsonFormatMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import jakarta.annotation.PostConstruct;
 
 /**
  * Configuration to ensure Hibernate uses a properly configured ObjectMapper for JSON/JSONB columns.
@@ -24,6 +28,13 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class HibernateJsonConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(HibernateJsonConfig.class);
+
+    @PostConstruct
+    public void init() {
+        logger.info("HibernateJsonConfig initialized - snake_case JSON serialization enabled for Hibernate");
+    }
 
     /**
      * Creates a dedicated ObjectMapper for Hibernate JSONB serialization.
@@ -53,6 +64,8 @@ public class HibernateJsonConfig {
         // Find and register any additional modules
         mapper.findAndRegisterModules();
         
+        logger.debug("Created Hibernate ObjectMapper with SNAKE_CASE naming strategy");
+        
         return mapper;
     }
 
@@ -62,6 +75,7 @@ public class HibernateJsonConfig {
      */
     @Bean
     public HibernatePropertiesCustomizer hibernatePropertiesCustomizer() {
+        logger.info("Creating HibernatePropertiesCustomizer with custom JSON format mapper");
         return properties -> {
             ObjectMapper hibernateMapper = createHibernateObjectMapper();
             properties.put(
