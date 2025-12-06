@@ -53,7 +53,7 @@ class CompetencyServiceTest {
         standardCodes = StandardCodesDto.builder()
                 .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
                         "develop organisational strategies", "skill")
-                .globalCategory("leadership", "strategic_thinking", null)
+                .bigFive("CONSCIENTIOUSNESS")
                 .build();
 
         // Setup sample competency entity
@@ -244,7 +244,7 @@ class CompetencyServiceTest {
             StandardCodesDto newStandardCodes = StandardCodesDto.builder()
                     .escoRef("http://data.europa.eu/esco/skill/def456-ghi789-012",
                             "demonstrate empathy", "skill")
-                    .globalCategory("emotional_intelligence", "empathy", null)
+                    .bigFive("AGREEABLENESS")
                     .build();
 
             Competency updateEntity = new Competency();
@@ -356,7 +356,7 @@ class CompetencyServiceTest {
                     .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
                             "communicate with others", "skill")
                     .onetRef("2.A.1.b", "Oral Comprehension", "ability")
-                    .globalCategory("big_five", "extraversion", null)
+                    .bigFive("EXTRAVERSION")
                     .build();
 
             Competency createEntity = new Competency();

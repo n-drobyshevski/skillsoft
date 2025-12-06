@@ -100,7 +100,7 @@ public class CompetencyController {
         logger.info("PUT /api/competencies/{} endpoint called", id);
         logger.info("Received CompetencyDto standardCodes: {}", competencyDto.standardCodes());
         if (competencyDto.standardCodes() != null) {
-            logger.info("GlobalCategory: {}", competencyDto.standardCodes().globalCategory());
+            logger.info("BigFiveRef: {}", competencyDto.standardCodes().bigFiveRef());
         }
         try {
             Competency competencyDetails = competencyMapper.fromDto(competencyDto);

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,23 +19,27 @@ import org.springframework.context.annotation.Primary;
  * - Hibernate JSONB columns (via HibernateJsonConfig)
  * 
  * Key settings:
- * - Respects @JsonNaming annotations on DTOs (e.g., SnakeCaseStrategy)
+ * - Uses camelCase for all JSON properties (matching Java record field names)
+ * - Frontend sends camelCase, backend responds with camelCase
  * - Excludes null values from JSON output
  * - Properly handles Java 8+ date/time types
+ * 
+ * NOTE: We intentionally do NOT use SNAKE_CASE naming strategy because
+ * it doesn't work reliably with nested Java records. Instead, both frontend
+ * and backend use camelCase consistently.
  */
 @Configuration
 public class JsonConfig {
 
     /**
      * Customizes the Jackson ObjectMapper builder used by Spring.
-     * This ensures all @JsonNaming, @JsonInclude annotations are respected.
      */
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer jsonCustomizer() {
         return builder -> {
             builder.createXmlMapper(false);
-            // Ensure modules are registered for proper date/time handling
-            builder.modules(new JavaTimeModule());
+            // ParameterNamesModule for better record support
+            builder.modules(new JavaTimeModule(), new ParameterNamesModule());
             // Serialize dates as ISO strings, not timestamps
             builder.featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
             // Don't fail on unknown properties during deserialization
@@ -52,6 +57,8 @@ public class JsonConfig {
     @Primary
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
+        // ParameterNamesModule for better record support
+        mapper.registerModule(new ParameterNamesModule());
         // Register Java 8 date/time module
         mapper.registerModule(new JavaTimeModule());
         // Don't write dates as timestamps

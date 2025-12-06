@@ -37,7 +37,7 @@ class CompetencyTest {
                 .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
                         "develop organisational strategies", "skill")
                 .onetRef("2.B.3.c", "Leadership requirements", "ability")
-                .globalCategory("leadership", "strategic_thinking", null)
+                .bigFive("CONSCIENTIOUSNESS")
                 .build();
         
         competency = new Competency();
@@ -218,7 +218,7 @@ class CompetencyTest {
                     .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
                             "develop organisational strategies", "skill")
                     .onetRef("2.B.3.c", "Leadership requirements", "ability")
-                    .globalCategory("big_five", "extraversion", null)
+                    .bigFive("EXTRAVERSION")
                     .build();
             
             competency.setStandardCodes(complexCodes);
@@ -226,7 +226,7 @@ class CompetencyTest {
             assertThat(competency.getStandardCodes().hasAnyMapping()).isTrue();
             assertThat(competency.getStandardCodes().hasEscoMapping()).isTrue();
             assertThat(competency.getStandardCodes().hasOnetMapping()).isTrue();
-            assertThat(competency.getStandardCodes().globalCategory()).isNotNull();
+            assertThat(competency.getStandardCodes().bigFiveRef()).isNotNull();
         }
 
         @Test

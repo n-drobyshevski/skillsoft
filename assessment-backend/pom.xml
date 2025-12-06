@@ -81,6 +81,13 @@
             <artifactId>svix</artifactId>
             <version>1.44.0</version>
         </dependency>
+        
+        <!-- Jackson module for Java record parameter name support -->
+        <!-- CRITICAL: Enables @JsonProperty on record constructor parameters during deserialization -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.module</groupId>
+            <artifactId>jackson-module-parameter-names</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
@@ -88,6 +95,13 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <parameters>true</parameters>
+                </configuration>
             </plugin>
         </plugins>
     </build>

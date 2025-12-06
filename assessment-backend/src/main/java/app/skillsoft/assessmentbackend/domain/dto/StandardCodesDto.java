@@ -1,70 +1,74 @@
 package app.skillsoft.assessmentbackend.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.io.Serializable;
-import java.util.Objects;
 
 /**
  * DTO for standard occupational and skill taxonomy mappings.
  * <p>
  * Provides type-safe, validated container for external standard references
- * including O*NET occupational codes and ESCO skill/competence URIs.
+ * including O*NET occupational codes, ESCO skill/competence URIs, and Big Five personality traits.
  * </p>
  *
  * <h3>Supported Standards:</h3>
  * <ul>
  *   <li><strong>O*NET</strong>: US Department of Labor's Occupational Information Network</li>
  *   <li><strong>ESCO</strong>: European Skills, Competences, Qualifications and Occupations</li>
- *   <li><strong>Global Category</strong>: High-level skill classification (e.g., Big Five personality traits)</li>
+ *   <li><strong>Big Five</strong>: Personality trait classification (OCEAN model)</li>
  * </ul>
  *
  * <h3>Example JSON Structure:</h3>
  * <pre>{@code
  * {
- *   "global_category": {
- *     "domain": "big_five",
- *     "trait": "conscientiousness",
+ *   "bigFiveRef": {
+ *     "trait": "CONSCIENTIOUSNESS",
+ *     "title": "Conscientiousness",
  *     "facet": "achievement_striving"
  *   },
- *   "onet_ref": {
+ *   "onetRef": {
  *     "code": "2.B.1.a",
  *     "title": "Oral Comprehension",
- *     "element_type": "ability"
+ *     "elementType": "ability"
  *   },
- *   "esco_ref": {
+ *   "escoRef": {
  *     "uri": "http://data.europa.eu/esco/skill/abc123",
  *     "title": "Communication Skills",
- *     "skill_type": "skill"
+ *     "skillType": "skill"
  *   }
  * }
  * }</pre>
  *
+ * <h3>Jackson Configuration Notes:</h3>
+ * <p>
+ * This class uses simple camelCase field names that match Java record conventions.
+ * All nested DTOs (BigFiveRefDto, OnetRefDto, EscoRefDto) follow the same pattern
+ * with simple field names like code, uri, trait, title, etc.
+ * </p>
+ *
  * @see OnetRefDto
  * @see EscoRefDto
- * @see GlobalCategoryDto
+ * @see BigFiveRefDto
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record StandardCodesDto(
         @Valid
-        @JsonProperty("global_category")
-        GlobalCategoryDto globalCategory,
+        @JsonAlias({"globalCategory", "global_category"})
+        BigFiveRefDto bigFiveRef,
 
         @Valid
-        @JsonProperty("onet_ref")
+        @JsonAlias("onet_ref")
         OnetRefDto onetRef,
 
         @Valid
-        @JsonProperty("esco_ref")
+        @JsonAlias("esco_ref")
         EscoRefDto escoRef
 ) implements Serializable {
 
@@ -81,7 +85,7 @@ public record StandardCodesDto(
      * @return true if at least one mapping is present
      */
     public boolean hasAnyMapping() {
-        return globalCategory != null || onetRef != null || escoRef != null;
+        return bigFiveRef != null || onetRef != null || escoRef != null;
     }
 
     /**
@@ -103,6 +107,70 @@ public record StandardCodesDto(
     }
 
     /**
+     * Checks if this DTO has a complete Big Five reference.
+     *
+     * @return true if Big Five reference is present with valid trait
+     */
+    public boolean hasBigFiveMapping() {
+        return bigFiveRef != null && bigFiveRef.trait() != null && !bigFiveRef.trait().isBlank();
+    }
+
+    /**
+     * Big Five (OCEAN Model) personality trait reference DTO.
+     * <p>
+     * The Big Five personality traits are:
+     * </p>
+     * <ul>
+     *   <li>OPENNESS: Creativity, curiosity, openness to new experiences</li>
+     *   <li>CONSCIENTIOUSNESS: Organization, dependability, self-discipline</li>
+     *   <li>EXTRAVERSION: Sociability, assertiveness, positive emotions</li>
+     *   <li>AGREEABLENESS: Cooperation, trust, concern for others</li>
+     *   <li>EMOTIONAL_STABILITY: Calmness, resilience, stress tolerance</li>
+     * </ul>
+     *
+     * @param trait Big Five dimension code (e.g., "CONSCIENTIOUSNESS")
+     * @param title Human-readable display name (e.g., "Conscientiousness")
+     * @param facet Optional sub-facet of the trait (e.g., "achievement_striving", "self_discipline")
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record BigFiveRefDto(
+            @JsonAlias("bigFive")
+            @NotBlank(message = "Big Five trait is required")
+            @Pattern(
+                    regexp = "^(OPENNESS|CONSCIENTIOUSNESS|EXTRAVERSION|AGREEABLENESS|EMOTIONAL_STABILITY)$",
+                    message = "Trait must be one of: OPENNESS, CONSCIENTIOUSNESS, EXTRAVERSION, AGREEABLENESS, EMOTIONAL_STABILITY"
+            )
+            String trait,
+
+            @Size(max = 100, message = "Title must not exceed 100 characters")
+            String title,
+
+            @JsonAlias("dimension")
+            @Size(max = 100, message = "Facet must not exceed 100 characters")
+            String facet
+    ) implements Serializable {
+
+        /**
+         * Creates a BigFiveRefDto with only the trait.
+         *
+         * @param trait Big Five dimension code
+         */
+        public BigFiveRefDto(String trait) {
+            this(trait, null, null);
+        }
+
+        /**
+         * Creates a BigFiveRefDto with trait and title.
+         *
+         * @param trait Big Five dimension code
+         * @param title Human-readable display name
+         */
+        public BigFiveRefDto(String trait, String title) {
+            this(trait, title, null);
+        }
+    }
+
+    /**
      * O*NET (Occupational Information Network) reference DTO.
      * <p>
      * O*NET codes follow specific patterns depending on element type:
@@ -119,7 +187,6 @@ public record StandardCodesDto(
      * @param elementType Type of O*NET element: ability, skill, knowledge, work_activity, work_style
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record OnetRefDto(
             @NotBlank(message = "O*NET code is required")
             @Pattern(
@@ -132,7 +199,7 @@ public record StandardCodesDto(
             @Size(max = 255, message = "O*NET title must not exceed 255 characters")
             String title,
 
-            @JsonProperty("element_type")
+            @JsonAlias("element_type")
             @Pattern(
                     regexp = "^(ability|skill|knowledge|work_activity|work_style|interest|work_value|work_context)$",
                     message = "Element type must be one of: ability, skill, knowledge, work_activity, work_style, interest, work_value, work_context"
@@ -171,7 +238,6 @@ public record StandardCodesDto(
      * @param skillType Type classification: skill, competence, knowledge, language, transversal
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record EscoRefDto(
             @NotBlank(message = "ESCO URI is required")
             @Pattern(
@@ -184,7 +250,7 @@ public record StandardCodesDto(
             @Size(max = 255, message = "ESCO title must not exceed 255 characters")
             String title,
 
-            @JsonProperty("skill_type")
+            @JsonAlias("skill_type")
             @Pattern(
                     regexp = "^(skill|competence|knowledge|language|transversal)$",
                     message = "Skill type must be one of: skill, competence, knowledge, language, transversal"
@@ -212,155 +278,6 @@ public record StandardCodesDto(
         }
     }
 
-    /**
-     * Global category DTO for high-level skill classification.
-     * <p>
-     * Supports various psychological and competency frameworks:
-     * </p>
-     * <ul>
-     *   <li><strong>Big Five</strong>: Personality trait classification (OCEAN model)</li>
-     *   <li><strong>Cognitive</strong>: Cognitive ability categories</li>
-     *   <li><strong>Technical</strong>: Technical skill domains</li>
-     * </ul>
-     *
-     * <h3>Example JSON (Big Five):</h3>
-     * <pre>{@code
-     * {
-     *   "big_five": "CONSCIENTIOUSNESS",
-     *   "dimension": "achievement_striving"
-     * }
-     * }</pre>
-     *
-     * <h3>Example JSON (Legacy format):</h3>
-     * <pre>{@code
-     * {
-     *   "domain": "big_five",
-     *   "trait": "conscientiousness",
-     *   "facet": "achievement_striving"
-     * }
-     * }</pre>
-     *
-     * @param bigFive   Big Five personality dimension (OPENNESS, CONSCIENTIOUSNESS, EXTRAVERSION, AGREEABLENESS, EMOTIONAL_STABILITY)
-     * @param dimension Optional sub-facet/dimension of the Big Five trait (e.g., "self_discipline", "achievement_striving")
-     * @param domain    Legacy: Primary classification domain (e.g., "big_five", "cognitive", "technical")
-     * @param trait     Legacy: Specific trait within the domain (e.g., "conscientiousness", "extraversion")
-     * @param facet     Legacy: Optional sub-facet of the trait (e.g., "achievement_striving", "self_discipline")
-     */
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record GlobalCategoryDto(
-            @JsonProperty("big_five")
-            @Pattern(
-                    regexp = "^(OPENNESS|CONSCIENTIOUSNESS|EXTRAVERSION|AGREEABLENESS|EMOTIONAL_STABILITY)$",
-                    message = "Big Five must be one of: OPENNESS, CONSCIENTIOUSNESS, EXTRAVERSION, AGREEABLENESS, EMOTIONAL_STABILITY"
-            )
-            String bigFive,
-
-            @Size(max = 100, message = "Dimension must not exceed 100 characters")
-            @Pattern(
-                    regexp = "^[a-z][a-z0-9_]*$",
-                    message = "Dimension must be lowercase with underscores (snake_case)"
-            )
-            String dimension,
-
-            // Legacy fields for backwards compatibility
-            @Pattern(
-                    regexp = "^(big_five|cognitive|technical|interpersonal|leadership|emotional_intelligence)$",
-                    message = "Domain must be one of: big_five, cognitive, technical, interpersonal, leadership, emotional_intelligence"
-            )
-            String domain,
-
-            @Pattern(
-                    regexp = "^(openness|conscientiousness|extraversion|agreeableness|neuroticism|emotional_stability|" +
-                            "analytical|verbal|numerical|spatial|memory|processing_speed|" +
-                            "programming|data_analysis|system_design|cloud|security|" +
-                            "communication|collaboration|conflict_resolution|" +
-                            "strategic_thinking|decision_making|delegation|motivation|" +
-                            "self_awareness|self_regulation|empathy|social_skills)$",
-                    message = "Invalid trait value for the specified domain"
-            )
-            String trait,
-
-            @Size(max = 100, message = "Facet must not exceed 100 characters")
-            @Pattern(
-                    regexp = "^[a-z][a-z0-9_]*$",
-                    message = "Facet must be lowercase with underscores (snake_case)"
-            )
-            String facet
-    ) implements Serializable {
-
-        /**
-         * Creates a GlobalCategoryDto with only Big Five dimension.
-         *
-         * @param bigFive Big Five personality dimension
-         */
-        public GlobalCategoryDto(String bigFive) {
-            this(bigFive, null, null, null, null);
-        }
-
-        /**
-         * Creates a GlobalCategoryDto with Big Five dimension and sub-facet.
-         *
-         * @param bigFive   Big Five personality dimension
-         * @param dimension Sub-facet of the trait
-         */
-        public GlobalCategoryDto(String bigFive, String dimension) {
-            this(bigFive, dimension, null, null, null);
-        }
-
-        /**
-         * Creates a legacy GlobalCategoryDto with domain, trait, and facet.
-         * Use for backwards compatibility with existing data.
-         *
-         * @param domain Primary classification domain
-         * @param trait  Specific trait within the domain
-         * @param facet  Optional sub-facet of the trait
-         * @return new GlobalCategoryDto using legacy format
-         */
-        public static GlobalCategoryDto legacy(String domain, String trait, String facet) {
-            return new GlobalCategoryDto(null, null, domain, trait, facet);
-        }
-
-        /**
-         * Checks if this category represents a Big Five personality trait.
-         *
-         * @return true if bigFive is set or domain is "big_five"
-         */
-        @JsonIgnore
-        public boolean isBigFive() {
-            return bigFive != null || "big_five".equals(domain);
-        }
-
-        /**
-         * Gets the effective Big Five dimension, handling both new and legacy formats.
-         *
-         * @return Big Five dimension string or null
-         */
-        @JsonIgnore
-        public String getEffectiveBigFive() {
-            if (bigFive != null) {
-                return bigFive;
-            }
-            if ("big_five".equals(domain) && trait != null) {
-                return trait.toUpperCase();
-            }
-            return null;
-        }
-
-        /**
-         * Gets the effective dimension/facet, handling both new and legacy formats.
-         *
-         * @return dimension or facet string, or null
-         */
-        @JsonIgnore
-        public String getEffectiveDimension() {
-            if (dimension != null) {
-                return dimension;
-            }
-            return facet;
-        }
-    }
-
     // ========== Builder Pattern ==========
 
     /**
@@ -376,45 +293,45 @@ public record StandardCodesDto(
      * Builder for StandardCodesDto for fluent construction.
      */
     public static class Builder {
-        private GlobalCategoryDto globalCategory;
+        private BigFiveRefDto bigFiveRef;
         private OnetRefDto onetRef;
         private EscoRefDto escoRef;
 
-        public Builder globalCategory(GlobalCategoryDto globalCategory) {
-            this.globalCategory = globalCategory;
+        public Builder bigFiveRef(BigFiveRefDto bigFiveRef) {
+            this.bigFiveRef = bigFiveRef;
             return this;
         }
 
         /**
-         * Sets the global category using the new Big Five format.
+         * Sets the Big Five reference with trait, title and facet.
          *
-         * @param bigFive   Big Five dimension (OPENNESS, CONSCIENTIOUSNESS, etc.)
-         * @param dimension Optional sub-facet
+         * @param trait Big Five dimension (OPENNESS, CONSCIENTIOUSNESS, etc.)
+         * @param title Human-readable display name
+         * @param facet Optional sub-facet
          */
-        public Builder bigFive(String bigFive, String dimension) {
-            this.globalCategory = new GlobalCategoryDto(bigFive, dimension);
+        public Builder bigFiveRef(String trait, String title, String facet) {
+            this.bigFiveRef = new BigFiveRefDto(trait, title, facet);
             return this;
         }
 
         /**
-         * Sets the global category using the new Big Five format without dimension.
+         * Sets the Big Five reference with only the trait.
          *
-         * @param bigFive Big Five dimension
+         * @param trait Big Five dimension
          */
-        public Builder bigFive(String bigFive) {
-            this.globalCategory = new GlobalCategoryDto(bigFive);
+        public Builder bigFive(String trait) {
+            this.bigFiveRef = new BigFiveRefDto(trait);
             return this;
         }
 
         /**
-         * Sets the global category using the legacy domain/trait/facet format.
+         * Sets the Big Five reference with trait and title.
          *
-         * @param domain Primary classification domain
-         * @param trait  Specific trait within the domain
-         * @param facet  Optional sub-facet of the trait
+         * @param trait Big Five dimension
+         * @param title Human-readable display name
          */
-        public Builder globalCategory(String domain, String trait, String facet) {
-            this.globalCategory = GlobalCategoryDto.legacy(domain, trait, facet);
+        public Builder bigFive(String trait, String title) {
+            this.bigFiveRef = new BigFiveRefDto(trait, title);
             return this;
         }
 
@@ -439,7 +356,7 @@ public record StandardCodesDto(
         }
 
         public StandardCodesDto build() {
-            return new StandardCodesDto(globalCategory, onetRef, escoRef);
+            return new StandardCodesDto(bigFiveRef, onetRef, escoRef);
         }
     }
 }

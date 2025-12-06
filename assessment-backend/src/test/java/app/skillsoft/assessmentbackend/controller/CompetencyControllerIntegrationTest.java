@@ -78,7 +78,7 @@ class CompetencyControllerIntegrationTest {
         standardCodes = StandardCodesDto.builder()
                 .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
                         "develop organisational strategies", "skill")
-                .globalCategory("leadership", "strategic_thinking", null)
+                .bigFive("CONSCIENTIOUSNESS")
                 .build();
     }
 

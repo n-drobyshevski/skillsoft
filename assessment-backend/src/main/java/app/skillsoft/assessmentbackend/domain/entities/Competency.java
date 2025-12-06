@@ -163,12 +163,12 @@ public class Competency {
      */
     @Transient
     public String getBigFiveCategory() {
-        if (standardCodes == null || standardCodes.globalCategory() == null) return null;
-        StandardCodesDto.GlobalCategoryDto category = standardCodes.globalCategory();
-        if (category.isBigFive() && category.trait() != null) {
-            return "BIG_FIVE_" + category.trait().toUpperCase();
+        if (standardCodes == null || standardCodes.bigFiveRef() == null) return null;
+        StandardCodesDto.BigFiveRefDto bigFiveRef = standardCodes.bigFiveRef();
+        if (bigFiveRef.trait() != null) {
+            return "BIG_FIVE_" + bigFiveRef.trait().toUpperCase();
         }
-        return category.domain() != null ? category.domain().toUpperCase() : null;
+        return null;
     }
 
     /**
@@ -221,7 +221,7 @@ public class Competency {
     @Transient
     public boolean hasTripleStandardMapping() {
         return standardCodes != null 
-            && standardCodes.globalCategory() != null 
+            && standardCodes.hasBigFiveMapping() 
             && standardCodes.hasOnetMapping() 
             && standardCodes.hasEscoMapping();
     }

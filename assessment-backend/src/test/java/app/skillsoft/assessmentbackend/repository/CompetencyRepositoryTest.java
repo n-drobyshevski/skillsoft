@@ -63,7 +63,7 @@ class CompetencyRepositoryTest {
         standardCodes = StandardCodesDto.builder()
                 .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
                         "develop organisational strategies", "skill")
-                .globalCategory("leadership", "strategic_thinking", null)
+                .bigFive("CONSCIENTIOUSNESS")
                 .build();
 
         // Create sample competency
@@ -159,7 +159,7 @@ class CompetencyRepositoryTest {
             StandardCodesDto newStandardCodes = StandardCodesDto.builder()
                     .escoRef("http://data.europa.eu/esco/skill/def456-ghi789-012",
                             "updated leadership skills", "skill")
-                    .globalCategory("leadership", "decision_making", null)
+                    .bigFive("CONSCIENTIOUSNESS")
                     .build();
 
             // Update the existing entity directly
@@ -214,7 +214,7 @@ class CompetencyRepositoryTest {
                     .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
                             "communicate with others", "skill")
                     .onetRef("2.A.1.b", "Oral Comprehension", "ability")
-                    .globalCategory("big_five", "extraversion", null)
+                    .bigFive("EXTRAVERSION")
                     .build();
 
             sampleCompetency.setStandardCodes(complexStandardCodes);
@@ -428,7 +428,7 @@ class CompetencyRepositoryTest {
                                 "Standard " + i + " competency", "skill")
                         .onetRef("2.A.1." + (char)('a' + (i % 26)),
                                 "Ability " + i, "ability")
-                        .globalCategory("cognitive", "analytical", null)
+                        .bigFive("OPENNESS")
                         .build();
                 competency.setStandardCodes(standardCodesDto);
 
