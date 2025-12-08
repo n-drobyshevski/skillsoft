@@ -1,17 +1,17 @@
-FROM openjdk:21-jdk-slim
+FROM eclipse-temurin:21-jdk-alpine
 
 WORKDIR /app
 
-# Install Maven
-RUN apt-get update && apt-get install -y maven curl && rm -rf /var/lib/apt/lists/*
+# Install curl for healthchecks and bash for mvnw
+RUN apk add --no-cache curl bash
 
-# Copy Maven configuration
-COPY pom.xml .
-COPY .mvn .mvn
+# Copy Maven wrapper and configuration first (for better caching)
 COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
 
-# Download dependencies (cache layer)
-RUN ./mvnw dependency:go-offline
+# Make mvnw executable and download dependencies (cache layer)
+RUN chmod +x mvnw && ./mvnw dependency:go-offline -B
 
 # Copy source code
 COPY src ./src

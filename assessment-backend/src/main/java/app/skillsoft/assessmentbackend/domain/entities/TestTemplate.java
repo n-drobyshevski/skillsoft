@@ -1,7 +1,10 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
+import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
@@ -15,14 +18,19 @@ import java.util.UUID;
  * Entity representing a test template configuration.
  * Per ROADMAP.md Section 1.C: Stores the "recipe" for dynamic test generation.
  * 
+ * Implements Immutable Versioning pattern:
+ * - version: Sequential version number starting from 1
+ * - parentId: Reference to previous version (null for original templates)
+ * - status: Lifecycle state (DRAFT, PUBLISHED, ARCHIVED)
+ * 
  * Key fields:
  * - goal: Assessment type (OVERVIEW, JOB_FIT, TEAM_FIT) - determines scoring strategy
- * - blueprint: JSONB configuration for test assembly mechanics
+ * - typedBlueprint: Polymorphic JSONB configuration (TestBlueprintDto hierarchy)
  * 
- * Blueprint schema varies by goal:
- * - OVERVIEW: { strategy, competencies, aggregationTargets, saveAsPassport }
- * - JOB_FIT: { strategy, onetSocCode, useOnetBenchmarks, reusePassportData, requiredTags, excludeTypes }
- * - TEAM_FIT: { strategy, teamId, normalizationStandard, checks, saturationThreshold, limit }
+ * Blueprint schema varies by goal (polymorphic DTOs):
+ * - OverviewBlueprint (UNIVERSAL_BASELINE): Competency Passport generation
+ * - JobFitBlueprint (TARGETED_FIT): O*NET occupation matching
+ * - TeamFitBlueprint (DYNAMIC_GAP_ANALYSIS): Team skill gap analysis
  */
 @Entity
 @Table(name = "test_templates")
@@ -37,6 +45,35 @@ public class TestTemplate {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    // ============================================
+    // VERSIONING FIELDS
+    // Immutable Versioning Pattern
+    // ============================================
+
+    /**
+     * Version number for this template.
+     * Starts at 1 for new templates, increments with each new version.
+     */
+    @Column(name = "version", nullable = false)
+    private Integer version = 1;
+
+    /**
+     * Reference to the parent template (previous version).
+     * Null for original templates (version 1).
+     */
+    @Column(name = "parent_id")
+    private UUID parentId;
+
+    /**
+     * Lifecycle status of this template version.
+     * DRAFT: Can be modified
+     * PUBLISHED: Immutable, available for test sessions
+     * ARCHIVED: Immutable, no longer available for new sessions
+     */
+    @Column(name = "status")
+    @Enumerated(EnumType.STRING)
+    private TemplateStatus status = TemplateStatus.DRAFT;
 
     /**
      * Assessment goal type - determines the scoring strategy and test mechanics.
@@ -80,13 +117,30 @@ public class TestTemplate {
      *   "saturationThreshold": 0.75,
      *   "limit": 20
      * }
+     * 
+     * @deprecated Use typedBlueprint field instead for type-safe polymorphic access.
      */
+    @Deprecated
     @Column(name = "blueprint", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> blueprint;
 
     /**
-     * @deprecated Use blueprint field instead. Kept for backward compatibility.
+     * Type-safe polymorphic blueprint configuration.
+     * Uses Jackson polymorphism to deserialize into the correct subclass:
+     * - OverviewBlueprint for UNIVERSAL_BASELINE strategy
+     * - JobFitBlueprint for TARGETED_FIT strategy
+     * - TeamFitBlueprint for DYNAMIC_GAP_ANALYSIS strategy
+     * 
+     * Stored in the same JSONB column as legacy blueprint field.
+     * When both are set, typedBlueprint takes precedence.
+     */
+    @Type(JsonType.class)
+    @Column(name = "typed_blueprint", columnDefinition = "jsonb")
+    private TestBlueprintDto typedBlueprint;
+
+    /**
+     * @deprecated Use typedBlueprint field instead. Kept for backward compatibility.
      * Will be removed in future versions.
      */
     @Deprecated
@@ -190,6 +244,34 @@ public class TestTemplate {
         this.description = description;
     }
 
+    // ============================================
+    // VERSIONING GETTERS/SETTERS
+    // ============================================
+
+    public Integer getVersion() {
+        return version;
+    }
+
+    public void setVersion(Integer version) {
+        this.version = version;
+    }
+
+    public UUID getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(UUID parentId) {
+        this.parentId = parentId;
+    }
+
+    public TemplateStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(TemplateStatus status) {
+        this.status = status;
+    }
+
     public AssessmentGoal getGoal() {
         return goal;
     }
@@ -204,6 +286,130 @@ public class TestTemplate {
 
     public void setBlueprint(Map<String, Object> blueprint) {
         this.blueprint = blueprint;
+    }
+
+    /**
+     * Get the type-safe polymorphic blueprint configuration.
+     * @return TestBlueprintDto subclass or null
+     */
+    public TestBlueprintDto getTypedBlueprint() {
+        return typedBlueprint;
+    }
+
+    /**
+     * Set the type-safe polymorphic blueprint configuration.
+     * Also syncs the goal field based on the blueprint strategy.
+     */
+    public void setTypedBlueprint(TestBlueprintDto typedBlueprint) {
+        this.typedBlueprint = typedBlueprint;
+        if (typedBlueprint != null && typedBlueprint.getStrategy() != null) {
+            this.goal = typedBlueprint.getStrategy();
+        }
+    }
+
+    // ============================================
+    // VERSIONING METHODS
+    // Immutable Versioning Pattern
+    // ============================================
+
+    /**
+     * Create a new version of this template.
+     * 
+     * This method does NOT modify the current entity. It returns a new
+     * transient (not persisted) TestTemplate that:
+     * - References this template as its parent (parentId = this.id)
+     * - Has an incremented version number
+     * - Starts in DRAFT status
+     * - Contains a deep copy of the blueprint configuration
+     * 
+     * @return A new transient TestTemplate instance representing the next version
+     * @throws IllegalStateException if the current template has not been persisted (no ID)
+     */
+    public TestTemplate createNextVersion() {
+        if (this.id == null) {
+            throw new IllegalStateException("Cannot create next version: current template has no ID");
+        }
+
+        TestTemplate nextVersion = new TestTemplate();
+        
+        // Set versioning fields
+        nextVersion.setParentId(this.id);
+        nextVersion.setVersion(this.version + 1);
+        nextVersion.setStatus(TemplateStatus.DRAFT);
+        
+        // Copy basic fields
+        nextVersion.setName(this.name);
+        nextVersion.setDescription(this.description);
+        nextVersion.setGoal(this.goal);
+        
+        // Deep copy typed blueprint if present
+        if (this.typedBlueprint != null) {
+            nextVersion.setTypedBlueprint(this.typedBlueprint.deepCopy());
+        }
+        
+        // Copy legacy blueprint (shallow copy - Map contents)
+        if (this.blueprint != null) {
+            nextVersion.setBlueprint(new java.util.HashMap<>(this.blueprint));
+        }
+        
+        // Copy legacy competencyIds
+        if (this.competencyIds != null) {
+            nextVersion.setCompetencyIds(new ArrayList<>(this.competencyIds));
+        }
+        
+        // Copy test configuration settings
+        nextVersion.setQuestionsPerIndicator(this.questionsPerIndicator);
+        nextVersion.setTimeLimitMinutes(this.timeLimitMinutes);
+        nextVersion.setPassingScore(this.passingScore);
+        nextVersion.setShuffleQuestions(this.shuffleQuestions);
+        nextVersion.setShuffleOptions(this.shuffleOptions);
+        nextVersion.setAllowSkip(this.allowSkip);
+        nextVersion.setAllowBackNavigation(this.allowBackNavigation);
+        nextVersion.setShowResultsImmediately(this.showResultsImmediately);
+        
+        // New version starts inactive (DRAFT status controls this now)
+        nextVersion.setIsActive(false);
+        
+        return nextVersion;
+    }
+
+    /**
+     * Check if this template can be modified.
+     * Only DRAFT templates can be modified.
+     * 
+     * @return true if the template is in DRAFT status
+     */
+    @Transient
+    public boolean isEditable() {
+        return status == null || status.isEditable();
+    }
+
+    /**
+     * Publish this template, making it available for test sessions.
+     * After publishing, the template becomes immutable.
+     * 
+     * @throws IllegalStateException if the template is not in DRAFT status
+     */
+    public void publish() {
+        if (status != TemplateStatus.DRAFT) {
+            throw new IllegalStateException("Only DRAFT templates can be published. Current status: " + status);
+        }
+        this.status = TemplateStatus.PUBLISHED;
+        this.isActive = true;
+    }
+
+    /**
+     * Archive this template, making it unavailable for new test sessions.
+     * Archived templates are preserved for historical reference.
+     * 
+     * @throws IllegalStateException if the template is not PUBLISHED
+     */
+    public void archive() {
+        if (status != TemplateStatus.PUBLISHED) {
+            throw new IllegalStateException("Only PUBLISHED templates can be archived. Current status: " + status);
+        }
+        this.status = TemplateStatus.ARCHIVED;
+        this.isActive = false;
     }
 
     // ============================================
@@ -391,7 +597,11 @@ public class TestTemplate {
         return "TestTemplate{" +
                 "id=" + id +
                 ", name='" + name + '\'' +
+                ", version=" + version +
+                ", parentId=" + parentId +
+                ", status=" + status +
                 ", goal=" + goal +
+                ", typedBlueprint=" + typedBlueprint +
                 ", blueprint=" + blueprint +
                 ", isActive=" + isActive +
                 '}';
