@@ -181,12 +181,11 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
         existingIndicator.setMeasurementType(behavioralIndicatorDetails.getMeasurementType());
         existingIndicator.setWeight(behavioralIndicatorDetails.getWeight());
         existingIndicator.setExamples(behavioralIndicatorDetails.getExamples());
-        existingIndicator.setCounterExamples(behavioralIndicatorDetails.getCounterExamples());
-        existingIndicator.setActive(behavioralIndicatorDetails.isActive());
-        existingIndicator.setApprovalStatus(behavioralIndicatorDetails.getApprovalStatus());
-        existingIndicator.setOrderIndex(behavioralIndicatorDetails.getOrderIndex());
-
-        return behavioralIndicatorRepository.save(existingIndicator);
+                    existingIndicator.setCounterExamples(behavioralIndicatorDetails.getCounterExamples());
+                    existingIndicator.setActive(behavioralIndicatorDetails.isActive());
+                    existingIndicator.setApprovalStatus(behavioralIndicatorDetails.getApprovalStatus());
+                    existingIndicator.setOrderIndex(behavioralIndicatorDetails.getOrderIndex());
+                    existingIndicator.setContextScope(behavioralIndicatorDetails.getContextScope());        return behavioralIndicatorRepository.save(existingIndicator);
     }
 
     @Override

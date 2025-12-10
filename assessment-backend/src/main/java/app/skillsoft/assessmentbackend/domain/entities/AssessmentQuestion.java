@@ -48,19 +48,31 @@ public class AssessmentQuestion {
 
     /**
      * Metadata JSONB field for flexible tagging and context filtering.
+     * Part of the Two-Tier Scoping System for Smart Assessment filtering.
+     * 
      * Per ROADMAP.md Section 1.B: "Allows filtering questions by context and difficulty"
      * 
-     * Schema example:
+     * Schema standard (controlled vocabulary):
      * {
-     *   "tags": ["IT", "JUNIOR", "GENERAL"],
-     *   "difficulty": "HARD",
-     *   "time_limit_sec": 60,
-     *   "context": "UNIVERSAL",
-     *   "scenario_type": "WORKPLACE",
-     *   "measurement_target": "BEHAVIORAL"
+     *   "tags": ["GENERAL", "JUNIOR"],    // Required for context filtering
+     *   "complexity_score": 0.8,          // Optional: 0.0-1.0 scale
+     *   "scenario_type": "WORKPLACE",     // Optional: WORKPLACE, ACADEMIC, INTERPERSONAL
+     *   "measurement_target": "BEHAVIORAL" // Optional: BEHAVIORAL, COGNITIVE, SKILL
      * }
      * 
-     * Used by Context Neutrality Filter in Scenario A (Universal Baseline)
+     * Tag Taxonomy (Controlled Vocabulary):
+     * - GENERAL: Critical for Scenario A - no industry jargon, context-neutral scenarios
+     * - IT, SALES, FINANCE, MEDICAL, ENGINEERING: Industry/domain markers for Scenario B (Job Fit)
+     * - JUNIOR, MID, SENIOR: Complexity/seniority markers for adaptive difficulty
+     * 
+     * Usage:
+     * - Scenario A (Universal Baseline): Query with tag="GENERAL" for context-neutral Competency Passport
+     * - Scenario B (Job Fit): Query with tag="IT" or tag="SALES" for role-specific assessments
+     * - Scenario C (Team Fit): Combine with ContextScope.MANAGERIAL for leadership team fit
+     * 
+     * Integration:
+     * - Works with BehavioralIndicator.contextScope (macro-level filtering)
+     * - metadata.tags provides micro-level, question-specific filtering
      */
     @Column(name = "metadata", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)

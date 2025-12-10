@@ -48,6 +48,18 @@ public class BehavioralIndicator {
     @Enumerated(EnumType.STRING)
     private ApprovalStatus approvalStatus;
 
+    /**
+     * Context Scope - Determines the applicability of this behavioral indicator.
+     * Used for Smart Assessment filtering to ensure context-neutral tests in Scenario A.
+     * Default: UNIVERSAL (applies to all humans regardless of job role)
+     * 
+     * Note: Column is nullable to allow for safe migration of existing data.
+     * Application code ensures non-null values through default initialization.
+     */
+    @Column(name = "context_scope", nullable = true)
+    @Enumerated(EnumType.STRING)
+    private ContextScope contextScope = ContextScope.UNIVERSAL;
+
     public BehavioralIndicator() {
 
     }
@@ -67,6 +79,7 @@ public class BehavioralIndicator {
                 ", isActive=" + isActive +
                 ", approvalStatus=" + approvalStatus +
                 ", orderIndex=" + orderIndex +
+                ", contextScope=" + contextScope +
                 '}';
     }
 
@@ -122,6 +135,15 @@ public class BehavioralIndicator {
         this.orderIndex = orderIndex;
     }
 
+    public ContextScope getContextScope() {
+        return contextScope;
+    }
+
+    public void setContextScope(ContextScope contextScope) {
+        // Ensure non-null: default to UNIVERSAL if null is passed
+        this.contextScope = (contextScope != null) ? contextScope : ContextScope.UNIVERSAL;
+    }
+
     public Competency getCompetency() {
         return competency;
     }
@@ -166,7 +188,7 @@ public class BehavioralIndicator {
         return orderIndex;
     }
 
-    public BehavioralIndicator(UUID id, Competency competency, String title, String description, ProficiencyLevel observabilityLevel, IndicatorMeasurementType measurementType, float weight, String examples, String counterExamples, boolean isActive, ApprovalStatus approvalStatus, Integer orderIndex) {
+    public BehavioralIndicator(UUID id, Competency competency, String title, String description, ProficiencyLevel observabilityLevel, IndicatorMeasurementType measurementType, float weight, String examples, String counterExamples, boolean isActive, ApprovalStatus approvalStatus, Integer orderIndex, ContextScope contextScope) {
         this.id = id;
         this.competency = competency;
         this.title = title;
@@ -179,6 +201,7 @@ public class BehavioralIndicator {
         this.isActive = isActive;
         this.approvalStatus = approvalStatus;
         this.orderIndex = orderIndex;
+        this.contextScope = contextScope != null ? contextScope : ContextScope.UNIVERSAL;
     }
 
     @Column(name = "order_index", nullable = false)

@@ -28,6 +28,7 @@ public class BehavioralIndicatorMapperImpl implements BehavioralIndicatorMapper 
         indicator.setActive(dto.isActive());
         indicator.setApprovalStatus(dto.approvalStatus());
         indicator.setOrderIndex(dto.orderIndex());
+        indicator.setContextScope(dto.contextScope());
 
         // DO NOT set competency here - it will be set by the service within transaction
         // The competencyId from DTO is passed separately to the service layer
@@ -58,7 +59,8 @@ public class BehavioralIndicatorMapperImpl implements BehavioralIndicatorMapper 
                 entity.getCounterExamples(),
                 entity.isActive(),
                 entity.getApprovalStatus(),
-                entity.getOrderIndex()
+                entity.getOrderIndex(),
+                entity.getContextScope()
         );
     }
 }

@@ -63,4 +63,45 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
         ORDER BY q.orderIndex
         """)
     List<AssessmentQuestion> findActiveByIndicatorIds(@Param("indicatorIds") List<UUID> indicatorIds);
+    
+    /**
+     * Find questions by metadata tag (JSONB filtering).
+     * Used for Smart Assessment context filtering in Scenario A (Universal Baseline).
+     * 
+     * Example: findByMetadataTag("GENERAL") returns context-neutral questions
+     * suitable for the Competency Passport assessment.
+     * 
+     * PostgreSQL JSONB operator: metadata->'tags' @> '["GENERAL"]'::jsonb
+     * Checks if the tags array contains the specified tag.
+     * 
+     * @param tag The tag to filter by (GENERAL, IT, SALES, FINANCE, JUNIOR, MID, SENIOR, etc.)
+     * @return List of active questions with the specified tag in metadata.tags
+     */
+    @Query(value = """
+        SELECT * FROM assessment_questions q
+        WHERE q.is_active = true
+        AND q.metadata->'tags' @> CAST(:tag AS jsonb)
+        ORDER BY q.order_index
+        """, nativeQuery = true)
+    List<AssessmentQuestion> findByMetadataTag(@Param("tag") String tag);
+    
+    /**
+     * Find questions by behavioral indicator ID and metadata tag.
+     * Combines indicator filtering with tag-based context filtering.
+     * 
+     * @param indicatorId The behavioral indicator UUID
+     * @param tag The tag to filter by (e.g., "GENERAL", "IT")
+     * @return List of active questions for the indicator with the specified tag
+     */
+    @Query(value = """
+        SELECT * FROM assessment_questions q
+        WHERE q.behavioral_indicator_id = CAST(:indicatorId AS uuid)
+        AND q.is_active = true
+        AND q.metadata->'tags' @> CAST(:tag AS jsonb)
+        ORDER BY q.order_index
+        """, nativeQuery = true)
+    List<AssessmentQuestion> findByIndicatorIdAndMetadataTag(
+        @Param("indicatorId") String indicatorId, 
+        @Param("tag") String tag
+    );
 }

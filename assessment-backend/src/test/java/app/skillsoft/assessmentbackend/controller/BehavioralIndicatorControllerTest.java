@@ -64,6 +64,7 @@ class BehavioralIndicatorControllerTest {
         testIndicator.setActive(true);
         testIndicator.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
         testIndicator.setOrderIndex(1);
+        testIndicator.setContextScope(ContextScope.UNIVERSAL);
 
         testIndicatorDto = new BehavioralIndicatorDto(
             testIndicator.getId(),
@@ -77,7 +78,8 @@ class BehavioralIndicatorControllerTest {
             testIndicator.getCounterExamples(),
             testIndicator.isActive(),
             testIndicator.getApprovalStatus(),
-            testIndicator.getOrderIndex()
+            testIndicator.getOrderIndex(),
+            testIndicator.getContextScope()
         );
     }
 

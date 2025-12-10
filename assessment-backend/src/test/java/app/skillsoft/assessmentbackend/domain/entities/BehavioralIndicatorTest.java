@@ -69,12 +69,13 @@ class BehavioralIndicatorTest {
             boolean isActive = true;
             ApprovalStatus approvalStatus = ApprovalStatus.APPROVED;
             Integer orderIndex = 1;
+            ContextScope contextScope = ContextScope.UNIVERSAL;
 
             // When
             BehavioralIndicator indicator = new BehavioralIndicator(
                 behavioralIndicatorId, competency, title, description, observabilityLevel,
                 measurementType, weight, examples, counterExamples, isActive, 
-                approvalStatus, orderIndex
+                approvalStatus, orderIndex, contextScope
             );
 
             // Then
@@ -90,6 +91,7 @@ class BehavioralIndicatorTest {
             assertThat(indicator.isActive()).isEqualTo(isActive);
             assertThat(indicator.getApprovalStatus()).isEqualTo(approvalStatus);
             assertThat(indicator.getOrderIndex()).isEqualTo(orderIndex);
+            assertThat(indicator.getContextScope()).isEqualTo(contextScope);
         }
     }
 

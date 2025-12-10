@@ -1,6 +1,7 @@
 package app.skillsoft.assessmentbackend.domain.dto;
 
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
+import app.skillsoft.assessmentbackend.domain.entities.ContextScope;
 import app.skillsoft.assessmentbackend.domain.entities.IndicatorMeasurementType;
 import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 
@@ -18,6 +19,7 @@ public record BehavioralIndicatorDto(
         String counterExamples,
         boolean isActive,
         ApprovalStatus approvalStatus,
-        Integer orderIndex
+        Integer orderIndex,
+        ContextScope contextScope
 ) {
 }
