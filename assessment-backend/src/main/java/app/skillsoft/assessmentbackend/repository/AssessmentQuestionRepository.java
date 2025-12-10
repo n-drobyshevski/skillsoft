@@ -126,7 +126,7 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
         JOIN behavioral_indicators bi ON q.behavioral_indicator_id = bi.id
         WHERE bi.competency_id = :competencyId
           AND bi.context_scope = 'UNIVERSAL'
-          AND q.metadata -> 'tags' ? 'GENERAL'
+          AND q.metadata -> 'tags' @> '["GENERAL"]'::jsonb
         ORDER BY random()
         LIMIT :limit
         """, nativeQuery = true)

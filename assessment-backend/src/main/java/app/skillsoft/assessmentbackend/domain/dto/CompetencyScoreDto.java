@@ -15,6 +15,7 @@ public class CompetencyScoreDto {
     private Double percentage;
     private Integer questionsAnswered;
     private Integer questionsCorrect;
+    private String onetCode; // O*NET code for Big Five projection
 
     // Constructors
     public CompetencyScoreDto() {
@@ -84,6 +85,14 @@ public class CompetencyScoreDto {
 
     public void setQuestionsCorrect(Integer questionsCorrect) {
         this.questionsCorrect = questionsCorrect;
+    }
+
+    public String getOnetCode() {
+        return onetCode;
+    }
+
+    public void setOnetCode(String onetCode) {
+        this.onetCode = onetCode;
     }
 
     @Override

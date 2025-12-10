@@ -4,6 +4,8 @@ import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
+import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
+import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -25,6 +27,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final TestResultRepository resultRepository;
     private final AssessmentQuestionRepository questionRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
+    private final List<ScoringStrategy> scoringStrategies;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -32,13 +35,15 @@ public class TestSessionServiceImpl implements TestSessionService {
             TestAnswerRepository answerRepository,
             TestResultRepository resultRepository,
             AssessmentQuestionRepository questionRepository,
-            BehavioralIndicatorRepository indicatorRepository) {
+            BehavioralIndicatorRepository indicatorRepository,
+            List<ScoringStrategy> scoringStrategies) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
         this.resultRepository = resultRepository;
         this.questionRepository = questionRepository;
         this.indicatorRepository = indicatorRepository;
+        this.scoringStrategies = scoringStrategies;
     }
 
     @Override
@@ -444,7 +449,6 @@ public class TestSessionServiceImpl implements TestSessionService {
         // For now, set max score but leave score null until grading
         answer.setMaxScore(1.0); // Default max score
     }
-
     private TestResultDto calculateAndSaveResult(TestSession session) {
         List<TestAnswer> answers = answerRepository.findBySession_Id(session.getId());
 
@@ -455,19 +459,30 @@ public class TestSessionServiceImpl implements TestSessionService {
                 .mapToInt(a -> a.getTimeSpentSeconds() != null ? a.getTimeSpentSeconds() : 0)
                 .sum();
 
-        // Calculate scores (simplified - TODO: implement proper scoring)
-        Double totalScore = answerRepository.sumScoreBySessionId(session.getId());
-        Double maxScore = answerRepository.sumMaxScoreBySessionId(session.getId());
+        // Get template goal for strategy selection
+        AssessmentGoal goal = session.getTemplate().getGoal();
         
-        double percentage = 0.0;
-        if (maxScore != null && maxScore > 0) {
-            percentage = (totalScore != null ? totalScore / maxScore : 0) * 100;
+        // Find appropriate scoring strategy
+        ScoringStrategy strategy = scoringStrategies.stream()
+                .filter(s -> s.getSupportedGoal() == goal)
+                .findFirst()
+                .orElse(null);
+        
+        ScoringResult scoringResult;
+        if (strategy != null) {
+            log.info("Using {} strategy for goal: {}", strategy.getClass().getSimpleName(), goal);
+            scoringResult = strategy.calculate(session, answers);
+        } else {
+            log.warn("No scoring strategy found for goal: {}, using legacy calculation", goal);
+            // Fallback to legacy scoring
+            scoringResult = calculateLegacyScore(session, answers);
         }
 
-        // Create result
+        // Create result entity
         TestResult result = new TestResult(session, session.getClerkUserId());
-        result.setOverallScore(totalScore != null ? totalScore : 0.0);
-        result.setOverallPercentage(percentage);
+        result.setOverallScore(scoringResult.getOverallScore());
+        result.setOverallPercentage(scoringResult.getOverallPercentage());
+        result.setCompetencyScores(scoringResult.getCompetencyScores());
         result.setQuestionsAnswered((int) answered);
         result.setQuestionsSkipped((int) skipped);
         result.setTotalTimeSeconds(totalTime);
@@ -476,10 +491,32 @@ public class TestSessionServiceImpl implements TestSessionService {
         // Calculate passed/failed
         result.calculatePassed(session.getTemplate().getPassingScore());
 
-        // TODO: Calculate competency scores and percentile
+        // TODO: Calculate percentile
 
         TestResult saved = resultRepository.save(result);
         return toResultDto(saved, session);
+    }
+    
+    /**
+     * Legacy scoring calculation for backward compatibility.
+     * Used when no specific strategy is available for the goal.
+     */
+    private ScoringResult calculateLegacyScore(TestSession session, List<TestAnswer> answers) {
+        Double totalScore = answerRepository.sumScoreBySessionId(session.getId());
+        Double maxScore = answerRepository.sumMaxScoreBySessionId(session.getId());
+        
+        double percentage = 0.0;
+        if (maxScore != null && maxScore > 0) {
+            percentage = (totalScore != null ? totalScore / maxScore : 0) * 100;
+        }
+        
+        ScoringResult result = new ScoringResult();
+        result.setOverallScore(totalScore != null ? totalScore : 0.0);
+        result.setOverallPercentage(percentage);
+        result.setGoal(session.getTemplate().getGoal());
+        result.setCompetencyScores(new ArrayList<>()); // Empty for legacy
+        
+        return result;
     }
 
     // Mapping methods
