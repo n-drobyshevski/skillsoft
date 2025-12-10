@@ -4,6 +4,8 @@ import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -14,6 +16,8 @@ import java.util.*;
 
 @Service
 public class TestSessionServiceImpl implements TestSessionService {
+
+    private static final Logger log = LoggerFactory.getLogger(TestSessionServiceImpl.class);
 
     private final TestSessionRepository sessionRepository;
     private final TestTemplateRepository templateRepository;
@@ -283,6 +287,92 @@ public class TestSessionServiceImpl implements TestSessionService {
 
     // Helper methods
     private List<UUID> generateQuestionOrder(TestTemplate template) {
+        // Strategy Pattern: Select questions based on assessment goal
+        return switch (template.getGoal()) {
+            case OVERVIEW -> generateScenarioAOrder(template);
+            case JOB_FIT -> generateScenarioBOrder(template);
+            case TEAM_FIT -> generateScenarioCOrder(template);
+        };
+    }
+
+    /**
+     * Scenario A: Universal Baseline (Competency Passport)
+     * 
+     * Strategy:
+     * - Only UNIVERSAL context scope indicators
+     * - Only GENERAL tagged questions (context-neutral)
+     * - Flat distribution (no adaptive difficulty yet)
+     * 
+     * This ensures construct validity by filtering out role-specific content,
+     * measuring transferable soft skills suitable for reuse across job roles.
+     */
+    private List<UUID> generateScenarioAOrder(TestTemplate template) {
+        List<UUID> questionIds = new ArrayList<>();
+        
+        // Extract competencies from template (simplified - assumes competencyIds field)
+        List<UUID> targetCompetencies = template.getCompetencyIds();
+        int questionsPerComp = template.getQuestionsPerIndicator();
+
+        for (UUID compId : targetCompetencies) {
+            // Use Smart Assessment repository method
+            List<AssessmentQuestion> questions = questionRepository
+                .findUniversalQuestions(compId, questionsPerComp);
+                
+            if (questions.isEmpty()) {
+                log.warn("No UNIVERSAL + GENERAL questions found for competency ID: {}. " +
+                         "This may result in incomplete Scenario A assessment. " +
+                         "Ensure behavioral indicators have context_scope='UNIVERSAL' and " +
+                         "questions have 'GENERAL' tag in metadata.", compId);
+            }
+            
+            questionIds.addAll(questions.stream()
+                .map(AssessmentQuestion::getId)
+                .toList());
+        }
+
+        // Shuffle to prevent clustering by competency
+        if (Boolean.TRUE.equals(template.getShuffleQuestions())) {
+            Collections.shuffle(questionIds);
+        }
+        
+        log.info("Generated Scenario A question order: {} questions from {} competencies", 
+                 questionIds.size(), targetCompetencies.size());
+        
+        return questionIds;
+    }
+
+    /**
+     * Scenario B: Job Fit Assessment
+     * 
+     * Future implementation:
+     * - Filter by O*NET SOC code requirements
+     * - Apply targeted context scopes (PROFESSIONAL, TECHNICAL)
+     * - Use role-specific tags
+     * - Implement adaptive difficulty based on passport baseline
+     */
+    private List<UUID> generateScenarioBOrder(TestTemplate template) {
+        log.warn("Scenario B (Job Fit) question selection not yet implemented. Falling back to legacy logic.");
+        return generateLegacyQuestionOrder(template);
+    }
+
+    /**
+     * Scenario C: Team Fit Analysis
+     * 
+     * Future implementation:
+     * - ESCO skill normalization
+     * - Team gap analysis
+     * - Personality compatibility checks
+     */
+    private List<UUID> generateScenarioCOrder(TestTemplate template) {
+        log.warn("Scenario C (Team Fit) question selection not yet implemented. Falling back to legacy logic.");
+        return generateLegacyQuestionOrder(template);
+    }
+
+    /**
+     * Legacy question selection logic (pre-Smart Assessment).
+     * Used as fallback for scenarios B and C until fully implemented.
+     */
+    private List<UUID> generateLegacyQuestionOrder(TestTemplate template) {
         List<UUID> questionIds = new ArrayList<>();
 
         // For each competency in the template

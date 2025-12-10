@@ -104,4 +104,34 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
         @Param("indicatorId") String indicatorId, 
         @Param("tag") String tag
     );
+
+    /**
+     * Find questions for Scenario A (Universal Baseline / Competency Passport).
+     * 
+     * This query implements Smart Assessment Strategy-Based Selection:
+     * 1. Linked to specific Competency (indicator.competency_id)
+     * 2. Belong to Universal Indicator (indicator.context_scope = 'UNIVERSAL')
+     * 3. Have 'GENERAL' tag in metadata (context-neutral questions)
+     * 
+     * Used by TestSessionService to ensure construct validity in Scenario A assessments.
+     * By filtering for UNIVERSAL + GENERAL, we guarantee context neutrality - measuring
+     * transferable soft skills rather than role-specific knowledge.
+     * 
+     * @param competencyId The competency UUID to filter questions by
+     * @param limit Maximum number of questions to return (randomized)
+     * @return List of context-neutral questions suitable for Universal Baseline assessment
+     */
+    @Query(value = """
+        SELECT q.* FROM assessment_questions q
+        JOIN behavioral_indicators bi ON q.behavioral_indicator_id = bi.id
+        WHERE bi.competency_id = :competencyId
+          AND bi.context_scope = 'UNIVERSAL'
+          AND q.metadata -> 'tags' ? 'GENERAL'
+        ORDER BY random()
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<AssessmentQuestion> findUniversalQuestions(
+        @Param("competencyId") UUID competencyId, 
+        @Param("limit") int limit
+    );
 }
