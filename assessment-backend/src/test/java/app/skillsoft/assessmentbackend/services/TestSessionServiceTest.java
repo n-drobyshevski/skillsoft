@@ -2,9 +2,9 @@ package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.*;
-import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
-import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
+import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
+import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,10 +45,19 @@ class TestSessionServiceTest {
     private TestAnswerRepository answerRepository;
 
     @Mock
-    private TestTemplateService templateService;
+    private TestTemplateRepository templateRepository;
 
     @Mock
-    private TestResultService resultService;
+    private TestResultRepository resultRepository;
+
+    @Mock
+    private AssessmentQuestionRepository questionRepository;
+
+    @Mock
+    private BehavioralIndicatorRepository indicatorRepository;
+
+    @Mock
+    private List<ScoringStrategy> scoringStrategies;
 
     @InjectMocks
     private TestSessionServiceImpl testSessionService;
@@ -361,7 +370,7 @@ class TestSessionServiceTest {
 
             // Then
             assertThat(result).isNotNull();
-            verify(sessionRepository).save(argThat(session -> 
+            verify(sessionRepository).save(argThat(session ->
                     session.getStatus() == SessionStatus.ABANDONED));
         }
 
@@ -375,6 +384,203 @@ class TestSessionServiceTest {
             // When & Then
             assertThatThrownBy(() -> testSessionService.abandonSession(sessionId))
                     .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("Start Session Tests - Empty Question Validation")
+    class StartSessionEmptyQuestionValidationTests {
+
+        @Test
+        @DisplayName("Should throw IllegalStateException when no questions available for competencies")
+        void startSession_WithNoQuestions_ShouldThrowIllegalStateException() {
+            // Given: A template with competencies that have no questions
+            UUID competencyWithNoQuestions = UUID.randomUUID();
+            mockTemplate.setCompetencyIds(List.of(competencyWithNoQuestions));
+            mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
+
+            StartTestSessionRequest request = new StartTestSessionRequest(
+                    templateId,
+                    clerkUserId
+            );
+
+            // Mock template repository
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+
+            // Mock no in-progress session
+            when(sessionRepository.findByClerkUserIdAndTemplate_IdAndStatus(
+                    clerkUserId, templateId, SessionStatus.IN_PROGRESS))
+                    .thenReturn(Optional.empty());
+
+            // Mock Scenario A question generation - no UNIVERSAL questions
+            when(questionRepository.findUniversalQuestions(eq(competencyWithNoQuestions), anyInt()))
+                    .thenReturn(Collections.emptyList());
+
+            // Mock fallback - no behavioral indicators for competency
+            when(indicatorRepository.findByCompetencyId(competencyWithNoQuestions))
+                    .thenReturn(Collections.emptyList());
+
+            // When & Then: Should throw IllegalStateException
+            assertThatThrownBy(() -> testSessionService.startSession(request))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Cannot start test session")
+                    .hasMessageContaining("No questions are available")
+                    .hasMessageContaining("competencies have behavioral indicators with active questions");
+
+            // Verify that session was never saved
+            verify(sessionRepository, never()).save(any(TestSession.class));
+
+            // Verify that we attempted to find questions
+            verify(questionRepository).findUniversalQuestions(eq(competencyWithNoQuestions), anyInt());
+            verify(indicatorRepository).findByCompetencyId(competencyWithNoQuestions);
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalStateException when indicators exist but have no active questions")
+        void startSession_WithIndicatorsButNoActiveQuestions_ShouldThrowIllegalStateException() {
+            // Given: A template with competency that has indicators but no active questions
+            UUID competencyId = UUID.randomUUID();
+            UUID indicatorId = UUID.randomUUID();
+            mockTemplate.setCompetencyIds(List.of(competencyId));
+            mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
+
+            StartTestSessionRequest request = new StartTestSessionRequest(
+                    templateId,
+                    clerkUserId
+            );
+
+            BehavioralIndicator mockIndicator = new BehavioralIndicator();
+            mockIndicator.setId(indicatorId);
+
+            // Mock template repository
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+
+            // Mock no in-progress session
+            when(sessionRepository.findByClerkUserIdAndTemplate_IdAndStatus(
+                    clerkUserId, templateId, SessionStatus.IN_PROGRESS))
+                    .thenReturn(Optional.empty());
+
+            // Mock Scenario A question generation - no UNIVERSAL questions
+            when(questionRepository.findUniversalQuestions(eq(competencyId), anyInt()))
+                    .thenReturn(Collections.emptyList());
+
+            // Mock fallback - indicator exists but has no active questions
+            when(indicatorRepository.findByCompetencyId(competencyId))
+                    .thenReturn(List.of(mockIndicator));
+            when(questionRepository.findByBehavioralIndicator_Id(indicatorId))
+                    .thenReturn(Collections.emptyList());
+
+            // When & Then: Should throw IllegalStateException
+            assertThatThrownBy(() -> testSessionService.startSession(request))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Cannot start test session")
+                    .hasMessageContaining("No questions are available");
+
+            // Verify that session was never saved
+            verify(sessionRepository, never()).save(any(TestSession.class));
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalStateException for JOB_FIT goal with no questions (legacy fallback)")
+        void startSession_JobFitGoalWithNoQuestions_ShouldThrowIllegalStateException() {
+            // Given: A template with JOB_FIT goal that falls back to legacy logic
+            UUID competencyId = UUID.randomUUID();
+            mockTemplate.setCompetencyIds(List.of(competencyId));
+            mockTemplate.setGoal(AssessmentGoal.JOB_FIT);
+
+            StartTestSessionRequest request = new StartTestSessionRequest(
+                    templateId,
+                    clerkUserId
+            );
+
+            // Mock template repository
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+
+            // Mock no in-progress session
+            when(sessionRepository.findByClerkUserIdAndTemplate_IdAndStatus(
+                    clerkUserId, templateId, SessionStatus.IN_PROGRESS))
+                    .thenReturn(Optional.empty());
+
+            // Mock legacy fallback - no indicators for competency
+            when(indicatorRepository.findByCompetencyId(competencyId))
+                    .thenReturn(Collections.emptyList());
+
+            // When & Then: Should throw IllegalStateException
+            assertThatThrownBy(() -> testSessionService.startSession(request))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Cannot start test session")
+                    .hasMessageContaining("No questions are available");
+
+            // Verify that session was never saved
+            verify(sessionRepository, never()).save(any(TestSession.class));
+        }
+
+        @Test
+        @DisplayName("Should successfully start session when questions are available")
+        void startSession_WithQuestionsAvailable_ShouldSucceed() {
+            // Given: A template with competency that has active questions
+            UUID competencyId = UUID.randomUUID();
+            UUID question1Id = UUID.randomUUID();
+            UUID question2Id = UUID.randomUUID();
+            UUID question3Id = UUID.randomUUID();
+
+            mockTemplate.setCompetencyIds(List.of(competencyId));
+            mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
+            mockTemplate.setQuestionsPerIndicator(3);
+
+            StartTestSessionRequest request = new StartTestSessionRequest(
+                    templateId,
+                    clerkUserId
+            );
+
+            // Create mock questions
+            AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
+            when(mockQuestion1.getId()).thenReturn(question1Id);
+            AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
+            when(mockQuestion2.getId()).thenReturn(question2Id);
+            AssessmentQuestion mockQuestion3 = mock(AssessmentQuestion.class);
+            when(mockQuestion3.getId()).thenReturn(question3Id);
+
+            // Mock template repository
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+
+            // Mock no in-progress session
+            when(sessionRepository.findByClerkUserIdAndTemplate_IdAndStatus(
+                    clerkUserId, templateId, SessionStatus.IN_PROGRESS))
+                    .thenReturn(Optional.empty());
+
+            // Mock Scenario A question generation - return questions
+            when(questionRepository.findUniversalQuestions(eq(competencyId), eq(3)))
+                    .thenReturn(List.of(mockQuestion1, mockQuestion2, mockQuestion3));
+
+            // Mock session save
+            when(sessionRepository.save(any(TestSession.class))).thenAnswer(invocation -> {
+                TestSession session = invocation.getArgument(0);
+                session.setId(sessionId);
+                return session;
+            });
+
+            // Mock answer count for DTO mapping
+            when(answerRepository.countAnsweredBySessionId(any())).thenReturn(0L);
+
+            // When
+            TestSessionDto result = testSessionService.startSession(request);
+
+            // Then
+            assertThat(result).isNotNull();
+            assertThat(result.id()).isEqualTo(sessionId);
+            assertThat(result.status()).isEqualTo(SessionStatus.IN_PROGRESS);
+            assertThat(result.totalQuestions()).isEqualTo(3);
+
+            // Verify session was saved with correct question order
+            verify(sessionRepository).save(argThat(session -> {
+                List<UUID> questionOrder = session.getQuestionOrder();
+                return questionOrder != null
+                    && questionOrder.size() == 3
+                    && questionOrder.contains(question1Id)
+                    && questionOrder.contains(question2Id)
+                    && questionOrder.contains(question3Id);
+            }));
         }
     }
 }

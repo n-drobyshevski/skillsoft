@@ -156,9 +156,16 @@ class TestSessionDuplicateSessionTest {
                 clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                 .thenReturn(Optional.empty());
 
-        // Mock question repository for Scenario A (OVERVIEW) - returns empty list for testing
+        // Mock question repository for Scenario A (OVERVIEW) - return mock questions
+        UUID question1Id = UUID.randomUUID();
+        UUID question2Id = UUID.randomUUID();
+        AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
+        AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
+        when(mockQuestion1.getId()).thenReturn(question1Id);
+        when(mockQuestion2.getId()).thenReturn(question2Id);
+
         when(questionRepository.findUniversalQuestions(any(UUID.class), anyInt()))
-                .thenReturn(Collections.emptyList());
+                .thenReturn(List.of(mockQuestion1, mockQuestion2));
 
         // Mock answer repository for DTO conversion
         when(answerRepository.countAnsweredBySessionId(any(UUID.class)))
@@ -166,7 +173,7 @@ class TestSessionDuplicateSessionTest {
 
         TestSession newSession = new TestSession(template, clerkUserId);
         newSession.setId(UUID.randomUUID());
-        newSession.setQuestionOrder(Collections.emptyList());
+        newSession.setQuestionOrder(List.of(question1Id, question2Id));
         when(sessionRepository.save(any(TestSession.class)))
                 .thenReturn(newSession);
 
@@ -177,6 +184,7 @@ class TestSessionDuplicateSessionTest {
         assertThat(result).isNotNull();
         assertThat(result.clerkUserId()).isEqualTo(clerkUserId);
         assertThat(result.templateId()).isEqualTo(templateId);
+        assertThat(result.totalQuestions()).isEqualTo(2);
         verify(sessionRepository, times(1)).save(any(TestSession.class));
     }
 
@@ -194,9 +202,16 @@ class TestSessionDuplicateSessionTest {
                 clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                 .thenReturn(Optional.empty()); // No IN_PROGRESS session
 
-        // Mock question repository for Scenario A (OVERVIEW)
+        // Mock question repository for Scenario A (OVERVIEW) - return mock questions
+        UUID question1Id = UUID.randomUUID();
+        UUID question2Id = UUID.randomUUID();
+        AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
+        AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
+        when(mockQuestion1.getId()).thenReturn(question1Id);
+        when(mockQuestion2.getId()).thenReturn(question2Id);
+
         when(questionRepository.findUniversalQuestions(any(UUID.class), anyInt()))
-                .thenReturn(Collections.emptyList());
+                .thenReturn(List.of(mockQuestion1, mockQuestion2));
 
         // Mock answer repository for DTO conversion
         when(answerRepository.countAnsweredBySessionId(any(UUID.class)))
@@ -204,7 +219,7 @@ class TestSessionDuplicateSessionTest {
 
         TestSession newSession = new TestSession(template, clerkUserId);
         newSession.setId(UUID.randomUUID());
-        newSession.setQuestionOrder(Collections.emptyList());
+        newSession.setQuestionOrder(List.of(question1Id, question2Id));
         when(sessionRepository.save(any(TestSession.class)))
                 .thenReturn(newSession);
 
@@ -213,6 +228,7 @@ class TestSessionDuplicateSessionTest {
 
         // Assert
         assertThat(result).isNotNull();
+        assertThat(result.totalQuestions()).isEqualTo(2);
         verify(sessionRepository, times(1)).save(any(TestSession.class));
     }
 
@@ -231,9 +247,16 @@ class TestSessionDuplicateSessionTest {
                 anotherUserId, templateId, SessionStatus.IN_PROGRESS))
                 .thenReturn(Optional.empty());
 
-        // Mock question repository for Scenario A (OVERVIEW)
+        // Mock question repository for Scenario A (OVERVIEW) - return mock questions
+        UUID question1Id = UUID.randomUUID();
+        UUID question2Id = UUID.randomUUID();
+        AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
+        AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
+        when(mockQuestion1.getId()).thenReturn(question1Id);
+        when(mockQuestion2.getId()).thenReturn(question2Id);
+
         when(questionRepository.findUniversalQuestions(any(UUID.class), anyInt()))
-                .thenReturn(Collections.emptyList());
+                .thenReturn(List.of(mockQuestion1, mockQuestion2));
 
         // Mock answer repository for DTO conversion
         when(answerRepository.countAnsweredBySessionId(any(UUID.class)))
@@ -241,7 +264,7 @@ class TestSessionDuplicateSessionTest {
 
         TestSession newSession = new TestSession(template, anotherUserId);
         newSession.setId(UUID.randomUUID());
-        newSession.setQuestionOrder(Collections.emptyList());
+        newSession.setQuestionOrder(List.of(question1Id, question2Id));
         when(sessionRepository.save(any(TestSession.class)))
                 .thenReturn(newSession);
 
@@ -251,6 +274,7 @@ class TestSessionDuplicateSessionTest {
         // Assert
         assertThat(result).isNotNull();
         assertThat(result.clerkUserId()).isEqualTo(anotherUserId);
+        assertThat(result.totalQuestions()).isEqualTo(2);
         verify(sessionRepository, times(1)).save(any(TestSession.class));
     }
 }

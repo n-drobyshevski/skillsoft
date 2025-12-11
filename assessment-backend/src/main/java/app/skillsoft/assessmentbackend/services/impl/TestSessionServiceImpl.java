@@ -72,11 +72,28 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         // Create new session
         TestSession session = new TestSession(template, request.clerkUserId());
-        
+
         // Generate question order based on template configuration
         List<UUID> questionOrder = generateQuestionOrder(template);
+
+        // CRITICAL VALIDATION: Prevent sessions with empty question order
+        if (questionOrder == null || questionOrder.isEmpty()) {
+            log.error("Cannot start session: No questions available for template {}. " +
+                     "Competencies: {}, QuestionsPerIndicator: {}, Goal: {}",
+                     template.getId(), template.getCompetencyIds(),
+                     template.getQuestionsPerIndicator(), template.getGoal());
+
+            throw new IllegalStateException(
+                "Cannot start test session: No questions are available for the selected competencies. " +
+                "Please ensure the competencies have behavioral indicators with active questions."
+            );
+        }
+
+        log.info("Generated {} questions for test session (template: {}, goal: {})",
+                 questionOrder.size(), template.getId(), template.getGoal());
+
         session.setQuestionOrder(questionOrder);
-        
+
         // Set initial time remaining
         if (template.getTimeLimitMinutes() != null) {
             session.setTimeRemainingSeconds(template.getTimeLimitMinutes() * 60);
@@ -84,7 +101,7 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         // Start the session
         session.start();
-        
+
         TestSession saved = sessionRepository.save(session);
         return toDto(saved);
     }
@@ -355,10 +372,15 @@ public class TestSessionServiceImpl implements TestSessionService {
         List<UUID> targetCompetencies = template.getCompetencyIds();
         int questionsPerComp = template.getQuestionsPerIndicator();
 
+        log.debug("Starting Scenario A question generation for {} competencies, {} questions per indicator",
+                  targetCompetencies.size(), questionsPerComp);
+
         for (UUID compId : targetCompetencies) {
             // Use Smart Assessment repository method
             List<AssessmentQuestion> questions = questionRepository
                 .findUniversalQuestions(compId, questionsPerComp);
+
+            log.debug("Found {} UNIVERSAL+GENERAL questions for competency {}", questions.size(), compId);
 
             if (questions.isEmpty()) {
                 log.warn("No UNIVERSAL + GENERAL questions found for competency ID: {}. " +
@@ -368,12 +390,16 @@ public class TestSessionServiceImpl implements TestSessionService {
 
                 // DEFENSIVE FALLBACK: Get ANY active questions for this competency
                 List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(compId);
+                log.debug("Competency {} has {} behavioral indicators for fallback", compId, indicators.size());
+
                 for (BehavioralIndicator indicator : indicators) {
                     List<AssessmentQuestion> fallbackQuestions = questionRepository
                             .findByBehavioralIndicator_Id(indicator.getId()).stream()
                             .filter(AssessmentQuestion::isActive)
                             .limit(questionsPerComp)
                             .toList();
+
+                    log.debug("Indicator {} provided {} fallback questions", indicator.getId(), fallbackQuestions.size());
 
                     questions.addAll(fallbackQuestions);
 
@@ -385,6 +411,8 @@ public class TestSessionServiceImpl implements TestSessionService {
                 if (questions.isEmpty()) {
                     log.error("CRITICAL: No questions at all found for competency {}. " +
                             "Session will have incomplete question set.", compId);
+                } else {
+                    log.info("Fallback successful for competency {}: collected {} questions", compId, questions.size());
                 }
             }
 
@@ -396,12 +424,14 @@ public class TestSessionServiceImpl implements TestSessionService {
         // Shuffle to prevent clustering by competency
         if (Boolean.TRUE.equals(template.getShuffleQuestions())) {
             Collections.shuffle(questionIds);
+            log.debug("Questions shuffled");
         }
 
         if (questionIds.isEmpty()) {
             log.error("CRITICAL: Generated empty question order for template {} (Scenario A). " +
-                    "This will cause session failures. Check competency configuration and question availability.",
-                    template.getId());
+                    "This will cause session failures. Check competency configuration and question availability. " +
+                    "Competencies: {}, QuestionsPerIndicator: {}",
+                    template.getId(), targetCompetencies, questionsPerComp);
         }
 
         log.info("Generated Scenario A question order: {} questions from {} competencies",
@@ -444,10 +474,16 @@ public class TestSessionServiceImpl implements TestSessionService {
     private List<UUID> generateLegacyQuestionOrder(TestTemplate template) {
         List<UUID> questionIds = new ArrayList<>();
 
+        log.debug("Starting legacy question generation for {} competencies",
+                  template.getCompetencyIds().size());
+
         // For each competency in the template
         for (UUID competencyId : template.getCompetencyIds()) {
             // Get behavioral indicators for this competency
             List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(competencyId);
+            log.debug("Competency {} has {} behavioral indicators", competencyId, indicators.size());
+
+            int questionsAddedForComp = 0;
 
             for (BehavioralIndicator indicator : indicators) {
                 // Get active questions for this indicator
@@ -455,6 +491,8 @@ public class TestSessionServiceImpl implements TestSessionService {
                         .findByBehavioralIndicator_Id(indicator.getId()).stream()
                         .filter(AssessmentQuestion::isActive)
                         .toList();
+
+                log.debug("Indicator {} has {} active questions", indicator.getId(), questions.size());
 
                 // Shuffle if required
                 List<AssessmentQuestion> selectedQuestions = new ArrayList<>(questions);
@@ -466,14 +504,25 @@ public class TestSessionServiceImpl implements TestSessionService {
                 int limit = Math.min(template.getQuestionsPerIndicator(), selectedQuestions.size());
                 for (int i = 0; i < limit; i++) {
                     questionIds.add(selectedQuestions.get(i).getId());
+                    questionsAddedForComp++;
                 }
+            }
+
+            log.debug("Added {} questions for competency {}", questionsAddedForComp, competencyId);
+
+            if (questionsAddedForComp == 0) {
+                log.warn("No questions added for competency {}. This competency has no active questions.", competencyId);
             }
         }
 
         // Final shuffle of all questions if configured
         if (template.getShuffleQuestions()) {
             Collections.shuffle(questionIds);
+            log.debug("Final shuffle applied to {} questions", questionIds.size());
         }
+
+        log.info("Generated legacy question order: {} questions from {} competencies",
+                 questionIds.size(), template.getCompetencyIds().size());
 
         return questionIds;
     }
