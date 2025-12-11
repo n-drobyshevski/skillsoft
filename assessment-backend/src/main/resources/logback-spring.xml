@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- Console appender with pattern -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Root logger set to WARN to minimize logging -->
+    <root level="WARN">
+        <appender-ref ref="CONSOLE" />
+    </root>
+
+    <!-- Application-specific logging - only errors and critical info -->
+    <logger name="app.skillsoft.assessmentbackend" level="WARN" additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+
+    <!-- Critical services at INFO (only important business logic) -->
+    <logger name="app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+
+    <!-- Controllers at WARN (reduce noise from every request) -->
+    <logger name="app.skillsoft.assessmentbackend.controller" level="WARN" additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+
+    <!-- Hibernate/JPA logging - WARN only -->
+    <logger name="org.hibernate" level="WARN" />
+    <logger name="org.hibernate.SQL" level="WARN" />
+    <logger name="org.hibernate.type" level="WARN" />
+    <logger name="org.hibernate.type.descriptor.sql" level="WARN" />
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN" />
+    <logger name="org.hibernate.orm.jdbc.bind" level="WARN" />
+    <logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="ERROR" />
+
+    <!-- Spring Framework logging - WARN only -->
+    <logger name="org.springframework" level="WARN" />
+    <logger name="org.springframework.web" level="WARN" />
+    <logger name="org.springframework.security" level="WARN" />
+    <logger name="org.springframework.jdbc" level="WARN" />
+    <logger name="org.springframework.jdbc.core" level="WARN" />
+    <logger name="org.springframework.jdbc.core.JdbcTemplate" level="WARN" />
+    <logger name="org.springframework.jdbc.datasource" level="WARN" />
+
+    <!-- Database connection pool - ERROR only -->
+    <logger name="com.zaxxer.hikari" level="ERROR" />
+    <logger name="com.zaxxer.hikari.HikariConfig" level="ERROR" />
+
+    <!-- Jackson JSON processing - ERROR only -->
+    <logger name="com.fasterxml.jackson" level="ERROR" />
+
+    <!-- Tomcat - WARN only -->
+    <logger name="org.apache.catalina" level="WARN" />
+    <logger name="org.apache.coyote" level="WARN" />
+    <logger name="org.apache.tomcat" level="WARN" />
+
+</configuration>

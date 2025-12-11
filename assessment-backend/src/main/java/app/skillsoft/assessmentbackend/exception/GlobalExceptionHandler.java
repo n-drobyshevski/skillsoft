@@ -476,10 +476,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ResponseEntity<ErrorResponse> handleIllegalArgumentException(
             IllegalArgumentException ex, WebRequest request) {
-        
+
         String correlationId = getCorrelationId(request);
         logger.warn("Invalid argument [{}]: {}", correlationId, ex.getMessage());
-        
+
         ErrorResponse errorResponse = buildErrorResponse(
             ex,
             HttpStatus.BAD_REQUEST,
@@ -489,6 +489,92 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
 
         return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Handle illegal state exceptions (business rule violations).
+     * Returns HTTP 400 Bad Request when the operation cannot be performed
+     * due to invalid state (e.g., session already completed, back navigation not allowed).
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleIllegalStateException(
+            IllegalStateException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Invalid state [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage(),
+            "The requested operation cannot be performed in the current state",
+            request
+        );
+
+        return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Handle resource not found exceptions.
+     * Returns HTTP 404 Not Found when a requested entity doesn't exist in the database.
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
+            ResourceNotFoundException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Resource not found [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.NOT_FOUND,
+            ex.getMessage(),
+            "The requested resource does not exist",
+            request
+        );
+
+        // Add resource context if available
+        if (ex.getResourceType() != null) {
+            errorResponse.addContext("resourceType", ex.getResourceType());
+            errorResponse.addContext("resourceId", ex.getResourceId());
+        }
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    /**
+     * Handle DuplicateSessionException when user tries to start a new session
+     * while already having an in-progress session for the same template.
+     * Returns HTTP 409 Conflict with the existing session ID.
+     */
+    @ExceptionHandler(DuplicateSessionException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleDuplicateSessionException(
+            DuplicateSessionException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Duplicate session attempt [{}]: User {} attempted to start new session for template {} " +
+                "while session {} is still in progress",
+                correlationId, ex.getClerkUserId(), ex.getTemplateId(), ex.getExistingSessionId());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.CONFLICT,
+            "User already has an in-progress session for this template",
+            "You can either resume the existing session or abandon it to start a new one",
+            request
+        );
+
+        // Set error code for frontend programmatic handling
+        errorResponse.setCode("DUPLICATE_SESSION");
+
+        // Add existing session ID to context for frontend to offer resume option
+        errorResponse.addContext("existingSessionId", ex.getExistingSessionId());
+        errorResponse.addContext("templateId", ex.getTemplateId());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
 
     // ===============================

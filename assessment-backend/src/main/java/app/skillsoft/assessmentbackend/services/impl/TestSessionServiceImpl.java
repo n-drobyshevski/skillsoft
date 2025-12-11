@@ -2,6 +2,8 @@ package app.skillsoft.assessmentbackend.services.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.exception.DuplicateSessionException;
+import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
@@ -51,8 +53,8 @@ public class TestSessionServiceImpl implements TestSessionService {
     public TestSessionDto startSession(StartTestSessionRequest request) {
         // Verify template exists and is active
         TestTemplate template = templateRepository.findById(request.templateId())
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + request.templateId()));
-        
+                .orElseThrow(() -> new ResourceNotFoundException("Template", request.templateId()));
+
         if (!template.getIsActive()) {
             throw new IllegalStateException("Cannot start session for inactive template");
         }
@@ -60,9 +62,12 @@ public class TestSessionServiceImpl implements TestSessionService {
         // Check if user already has an in-progress session for this template
         Optional<TestSession> existingSession = sessionRepository
                 .findByClerkUserIdAndTemplate_IdAndStatus(request.clerkUserId(), request.templateId(), SessionStatus.IN_PROGRESS);
-        
+
         if (existingSession.isPresent()) {
-            throw new IllegalStateException("User already has an in-progress session for this template");
+            TestSession existing = existingSession.get();
+            log.info("User {} attempted to start new session for template {} but session {} is still in progress",
+                    request.clerkUserId(), request.templateId(), existing.getId());
+            throw new DuplicateSessionException(existing.getId(), request.templateId(), request.clerkUserId());
         }
 
         // Create new session
@@ -114,14 +119,14 @@ public class TestSessionServiceImpl implements TestSessionService {
     @Transactional
     public TestAnswerDto submitAnswer(SubmitAnswerRequest request) {
         TestSession session = sessionRepository.findById(request.sessionId())
-                .orElseThrow(() -> new RuntimeException("Session not found with id: " + request.sessionId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Session", request.sessionId()));
 
         if (session.getStatus() != SessionStatus.IN_PROGRESS) {
             throw new IllegalStateException("Cannot submit answer for a session that is not in progress");
         }
 
         AssessmentQuestion question = questionRepository.findById(request.questionId())
-                .orElseThrow(() -> new RuntimeException("Question not found with id: " + request.questionId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Question", request.questionId()));
 
         // Check if answer already exists
         Optional<TestAnswer> existingAnswer = answerRepository
@@ -156,21 +161,50 @@ public class TestSessionServiceImpl implements TestSessionService {
 
     @Override
     public CurrentQuestionDto getCurrentQuestion(UUID sessionId) {
+        // ===== 5-LAYER VALIDATION FOR GETCURRENTQUESTION =====
+
+        // Layer 1: Session Exists Validation → 404 if not found
         TestSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found with id: " + sessionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
+        // Layer 2: Session Status Validation → 400 if COMPLETED/ABANDONED
+        if (session.getStatus() == SessionStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot get current question for a completed session");
+        }
+        if (session.getStatus() == SessionStatus.ABANDONED) {
+            throw new IllegalStateException("Cannot get current question for an abandoned session");
+        }
+        if (session.getStatus() == SessionStatus.TIMED_OUT) {
+            throw new IllegalStateException("Cannot get current question for a timed out session");
+        }
+
+        // Layer 3: QuestionOrder Not Null/Empty Validation → 400 if empty
         if (session.getQuestionOrder() == null || session.getQuestionOrder().isEmpty()) {
-            throw new IllegalStateException("Session has no questions");
+            log.error("Session {} has no questions in questionOrder. This indicates a question generation failure.",
+                    sessionId);
+            throw new IllegalStateException("Session has no questions. Please contact support.");
         }
 
+        // Layer 4: Current Question Index In Bounds Validation → 400 if out of bounds
         int currentIndex = session.getCurrentQuestionIndex();
+        if (currentIndex < 0) {
+            log.error("Session {} has negative current question index: {}", sessionId, currentIndex);
+            throw new IllegalStateException("Invalid question index. Please contact support.");
+        }
         if (currentIndex >= session.getQuestionOrder().size()) {
-            throw new IllegalStateException("No more questions in session");
+            throw new IllegalStateException(
+                    String.format("No more questions in session (index %d of %d)",
+                            currentIndex + 1, session.getQuestionOrder().size()));
         }
 
+        // Layer 5: Question Exists in Database → 404 if missing
         UUID questionId = session.getQuestionOrder().get(currentIndex);
         AssessmentQuestion question = questionRepository.findById(questionId)
-                .orElseThrow(() -> new RuntimeException("Question not found with id: " + questionId));
+                .orElseThrow(() -> {
+                    log.error("Question {} from session {} questionOrder not found in database",
+                            questionId, sessionId);
+                    return new ResourceNotFoundException("Question", questionId);
+                });
 
         // Get previous answer if exists
         TestAnswerDto previousAnswer = answerRepository
@@ -191,7 +225,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     @Transactional
     public TestSessionDto navigateToQuestion(UUID sessionId, int questionIndex) {
         TestSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found with id: " + sessionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
         if (session.getStatus() != SessionStatus.IN_PROGRESS) {
             throw new IllegalStateException("Cannot navigate in a session that is not in progress");
@@ -218,7 +252,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     @Transactional
     public TestSessionDto updateTimeRemaining(UUID sessionId, int timeRemainingSeconds) {
         TestSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found with id: " + sessionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
         if (session.getStatus() != SessionStatus.IN_PROGRESS) {
             throw new IllegalStateException("Cannot update time for a session that is not in progress");
@@ -242,7 +276,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     @Transactional
     public TestResultDto completeSession(UUID sessionId) {
         TestSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found with id: " + sessionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
         if (session.getStatus() != SessionStatus.IN_PROGRESS) {
             throw new IllegalStateException("Cannot complete a session that is not in progress");
@@ -258,7 +292,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     @Transactional
     public TestSessionDto abandonSession(UUID sessionId) {
         TestSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found with id: " + sessionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
         session.abandon();
         TestSession saved = sessionRepository.save(session);
@@ -302,18 +336,21 @@ public class TestSessionServiceImpl implements TestSessionService {
 
     /**
      * Scenario A: Universal Baseline (Competency Passport)
-     * 
+     *
      * Strategy:
      * - Only UNIVERSAL context scope indicators
      * - Only GENERAL tagged questions (context-neutral)
      * - Flat distribution (no adaptive difficulty yet)
-     * 
+     *
      * This ensures construct validity by filtering out role-specific content,
      * measuring transferable soft skills suitable for reuse across job roles.
+     *
+     * DEFENSIVE FALLBACK: If no UNIVERSAL questions found, falls back to ANY active questions
+     * to prevent empty questionOrder list which causes 500 errors.
      */
     private List<UUID> generateScenarioAOrder(TestTemplate template) {
         List<UUID> questionIds = new ArrayList<>();
-        
+
         // Extract competencies from template (simplified - assumes competencyIds field)
         List<UUID> targetCompetencies = template.getCompetencyIds();
         int questionsPerComp = template.getQuestionsPerIndicator();
@@ -322,14 +359,35 @@ public class TestSessionServiceImpl implements TestSessionService {
             // Use Smart Assessment repository method
             List<AssessmentQuestion> questions = questionRepository
                 .findUniversalQuestions(compId, questionsPerComp);
-                
+
             if (questions.isEmpty()) {
                 log.warn("No UNIVERSAL + GENERAL questions found for competency ID: {}. " +
-                         "This may result in incomplete Scenario A assessment. " +
+                         "Falling back to ANY active questions for this competency. " +
                          "Ensure behavioral indicators have context_scope='UNIVERSAL' and " +
-                         "questions have 'GENERAL' tag in metadata.", compId);
+                         "questions have 'GENERAL' tag in metadata for proper Scenario A assessments.", compId);
+
+                // DEFENSIVE FALLBACK: Get ANY active questions for this competency
+                List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(compId);
+                for (BehavioralIndicator indicator : indicators) {
+                    List<AssessmentQuestion> fallbackQuestions = questionRepository
+                            .findByBehavioralIndicator_Id(indicator.getId()).stream()
+                            .filter(AssessmentQuestion::isActive)
+                            .limit(questionsPerComp)
+                            .toList();
+
+                    questions.addAll(fallbackQuestions);
+
+                    if (questions.size() >= questionsPerComp) {
+                        break; // Got enough questions
+                    }
+                }
+
+                if (questions.isEmpty()) {
+                    log.error("CRITICAL: No questions at all found for competency {}. " +
+                            "Session will have incomplete question set.", compId);
+                }
             }
-            
+
             questionIds.addAll(questions.stream()
                 .map(AssessmentQuestion::getId)
                 .toList());
@@ -339,10 +397,16 @@ public class TestSessionServiceImpl implements TestSessionService {
         if (Boolean.TRUE.equals(template.getShuffleQuestions())) {
             Collections.shuffle(questionIds);
         }
-        
-        log.info("Generated Scenario A question order: {} questions from {} competencies", 
+
+        if (questionIds.isEmpty()) {
+            log.error("CRITICAL: Generated empty question order for template {} (Scenario A). " +
+                    "This will cause session failures. Check competency configuration and question availability.",
+                    template.getId());
+        }
+
+        log.info("Generated Scenario A question order: {} questions from {} competencies",
                  questionIds.size(), targetCompetencies.size());
-        
+
         return questionIds;
     }
 
