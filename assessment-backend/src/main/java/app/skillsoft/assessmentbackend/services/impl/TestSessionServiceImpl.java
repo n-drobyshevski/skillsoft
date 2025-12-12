@@ -692,12 +692,18 @@ public class TestSessionServiceImpl implements TestSessionService {
     }
 
     private AssessmentQuestionDto toQuestionDto(AssessmentQuestion question) {
+        // Transform answer options based on question type
+        List<Map<String, Object>> transformedOptions = transformAnswerOptions(
+                question.getAnswerOptions(),
+                question.getQuestionType()
+        );
+
         return new AssessmentQuestionDto(
                 question.getId(),
                 question.getBehavioralIndicatorId(),
                 question.getQuestionText(),
                 question.getQuestionType(),
-                question.getAnswerOptions(),
+                transformedOptions,
                 question.getScoringRubric(),
                 question.getTimeLimit(),
                 question.getDifficultyLevel(),
@@ -705,6 +711,73 @@ public class TestSessionServiceImpl implements TestSessionService {
                 question.isActive(),
                 question.getOrderIndex()
         );
+    }
+
+    /**
+     * Transform answer options based on question type to match frontend expectations.
+     * For SJT questions, maps backend storage format to frontend format:
+     * - "action" field → "text" field (the option text)
+     * - Generates deterministic "id" for each option based on index
+     * - Preserves "effectiveness" as "score"
+     * - Preserves "explanation" field
+     *
+     * @param options The raw answer options from database
+     * @param questionType The type of question
+     * @return Transformed options suitable for frontend consumption
+     */
+    private List<Map<String, Object>> transformAnswerOptions(
+            List<Map<String, Object>> options,
+            QuestionType questionType
+    ) {
+        if (options == null || options.isEmpty()) {
+            return options;
+        }
+
+        // Transform SJT questions to match frontend expectations
+        if (questionType == QuestionType.SJT || questionType == QuestionType.SITUATIONAL_JUDGMENT) {
+            List<Map<String, Object>> transformedList = new ArrayList<>();
+            for (int i = 0; i < options.size(); i++) {
+                Map<String, Object> option = options.get(i);
+                Map<String, Object> transformed = new HashMap<>();
+
+                // Generate deterministic ID based on index (stable across fetches)
+                // Use index-based ID to ensure consistency when user navigates back/forth
+                transformed.put("id", "option-" + i);
+
+                // Map "action" field to "text" field (frontend expects "text")
+                if (option.containsKey("action")) {
+                    transformed.put("text", option.get("action"));
+                }
+
+                // Preserve effectiveness as score
+                if (option.containsKey("effectiveness")) {
+                    transformed.put("score", option.get("effectiveness"));
+                }
+
+                // Preserve explanation for feedback
+                if (option.containsKey("explanation")) {
+                    transformed.put("explanation", option.get("explanation"));
+                }
+
+                transformedList.add(transformed);
+            }
+            return transformedList;
+        }
+
+        // For other question types, ensure each option has an ID
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int i = 0; i < options.size(); i++) {
+            Map<String, Object> option = options.get(i);
+            if (!option.containsKey("id")) {
+                Map<String, Object> withId = new HashMap<>(option);
+                // Use deterministic index-based ID for consistency
+                withId.put("id", "option-" + i);
+                result.add(withId);
+            } else {
+                result.add(option);
+            }
+        }
+        return result;
     }
 
     private TestResultDto toResultDto(TestResult result, TestSession session) {
