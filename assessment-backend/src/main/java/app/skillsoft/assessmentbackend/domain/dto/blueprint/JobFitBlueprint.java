@@ -9,12 +9,12 @@ import java.util.Objects;
 
 /**
  * Blueprint configuration for JOB_FIT (Targeted Fit) assessment strategy.
- * 
+ *
  * Uses O*NET SOC code to load benchmark requirements for specific occupations.
  * Implements Delta Testing - reuses Competency Passport data if available.
  * Applies Weighted Cosine Similarity scoring against occupation profile.
- * 
- * JSON discriminator: "TARGETED_FIT"
+ *
+ * JSON discriminator: "JOB_FIT"
  */
 public class JobFitBlueprint extends TestBlueprintDto {
 

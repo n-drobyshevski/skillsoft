@@ -54,7 +54,6 @@ public class CompetencyServiceImpl implements CompetencyService {
                 competency.getName(),
                 competency.getDescription(),
                 competency.getCategory(),
-                competency.getLevel(),
                 competency.getStandardCodes(),
                 competency.isActive(),
                 competency.getApprovalStatus(),
@@ -84,7 +83,6 @@ public class CompetencyServiceImpl implements CompetencyService {
                     existingCompetency.setName(competencyDetails.getName());
                     existingCompetency.setDescription(competencyDetails.getDescription());
                     existingCompetency.setCategory(competencyDetails.getCategory());
-                    existingCompetency.setLevel(competencyDetails.getLevel());
                     existingCompetency.setStandardCodes(competencyDetails.getStandardCodes());
                     existingCompetency.setActive(competencyDetails.isActive());
                     existingCompetency.setApprovalStatus(competencyDetails.getApprovalStatus());

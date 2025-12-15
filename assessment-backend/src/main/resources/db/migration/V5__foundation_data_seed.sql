@@ -33,13 +33,13 @@ DELETE FROM competencies;
 -- CATEGORY 1: COGNITIVE (3 competencies)
 -- ----------------------------------------------------------------
 
-INSERT INTO competencies (id, name, description, category, level, standard_codes, is_active, approval_status, version, created_at, last_modified)
+INSERT INTO competencies (id, name, description, category, standard_codes, is_active, approval_status, version, created_at, last_modified)
 VALUES
 -- C1: Analytical Thinking
 ('11111111-1111-1111-1111-000000000001',
  'Аналитическое мышление',
  'Способность систематически анализировать информацию, выявлять закономерности и причинно-следственные связи для принятия обоснованных решений',
- 'COGNITIVE', 'INTERMEDIATE',
+ 'COGNITIVE',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Ideas"},
    "onetRef": {"code": "1.C.7.b", "title": "Analytical Thinking", "elementType": "work_style"},
@@ -51,7 +51,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000002',
  'Решение проблем',
  'Умение определять корневые причины проблем, генерировать альтернативные решения и выбирать оптимальный подход на основе анализа',
- 'COGNITIVE', 'INTERMEDIATE',
+ 'COGNITIVE',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Ideas"},
    "onetRef": {"code": "1.C.7.a", "title": "Innovation", "elementType": "work_style"},
@@ -63,7 +63,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000003',
  'Принятие решений',
  'Способность собирать релевантную информацию, взвешивать альтернативы и принимать своевременные обоснованные решения в условиях неопределённости',
- 'COGNITIVE', 'ADVANCED',
+ 'COGNITIVE',
  '{
    "bigFiveRef": {"trait": "CONSCIENTIOUSNESS", "title": "Добросовестность", "facet": "Deliberation"},
    "onetRef": {"code": "1.C.1.c", "title": "Initiative", "elementType": "work_style"},
@@ -79,7 +79,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000004',
  'Построение отношений',
  'Умение устанавливать и поддерживать доверительные отношения, находить общий язык с разными людьми и создавать сеть профессиональных контактов',
- 'INTERPERSONAL', 'INTERMEDIATE',
+ 'INTERPERSONAL',
  '{
    "bigFiveRef": {"trait": "AGREEABLENESS", "title": "Доброжелательность", "facet": "Trust"},
    "onetRef": {"code": "1.C.3.c", "title": "Social Orientation", "elementType": "work_style"},
@@ -91,7 +91,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000005',
  'Разрешение конфликтов',
  'Способность распознавать конфликтные ситуации, понимать позиции сторон и находить конструктивные решения, удовлетворяющие интересы всех участников',
- 'INTERPERSONAL', 'ADVANCED',
+ 'INTERPERSONAL',
  '{
    "bigFiveRef": {"trait": "AGREEABLENESS", "title": "Доброжелательность", "facet": "Compliance"},
    "onetRef": {"code": "1.C.3.a", "title": "Cooperation", "elementType": "work_style"},
@@ -103,7 +103,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000006',
  'Влияние и убеждение',
  'Умение формулировать убедительные аргументы, адаптировать стиль коммуникации под аудиторию и мотивировать других к действию без принуждения',
- 'INTERPERSONAL', 'ADVANCED',
+ 'INTERPERSONAL',
  '{
    "bigFiveRef": {"trait": "EXTRAVERSION", "title": "Экстраверсия", "facet": "Assertiveness"},
    "onetRef": {"code": "1.C.2.b", "title": "Leadership", "elementType": "work_style"},
@@ -119,7 +119,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000007',
  'Лидерство в команде',
  'Способность вдохновлять команду, задавать направление, создавать атмосферу доверия и помогать членам команды достигать общих целей',
- 'LEADERSHIP', 'ADVANCED',
+ 'LEADERSHIP',
  '{
    "bigFiveRef": {"trait": "EXTRAVERSION", "title": "Экстраверсия", "facet": "Assertiveness"},
    "onetRef": {"code": "1.C.2.b", "title": "Leadership", "elementType": "work_style"},
@@ -131,7 +131,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000008',
  'Стратегическое видение',
  'Умение видеть долгосрочные перспективы, формулировать вдохновляющее видение будущего и связывать текущие действия со стратегическими целями',
- 'LEADERSHIP', 'EXPERT',
+ 'LEADERSHIP',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Ideas"},
    "onetRef": {"code": "1.C.1.c", "title": "Initiative", "elementType": "work_style"},
@@ -143,7 +143,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000009',
  'Делегирование',
  'Способность оценивать возможности исполнителей, чётко формулировать задачи, предоставлять необходимые ресурсы и контролировать выполнение без микроменеджмента',
- 'LEADERSHIP', 'ADVANCED',
+ 'LEADERSHIP',
  '{
    "bigFiveRef": {"trait": "CONSCIENTIOUSNESS", "title": "Добросовестность", "facet": "Competence"},
    "onetRef": {"code": "1.C.5.a", "title": "Dependability", "elementType": "work_style"},
@@ -159,7 +159,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000010',
  'Управление изменениями',
  'Умение позитивно воспринимать изменения, быстро адаптироваться к новым условиям и помогать другим проходить через трансформации',
- 'ADAPTABILITY', 'ADVANCED',
+ 'ADAPTABILITY',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Actions"},
    "onetRef": {"code": "1.C.4.c", "title": "Adaptability/Flexibility", "elementType": "work_style"},
@@ -171,7 +171,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000011',
  'Обучаемость',
  'Способность быстро осваивать новые знания и навыки, учиться на опыте и применять полученные знания в новых контекстах',
- 'ADAPTABILITY', 'INTERMEDIATE',
+ 'ADAPTABILITY',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Ideas"},
    "onetRef": {"code": "1.C.4.c", "title": "Adaptability/Flexibility", "elementType": "work_style"},
@@ -183,7 +183,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000012',
  'Устойчивость',
  'Умение сохранять эффективность в стрессовых ситуациях, восстанавливаться после неудач и поддерживать позитивный настрой в сложных обстоятельствах',
- 'ADAPTABILITY', 'INTERMEDIATE',
+ 'ADAPTABILITY',
  '{
    "bigFiveRef": {"trait": "EMOTIONAL_STABILITY", "title": "Эмоциональная стабильность", "facet": "Vulnerability"},
    "onetRef": {"code": "1.C.4.b", "title": "Stress Tolerance", "elementType": "work_style"},
@@ -199,7 +199,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000013',
  'Самосознание',
  'Способность распознавать собственные эмоции, понимать свои сильные и слабые стороны и осознавать влияние своего поведения на других',
- 'EMOTIONAL_INTELLIGENCE', 'INTERMEDIATE',
+ 'EMOTIONAL_INTELLIGENCE',
  '{
    "bigFiveRef": {"trait": "EMOTIONAL_STABILITY", "title": "Эмоциональная стабильность", "facet": "Self-Consciousness"},
    "onetRef": {"code": "1.C.4.a", "title": "Self-Control", "elementType": "work_style"},
@@ -211,7 +211,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000014',
  'Эмпатия',
  'Умение понимать чувства и переживания других людей, проявлять искреннюю заботу и учитывать эмоциональное состояние окружающих',
- 'EMOTIONAL_INTELLIGENCE', 'INTERMEDIATE',
+ 'EMOTIONAL_INTELLIGENCE',
  '{
    "bigFiveRef": {"trait": "AGREEABLENESS", "title": "Доброжелательность", "facet": "Tender-Mindedness"},
    "onetRef": {"code": "1.C.3.b", "title": "Concern for Others", "elementType": "work_style"},
@@ -223,7 +223,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000015',
  'Эмоциональная регуляция',
  'Способность управлять своими эмоциями, контролировать импульсивные реакции и сохранять уравновешенность в сложных ситуациях',
- 'EMOTIONAL_INTELLIGENCE', 'INTERMEDIATE',
+ 'EMOTIONAL_INTELLIGENCE',
  '{
    "bigFiveRef": {"trait": "EMOTIONAL_STABILITY", "title": "Эмоциональная стабильность", "facet": "Impulsiveness"},
    "onetRef": {"code": "1.C.4.a", "title": "Self-Control", "elementType": "work_style"},
@@ -239,7 +239,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000016',
  'Устная коммуникация',
  'Умение чётко и структурированно выражать мысли, адаптировать речь под аудиторию и уверенно выступать перед группой',
- 'COMMUNICATION', 'INTERMEDIATE',
+ 'COMMUNICATION',
  '{
    "bigFiveRef": {"trait": "EXTRAVERSION", "title": "Экстраверсия", "facet": "Assertiveness"},
    "onetRef": {"code": "1.C.3.c", "title": "Social Orientation", "elementType": "work_style"},
@@ -251,7 +251,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000017',
  'Письменная коммуникация',
  'Способность ясно и грамотно излагать мысли в письменной форме, структурировать тексты и адаптировать стиль под цель и аудиторию',
- 'COMMUNICATION', 'INTERMEDIATE',
+ 'COMMUNICATION',
  '{
    "bigFiveRef": {"trait": "CONSCIENTIOUSNESS", "title": "Добросовестность", "facet": "Order"},
    "onetRef": {"code": "1.C.5.b", "title": "Attention to Detail", "elementType": "work_style"},
@@ -263,7 +263,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000018',
  'Активное слушание',
  'Умение полностью концентрироваться на собеседнике, понимать не только слова, но и эмоции, и демонстрировать понимание через обратную связь',
- 'COMMUNICATION', 'INTERMEDIATE',
+ 'COMMUNICATION',
  '{
    "bigFiveRef": {"trait": "AGREEABLENESS", "title": "Доброжелательность", "facet": "Trust"},
    "onetRef": {"code": "1.C.3.b", "title": "Concern for Others", "elementType": "work_style"},
@@ -279,7 +279,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000019',
  'Командная работа',
  'Способность эффективно работать в команде, вносить вклад в общий результат, поддерживать коллег и ставить командные цели выше личных',
- 'COLLABORATION', 'INTERMEDIATE',
+ 'COLLABORATION',
  '{
    "bigFiveRef": {"trait": "AGREEABLENESS", "title": "Доброжелательность", "facet": "Compliance"},
    "onetRef": {"code": "1.C.3.a", "title": "Cooperation", "elementType": "work_style"},
@@ -291,7 +291,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000020',
  'Межфункциональное сотрудничество',
  'Умение находить общий язык со специалистами разных областей, координировать работу между подразделениями и преодолевать организационные барьеры',
- 'COLLABORATION', 'ADVANCED',
+ 'COLLABORATION',
  '{
    "bigFiveRef": {"trait": "AGREEABLENESS", "title": "Доброжелательность", "facet": "Trust"},
    "onetRef": {"code": "1.C.3.a", "title": "Cooperation", "elementType": "work_style"},
@@ -303,7 +303,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000021',
  'Обмен знаниями',
  'Способность охотно делиться информацией и опытом, наставлять менее опытных коллег и создавать условия для коллективного обучения',
- 'COLLABORATION', 'INTERMEDIATE',
+ 'COLLABORATION',
  '{
    "bigFiveRef": {"trait": "AGREEABLENESS", "title": "Доброжелательность", "facet": "Altruism"},
    "onetRef": {"code": "1.C.3.b", "title": "Concern for Others", "elementType": "work_style"},
@@ -319,7 +319,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000022',
  'Логическое рассуждение',
  'Умение строить аргументацию на фактах, выявлять логические ошибки и делать обоснованные выводы из имеющихся данных',
- 'CRITICAL_THINKING', 'INTERMEDIATE',
+ 'CRITICAL_THINKING',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Ideas"},
    "onetRef": {"code": "1.C.7.b", "title": "Analytical Thinking", "elementType": "work_style"},
@@ -331,7 +331,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000023',
  'Оценка информации',
  'Способность критически оценивать достоверность источников, различать факты и мнения, выявлять предвзятость в информации',
- 'CRITICAL_THINKING', 'INTERMEDIATE',
+ 'CRITICAL_THINKING',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Ideas"},
    "onetRef": {"code": "1.C.5.b", "title": "Attention to Detail", "elementType": "work_style"},
@@ -343,7 +343,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000024',
  'Системное мышление',
  'Умение видеть взаимосвязи между элементами, понимать влияние действий на систему в целом и находить точки рычага для изменений',
- 'CRITICAL_THINKING', 'ADVANCED',
+ 'CRITICAL_THINKING',
  '{
    "bigFiveRef": {"trait": "OPENNESS", "title": "Открытость опыту", "facet": "Ideas"},
    "onetRef": {"code": "1.C.7.a", "title": "Innovation", "elementType": "work_style"},
@@ -359,7 +359,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000025',
  'Расстановка приоритетов',
  'Способность определять наиболее важные задачи, различать срочное и важное, и фокусировать усилия на деятельности с наибольшей отдачей',
- 'TIME_MANAGEMENT', 'INTERMEDIATE',
+ 'TIME_MANAGEMENT',
  '{
    "bigFiveRef": {"trait": "CONSCIENTIOUSNESS", "title": "Добросовестность", "facet": "Achievement Striving"},
    "onetRef": {"code": "1.C.1.a", "title": "Achievement/Effort", "elementType": "work_style"},
@@ -371,7 +371,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000026',
  'Планирование',
  'Умение разбивать цели на конкретные шаги, устанавливать реалистичные сроки, учитывать зависимости и отслеживать прогресс выполнения',
- 'TIME_MANAGEMENT', 'INTERMEDIATE',
+ 'TIME_MANAGEMENT',
  '{
    "bigFiveRef": {"trait": "CONSCIENTIOUSNESS", "title": "Добросовестность", "facet": "Order"},
    "onetRef": {"code": "1.C.5.a", "title": "Dependability", "elementType": "work_style"},
@@ -383,7 +383,7 @@ VALUES
 ('11111111-1111-1111-1111-000000000027',
  'Управление сроками',
  'Способность соблюдать согласованные сроки, своевременно сообщать о рисках задержки и эффективно работать под давлением дедлайнов',
- 'TIME_MANAGEMENT', 'INTERMEDIATE',
+ 'TIME_MANAGEMENT',
  '{
    "bigFiveRef": {"trait": "CONSCIENTIOUSNESS", "title": "Добросовестность", "facet": "Self-Discipline"},
    "onetRef": {"code": "1.C.1.b", "title": "Persistence", "elementType": "work_style"},

@@ -7,7 +7,6 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,7 +70,6 @@ class CompetencyRepositoryTest {
         sampleCompetency.setName("Стратегическое лидерство");
         sampleCompetency.setDescription("Способность вести команду к достижению стратегических целей");
         sampleCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        sampleCompetency.setLevel(ProficiencyLevel.ADVANCED);
         sampleCompetency.setStandardCodes(standardCodes);
         sampleCompetency.setActive(true);
         sampleCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -127,7 +125,6 @@ class CompetencyRepositoryTest {
             secondCompetency.setName("Эмоциональный интеллект");
             secondCompetency.setDescription("Способность понимать эмоции");
             secondCompetency.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            secondCompetency.setLevel(ProficiencyLevel.PROFICIENT);
             secondCompetency.setActive(true);
             secondCompetency.setApprovalStatus(ApprovalStatus.DRAFT);
             secondCompetency.setVersion(1);
@@ -165,7 +162,6 @@ class CompetencyRepositoryTest {
             // Update the existing entity directly
             saved.setName("Обновленное лидерство");
             saved.setDescription("Обновленное описание лидерских навыков");
-            saved.setLevel(ProficiencyLevel.EXPERT);
             saved.setVersion(2);
             saved.setLastModified(LocalDateTime.now());
             saved.setStandardCodes(newStandardCodes);
@@ -176,7 +172,6 @@ class CompetencyRepositoryTest {
             assertThat(updated.getId()).isEqualTo(competencyId);
             assertThat(updated.getName()).isEqualTo("Обновленное лидерство");
             assertThat(updated.getDescription()).contains("Обновленное");
-            assertThat(updated.getLevel()).isEqualTo(ProficiencyLevel.EXPERT);
             assertThat(updated.getVersion()).isEqualTo(2);
             assertThat(updated.getStandardCodes()).isNotNull();
             assertThat(updated.getStandardCodes().hasEscoMapping()).isTrue();
@@ -415,7 +410,6 @@ class CompetencyRepositoryTest {
                 competency.setName("Компетенция " + (i + 1));
                 competency.setDescription("Описание компетенции номер " + (i + 1));
                 competency.setCategory(CompetencyCategory.values()[i % CompetencyCategory.values().length]);
-                competency.setLevel(ProficiencyLevel.values()[i % ProficiencyLevel.values().length]);
                 competency.setActive(true);
                 competency.setApprovalStatus(ApprovalStatus.APPROVED);
                 competency.setVersion(1);

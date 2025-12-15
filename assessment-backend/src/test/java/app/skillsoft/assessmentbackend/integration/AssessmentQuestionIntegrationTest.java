@@ -78,7 +78,6 @@ class AssessmentQuestionIntegrationTest {
         testCompetency.setDescription("Способность эффективно руководить и мотивировать команду");
         testCompetency.setActive(true);
         testCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        testCompetency.setLevel(ProficiencyLevel.PROFICIENT);
         testCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
         testCompetency.setVersion(1);
         testCompetency.setCreatedAt(LocalDateTime.now());
@@ -92,7 +91,7 @@ class AssessmentQuestionIntegrationTest {
         testBehavioralIndicator.setTitle("Делегирование задач");
         testBehavioralIndicator.setDescription("Умение эффективно распределять задачи между членами команды");
         testBehavioralIndicator.setActive(true);
-        testBehavioralIndicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
+        testBehavioralIndicator.setObservabilityLevel(ObservabilityLevel.DIRECTLY_OBSERVABLE);
         testBehavioralIndicator.setMeasurementType(IndicatorMeasurementType.FREQUENCY);
         testBehavioralIndicator.setWeight(1.0f);
         testBehavioralIndicator.setApprovalStatus(ApprovalStatus.APPROVED);

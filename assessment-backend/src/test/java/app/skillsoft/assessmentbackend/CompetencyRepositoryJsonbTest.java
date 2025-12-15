@@ -5,7 +5,6 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,7 +51,6 @@ public class CompetencyRepositoryJsonbTest {
         competency.setName("Strategic Leadership");
         competency.setDescription("Ability to lead teams towards strategic goals");
         competency.setCategory(CompetencyCategory.LEADERSHIP);
-        competency.setLevel(ProficiencyLevel.ADVANCED);
         competency.setStandardCodes(standardCodes);
         competency.setActive(true);
         competency.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -78,7 +76,6 @@ public class CompetencyRepositoryJsonbTest {
         competency.setName("Simple Competency");
         competency.setDescription("A competency without standard codes");
         competency.setCategory(CompetencyCategory.COGNITIVE);
-        competency.setLevel(ProficiencyLevel.NOVICE);
         competency.setStandardCodes(new StandardCodesDto()); // Empty DTO with all null fields
         competency.setActive(true);
         competency.setApprovalStatus(ApprovalStatus.DRAFT);
@@ -102,7 +99,6 @@ public class CompetencyRepositoryJsonbTest {
         competency.setName("Simple Competency");
         competency.setDescription("A competency without standard codes");
         competency.setCategory(CompetencyCategory.COGNITIVE);
-        competency.setLevel(ProficiencyLevel.NOVICE);
         competency.setStandardCodes(null);
         competency.setActive(true);
         competency.setApprovalStatus(ApprovalStatus.DRAFT);
@@ -132,7 +128,6 @@ public class CompetencyRepositoryJsonbTest {
         competency.setName("Communication Skills");
         competency.setDescription("Advanced communication competency");
         competency.setCategory(CompetencyCategory.COMMUNICATION);
-        competency.setLevel(ProficiencyLevel.EXPERT);
         competency.setStandardCodes(complexStandardCodes);
         competency.setActive(true);
         competency.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -165,7 +160,6 @@ public class CompetencyRepositoryJsonbTest {
         competency.setName("Стратегическое лидерство");
         competency.setDescription("Способность вести команду к достижению стратегических целей");
         competency.setCategory(CompetencyCategory.LEADERSHIP);
-        competency.setLevel(ProficiencyLevel.ADVANCED);
         competency.setStandardCodes(standardCodes);
         competency.setActive(true);
         competency.setApprovalStatus(ApprovalStatus.APPROVED);

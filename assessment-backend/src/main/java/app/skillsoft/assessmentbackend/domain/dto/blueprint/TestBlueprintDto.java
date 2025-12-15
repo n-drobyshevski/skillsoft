@@ -12,15 +12,15 @@ import java.util.Objects;
 
 /**
  * Abstract base class for polymorphic test blueprint configurations.
- * 
+ *
  * Uses Jackson's polymorphic type handling to serialize/deserialize
  * the correct concrete type based on the 'strategy' discriminator property.
- * 
+ *
  * Each subclass represents a specific assessment strategy:
- * - OverviewBlueprint (UNIVERSAL_BASELINE): Universal baseline for Competency Passport
- * - JobFitBlueprint (TARGETED_FIT): O*NET-based job matching
- * - TeamFitBlueprint (DYNAMIC_GAP_ANALYSIS): Team skill gap analysis
- * 
+ * - OverviewBlueprint (OVERVIEW): Universal baseline for Competency Passport
+ * - JobFitBlueprint (JOB_FIT): O*NET-based job matching
+ * - TeamFitBlueprint (TEAM_FIT): Team skill gap analysis
+ *
  * Stored as JSONB in PostgreSQL for flexible schema evolution.
  */
 @JsonTypeInfo(
@@ -30,9 +30,9 @@ import java.util.Objects;
     visible = true
 )
 @JsonSubTypes({
-    @JsonSubTypes.Type(value = OverviewBlueprint.class, name = "UNIVERSAL_BASELINE"),
-    @JsonSubTypes.Type(value = JobFitBlueprint.class, name = "TARGETED_FIT"),
-    @JsonSubTypes.Type(value = TeamFitBlueprint.class, name = "DYNAMIC_GAP_ANALYSIS")
+    @JsonSubTypes.Type(value = OverviewBlueprint.class, name = "OVERVIEW"),
+    @JsonSubTypes.Type(value = JobFitBlueprint.class, name = "JOB_FIT"),
+    @JsonSubTypes.Type(value = TeamFitBlueprint.class, name = "TEAM_FIT")
 })
 public abstract class TestBlueprintDto implements Serializable {
 

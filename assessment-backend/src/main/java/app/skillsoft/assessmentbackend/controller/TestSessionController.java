@@ -1,8 +1,17 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
+import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
+import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
+import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,8 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * REST Controller for Test Session management.
@@ -35,9 +43,22 @@ public class TestSessionController {
     private static final Logger logger = LoggerFactory.getLogger(TestSessionController.class);
 
     private final TestSessionService testSessionService;
+    private final TestTemplateRepository templateRepository;
+    private final CompetencyRepository competencyRepository;
+    private final BehavioralIndicatorRepository indicatorRepository;
+    private final AssessmentQuestionRepository questionRepository;
 
-    public TestSessionController(TestSessionService testSessionService) {
+    public TestSessionController(
+            TestSessionService testSessionService,
+            TestTemplateRepository templateRepository,
+            CompetencyRepository competencyRepository,
+            BehavioralIndicatorRepository indicatorRepository,
+            AssessmentQuestionRepository questionRepository) {
         this.testSessionService = testSessionService;
+        this.templateRepository = templateRepository;
+        this.competencyRepository = competencyRepository;
+        this.indicatorRepository = indicatorRepository;
+        this.questionRepository = questionRepository;
     }
 
     // ==================== SESSION LIFECYCLE ====================
@@ -61,6 +82,33 @@ public class TestSessionController {
         TestSessionDto session = testSessionService.startSession(request);
         logger.debug("Started session with id: {}", session.id());
         return ResponseEntity.status(HttpStatus.CREATED).body(session);
+    }
+
+    /**
+     * Check if a template is ready to start a test session.
+     *
+     * This pre-flight check validates that all competencies in the template
+     * have sufficient assessment questions. Call this before startSession
+     * to provide users with actionable feedback if the test cannot start.
+     *
+     * @param templateId Template UUID to check
+     * @return Readiness response with per-competency health status
+     */
+    @Operation(
+        summary = "Check template readiness",
+        description = "Pre-flight check to validate template has sufficient questions for all competencies"
+    )
+    @ApiResponse(responseCode = "200", description = "Readiness check completed")
+    @ApiResponse(responseCode = "404", description = "Template not found")
+    @GetMapping("/templates/{templateId}/readiness")
+    public ResponseEntity<TemplateReadinessResponse> checkTemplateReadiness(
+            @PathVariable UUID templateId) {
+        logger.debug("GET /api/v1/tests/sessions/templates/{}/readiness", templateId);
+
+        TemplateReadinessResponse readiness = testSessionService.checkTemplateReadiness(templateId);
+        logger.debug("Template {} readiness: {}", templateId, readiness.ready() ? "READY" : "NOT READY");
+
+        return ResponseEntity.ok(readiness);
     }
 
     /**
@@ -287,5 +335,148 @@ public class TestSessionController {
         return testSessionService.findInProgressSession(clerkUserId, templateId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    // ==================== DIAGNOSTIC ENDPOINTS ====================
+
+    /**
+     * Get detailed diagnostics for question availability in a template.
+     *
+     * This endpoint helps HR admins and developers understand why a template
+     * might not have enough questions. It provides a breakdown of:
+     * - Total questions per competency
+     * - Active questions count
+     * - Questions with GENERAL tag
+     * - Questions with UNIVERSAL context scope
+     * - Behavioral indicator counts
+     *
+     * @param templateId Template UUID to diagnose
+     * @return Detailed diagnostic information
+     */
+    @Operation(
+        summary = "Get template question diagnostics",
+        description = "Detailed breakdown of question availability for debugging test session failures"
+    )
+    @ApiResponse(responseCode = "200", description = "Diagnostics retrieved successfully")
+    @ApiResponse(responseCode = "404", description = "Template not found")
+    @GetMapping("/templates/{templateId}/diagnostics")
+    public ResponseEntity<Map<String, Object>> getTemplateDiagnostics(@PathVariable UUID templateId) {
+        logger.info("GET /api/v1/tests/sessions/templates/{}/diagnostics", templateId);
+
+        Optional<TestTemplate> templateOpt = templateRepository.findById(templateId);
+        if (templateOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        TestTemplate template = templateOpt.get();
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+
+        diagnostics.put("templateId", templateId);
+        diagnostics.put("templateName", template.getName());
+        diagnostics.put("goal", template.getGoal());
+        diagnostics.put("questionsPerIndicator", template.getQuestionsPerIndicator());
+        diagnostics.put("isActive", template.getIsActive());
+
+        List<UUID> competencyIds = template.getCompetencyIds();
+        diagnostics.put("competencyCount", competencyIds != null ? competencyIds.size() : 0);
+
+        List<Map<String, Object>> competencyDiagnostics = new ArrayList<>();
+        int totalAvailableQuestions = 0;
+        int totalRequiredQuestions = 0;
+
+        if (competencyIds != null) {
+            for (UUID compId : competencyIds) {
+                Map<String, Object> compDiag = new LinkedHashMap<>();
+                compDiag.put("competencyId", compId);
+
+                // Get competency name
+                String compName = competencyRepository.findById(compId)
+                        .map(Competency::getName)
+                        .orElse("Unknown");
+                compDiag.put("competencyName", compName);
+
+                // Count behavioral indicators
+                List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(compId);
+                compDiag.put("indicatorCount", indicators.size());
+
+                // Get indicator details
+                List<Map<String, Object>> indicatorDetails = new ArrayList<>();
+                for (BehavioralIndicator ind : indicators) {
+                    Map<String, Object> indDetail = new LinkedHashMap<>();
+                    indDetail.put("id", ind.getId());
+                    indDetail.put("title", ind.getTitle());
+                    indDetail.put("contextScope", ind.getContextScope() != null ? ind.getContextScope().name() : "NULL");
+                    indDetail.put("isActive", ind.isActive());
+
+                    long questionCount = questionRepository.findByBehavioralIndicator_Id(ind.getId())
+                            .stream().filter(q -> q.isActive()).count();
+                    indDetail.put("activeQuestionCount", questionCount);
+
+                    indicatorDetails.add(indDetail);
+                }
+                compDiag.put("indicators", indicatorDetails);
+
+                // Count total active questions for this competency
+                long activeQuestions = questionRepository.countActiveQuestionsForCompetency(compId);
+                compDiag.put("activeQuestionCount", activeQuestions);
+
+                // Try to get Scenario A eligible questions
+                try {
+                    List<?> scenarioAQuestions = questionRepository.findUniversalQuestions(
+                            compId, template.getQuestionsPerIndicator());
+                    compDiag.put("scenarioAEligibleCount", scenarioAQuestions.size());
+                } catch (Exception e) {
+                    compDiag.put("scenarioAEligibleCount", "error: " + e.getMessage());
+                }
+
+                // Calculate shortfall
+                int required = template.getQuestionsPerIndicator();
+                int available = (int) activeQuestions;
+                compDiag.put("questionsRequired", required);
+                compDiag.put("questionsAvailable", available);
+                compDiag.put("shortfall", Math.max(0, required - available));
+
+                totalAvailableQuestions += available;
+                totalRequiredQuestions += required;
+
+                competencyDiagnostics.add(compDiag);
+            }
+        }
+
+        diagnostics.put("competencies", competencyDiagnostics);
+        diagnostics.put("totalQuestionsAvailable", totalAvailableQuestions);
+        diagnostics.put("totalQuestionsRequired", totalRequiredQuestions);
+        diagnostics.put("canStartSession", totalAvailableQuestions >= totalRequiredQuestions);
+
+        // Add troubleshooting tips based on findings
+        List<String> issues = new ArrayList<>();
+        for (Map<String, Object> compDiag : competencyDiagnostics) {
+            int shortfall = (int) compDiag.get("shortfall");
+            if (shortfall > 0) {
+                issues.add(String.format("Competency '%s' needs %d more questions",
+                        compDiag.get("competencyName"), shortfall));
+            }
+            int indicatorCount = (int) compDiag.get("indicatorCount");
+            if (indicatorCount == 0) {
+                issues.add(String.format("Competency '%s' has no behavioral indicators",
+                        compDiag.get("competencyName")));
+            }
+        }
+        diagnostics.put("issues", issues);
+
+        if (!issues.isEmpty()) {
+            List<String> tips = new ArrayList<>();
+            tips.add("1. Ensure each competency has at least one behavioral indicator");
+            tips.add("2. Ensure each behavioral indicator has active questions (is_active=true)");
+            tips.add("3. For Scenario A (OVERVIEW), ensure indicators have context_scope='UNIVERSAL' or NULL");
+            tips.add("4. For optimal filtering, add 'GENERAL' tag to question metadata.tags");
+            diagnostics.put("troubleshootingTips", tips);
+        }
+
+        logger.info("Template {} diagnostics: {} available, {} required, canStart={}",
+                templateId, totalAvailableQuestions, totalRequiredQuestions,
+                totalAvailableQuestions >= totalRequiredQuestions);
+
+        return ResponseEntity.ok(diagnostics);
     }
 }

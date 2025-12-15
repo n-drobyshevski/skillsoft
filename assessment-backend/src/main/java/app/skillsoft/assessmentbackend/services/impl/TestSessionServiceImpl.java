@@ -1,9 +1,13 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.dto.TemplateReadinessResponse.CompetencyReadiness;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.HealthStatus;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.DuplicateSessionException;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
+import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
+import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
@@ -29,6 +33,8 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final TestResultRepository resultRepository;
     private final AssessmentQuestionRepository questionRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
+    private final CompetencyRepository competencyRepository;
+    private final InventoryHeatmapService inventoryHeatmapService;
     private final List<ScoringStrategy> scoringStrategies;
 
     public TestSessionServiceImpl(
@@ -38,6 +44,8 @@ public class TestSessionServiceImpl implements TestSessionService {
             TestResultRepository resultRepository,
             AssessmentQuestionRepository questionRepository,
             BehavioralIndicatorRepository indicatorRepository,
+            CompetencyRepository competencyRepository,
+            InventoryHeatmapService inventoryHeatmapService,
             List<ScoringStrategy> scoringStrategies) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
@@ -45,6 +53,8 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.resultRepository = resultRepository;
         this.questionRepository = questionRepository;
         this.indicatorRepository = indicatorRepository;
+        this.competencyRepository = competencyRepository;
+        this.inventoryHeatmapService = inventoryHeatmapService;
         this.scoringStrategies = scoringStrategies;
     }
 
@@ -83,9 +93,26 @@ public class TestSessionServiceImpl implements TestSessionService {
                      template.getId(), template.getCompetencyIds(),
                      template.getQuestionsPerIndicator(), template.getGoal());
 
-            throw new IllegalStateException(
-                "Cannot start test session: No questions are available for the selected competencies. " +
-                "Please ensure the competencies have behavioral indicators with active questions."
+            // Build detailed error info using readiness check
+            TemplateReadinessResponse readiness = checkTemplateReadiness(template.getId());
+
+            List<TestNotReadyException.CompetencyIssue> issues = readiness.competencyReadiness().stream()
+                    .filter(cr -> !cr.issues().isEmpty())
+                    .map(cr -> new TestNotReadyException.CompetencyIssue(
+                            cr.competencyId(),
+                            cr.competencyName(),
+                            cr.questionsAvailable(),
+                            cr.questionsRequired(),
+                            cr.healthStatus(),
+                            cr.issues()
+                    ))
+                    .toList();
+
+            throw new TestNotReadyException(
+                    template.getId(),
+                    issues,
+                    readiness.totalQuestionsAvailable(),
+                    readiness.questionsRequired()
             );
         }
 
@@ -355,20 +382,21 @@ public class TestSessionServiceImpl implements TestSessionService {
      * Scenario A: Universal Baseline (Competency Passport)
      *
      * Strategy:
-     * - Only UNIVERSAL context scope indicators
-     * - Only GENERAL tagged questions (context-neutral)
+     * - Only UNIVERSAL context scope indicators (or NULL for backward compatibility)
+     * - Only GENERAL tagged questions or questions without restrictive tags
      * - Flat distribution (no adaptive difficulty yet)
      *
      * This ensures construct validity by filtering out role-specific content,
      * measuring transferable soft skills suitable for reuse across job roles.
      *
-     * DEFENSIVE FALLBACK: If no UNIVERSAL questions found, falls back to ANY active questions
-     * to prevent empty questionOrder list which causes 500 errors.
+     * DEFENSIVE FALLBACK CHAIN:
+     * 1. Try UNIVERSAL + GENERAL questions (strict filter)
+     * 2. Try ANY active questions for the competency (direct query)
+     * 3. Log detailed diagnostics if still empty
      */
     private List<UUID> generateScenarioAOrder(TestTemplate template) {
         List<UUID> questionIds = new ArrayList<>();
 
-        // Extract competencies from template (simplified - assumes competencyIds field)
         List<UUID> targetCompetencies = template.getCompetencyIds();
         int questionsPerComp = template.getQuestionsPerIndicator();
 
@@ -376,44 +404,33 @@ public class TestSessionServiceImpl implements TestSessionService {
                   targetCompetencies.size(), questionsPerComp);
 
         for (UUID compId : targetCompetencies) {
-            // Use Smart Assessment repository method
-            List<AssessmentQuestion> questions = questionRepository
-                .findUniversalQuestions(compId, questionsPerComp);
+            List<AssessmentQuestion> questions = new ArrayList<>();
 
-            log.debug("Found {} UNIVERSAL+GENERAL questions for competency {}", questions.size(), compId);
+            // STEP 1: Try strict UNIVERSAL + GENERAL filter (improved query handles NULL values)
+            try {
+                questions = questionRepository.findUniversalQuestions(compId, questionsPerComp);
+                log.debug("Found {} UNIVERSAL+GENERAL questions for competency {}", questions.size(), compId);
+            } catch (Exception e) {
+                log.warn("Error executing findUniversalQuestions for competency {}: {}", compId, e.getMessage());
+            }
 
+            // STEP 2: Fallback to ANY active questions if strict filter returns empty
             if (questions.isEmpty()) {
-                log.warn("No UNIVERSAL + GENERAL questions found for competency ID: {}. " +
-                         "Falling back to ANY active questions for this competency. " +
-                         "Ensure behavioral indicators have context_scope='UNIVERSAL' and " +
-                         "questions have 'GENERAL' tag in metadata for proper Scenario A assessments.", compId);
+                log.warn("No UNIVERSAL+GENERAL questions for competency {}. Trying fallback query.", compId);
 
-                // DEFENSIVE FALLBACK: Get ANY active questions for this competency
-                List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(compId);
-                log.debug("Competency {} has {} behavioral indicators for fallback", compId, indicators.size());
-
-                for (BehavioralIndicator indicator : indicators) {
-                    List<AssessmentQuestion> fallbackQuestions = questionRepository
-                            .findByBehavioralIndicator_Id(indicator.getId()).stream()
-                            .filter(AssessmentQuestion::isActive)
-                            .limit(questionsPerComp)
-                            .toList();
-
-                    log.debug("Indicator {} provided {} fallback questions", indicator.getId(), fallbackQuestions.size());
-
-                    questions.addAll(fallbackQuestions);
-
-                    if (questions.size() >= questionsPerComp) {
-                        break; // Got enough questions
+                try {
+                    questions = questionRepository.findAnyActiveQuestionsForCompetency(compId, questionsPerComp);
+                    if (!questions.isEmpty()) {
+                        log.info("Fallback query found {} active questions for competency {}", questions.size(), compId);
                     }
+                } catch (Exception e) {
+                    log.warn("Error executing fallback query for competency {}: {}", compId, e.getMessage());
                 }
+            }
 
-                if (questions.isEmpty()) {
-                    log.error("CRITICAL: No questions at all found for competency {}. " +
-                            "Session will have incomplete question set.", compId);
-                } else {
-                    log.info("Fallback successful for competency {}: collected {} questions", compId, questions.size());
-                }
+            // STEP 3: If still empty, log diagnostics
+            if (questions.isEmpty()) {
+                logQuestionDiagnostics(compId);
             }
 
             questionIds.addAll(questions.stream()
@@ -438,6 +455,46 @@ public class TestSessionServiceImpl implements TestSessionService {
                  questionIds.size(), targetCompetencies.size());
 
         return questionIds;
+    }
+
+    /**
+     * Log detailed diagnostics for question availability issues.
+     * Helps identify whether the problem is missing questions, inactive questions,
+     * or missing tags/context_scope configuration.
+     */
+    private void logQuestionDiagnostics(UUID competencyId) {
+        try {
+            // Get competency name for better logging
+            String compName = competencyRepository.findById(competencyId)
+                    .map(Competency::getName)
+                    .orElse("Unknown");
+
+            // Count behavioral indicators
+            List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(competencyId);
+            int indicatorCount = indicators.size();
+
+            // Count questions directly
+            long activeCount = questionRepository.countActiveQuestionsForCompetency(competencyId);
+
+            // Log diagnostic summary
+            log.error("DIAGNOSTIC for competency '{}' ({}): " +
+                      "indicators={}, activeQuestions={}. " +
+                      "Check: 1) Are questions linked to behavioral indicators? " +
+                      "2) Are questions marked as active (is_active=true)? " +
+                      "3) Do behavioral indicators exist for this competency?",
+                    compName, competencyId, indicatorCount, activeCount);
+
+            // Log indicator details if we have them but no questions
+            if (indicatorCount > 0 && activeCount == 0) {
+                for (BehavioralIndicator ind : indicators) {
+                    long indQuestionCount = questionRepository.findByBehavioralIndicator_Id(ind.getId()).size();
+                    log.error("  - Indicator '{}' ({}): {} total questions, contextScope={}",
+                            ind.getTitle(), ind.getId(), indQuestionCount, ind.getContextScope());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error generating diagnostics for competency {}: {}", competencyId, e.getMessage());
+        }
     }
 
     /**
@@ -798,5 +855,112 @@ public class TestSessionServiceImpl implements TestSessionService {
                 session.getQuestionOrder() != null ? session.getQuestionOrder().size() : 0,
                 result.getCompletedAt()
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TemplateReadinessResponse checkTemplateReadiness(UUID templateId) {
+        log.debug("Checking readiness for template: {}", templateId);
+
+        TestTemplate template = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("Template", templateId));
+
+        List<UUID> competencyIds = template.getCompetencyIds();
+        int questionsPerIndicator = template.getQuestionsPerIndicator();
+
+        if (competencyIds == null || competencyIds.isEmpty()) {
+            log.warn("Template {} has no competencies configured", templateId);
+            return TemplateReadinessResponse.notReady(
+                "Template has no competencies configured",
+                List.of(),
+                0,
+                0
+            );
+        }
+
+        // Use InventoryHeatmapService to check sufficiency
+        var heatmap = inventoryHeatmapService.generateHeatmapFor(competencyIds);
+        var sufficiency = inventoryHeatmapService.checkSufficiency(competencyIds, questionsPerIndicator);
+
+        // Build per-competency readiness info
+        List<CompetencyReadiness> competencyReadiness = new ArrayList<>();
+        int totalQuestionsAvailable = 0;
+        int totalQuestionsRequired = competencyIds.size() * questionsPerIndicator;
+        boolean allReady = true;
+
+        for (UUID compId : competencyIds) {
+            // Get competency name
+            String compName = competencyRepository.findById(compId)
+                    .map(Competency::getName)
+                    .orElse("Unknown Competency");
+
+            // Get health status from heatmap
+            HealthStatus health = heatmap.competencyHealth().getOrDefault(compId, HealthStatus.CRITICAL);
+
+            // Get available questions count from heatmap
+            int available = (int) heatmap.detailedCounts().entrySet().stream()
+                    .filter(e -> e.getKey().startsWith(compId.toString()))
+                    .mapToLong(Map.Entry::getValue)
+                    .sum();
+
+            totalQuestionsAvailable += available;
+
+            // Get shortage from sufficiency check
+            int shortage = sufficiency.getOrDefault(compId, 0);
+
+            // Build issues list
+            List<String> issues = new ArrayList<>();
+            if (available == 0) {
+                issues.add("No questions available for this competency");
+                allReady = false;
+            } else if (shortage > 0) {
+                issues.add(String.format("Need %d more questions (have %d, need %d)",
+                        shortage, available, questionsPerIndicator));
+                allReady = false;
+            }
+
+            // Check for behavioral indicators
+            List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(compId);
+            if (indicators.isEmpty()) {
+                issues.add("No behavioral indicators defined");
+                allReady = false;
+            }
+
+            competencyReadiness.add(new CompetencyReadiness(
+                    compId,
+                    compName,
+                    available,
+                    questionsPerIndicator,
+                    health.name(),
+                    issues
+            ));
+        }
+
+        if (allReady) {
+            log.info("Template {} is ready: {} questions available for {} competencies",
+                    templateId, totalQuestionsAvailable, competencyIds.size());
+            return TemplateReadinessResponse.ready(
+                    competencyReadiness,
+                    totalQuestionsAvailable,
+                    totalQuestionsRequired
+            );
+        } else {
+            long criticalCount = competencyReadiness.stream()
+                    .filter(cr -> "CRITICAL".equals(cr.healthStatus()))
+                    .count();
+
+            String message = criticalCount > 0
+                    ? String.format("%d competenc%s missing questions",
+                            criticalCount, criticalCount == 1 ? "y is" : "ies are")
+                    : "Insufficient questions for some competencies";
+
+            log.warn("Template {} is NOT ready: {}", templateId, message);
+            return TemplateReadinessResponse.notReady(
+                    message,
+                    competencyReadiness,
+                    totalQuestionsAvailable,
+                    totalQuestionsRequired
+            );
+        }
     }
 }

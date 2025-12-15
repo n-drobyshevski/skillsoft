@@ -41,6 +41,9 @@ class BehavioralIndicatorControllerTest {
     @MockBean
     private BehavioralIndicatorMapper behavioralIndicatorMapper;
 
+    @MockBean
+    private AssessmentQuestionMapper assessmentQuestionMapper;
+
     private BehavioralIndicator testIndicator;
     private BehavioralIndicatorDto testIndicatorDto;
     private UUID competencyId;
@@ -56,7 +59,7 @@ class BehavioralIndicatorControllerTest {
         testIndicator.setId(UUID.randomUUID());
         testIndicator.setTitle("Test Indicator");
         testIndicator.setDescription("Test Description");
-        testIndicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
+        testIndicator.setObservabilityLevel(ObservabilityLevel.DIRECTLY_OBSERVABLE);
         testIndicator.setMeasurementType(IndicatorMeasurementType.FREQUENCY);
         testIndicator.setWeight(1.0f);
         testIndicator.setCompetency(mockCompetency);

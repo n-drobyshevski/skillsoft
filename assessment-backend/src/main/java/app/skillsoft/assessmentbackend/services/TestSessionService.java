@@ -81,6 +81,15 @@ public interface TestSessionService {
     int timeoutStaleSessions();
 
     /**
+     * Check if a template is ready to start a test session.
+     * Validates that all competencies have sufficient questions.
+     *
+     * @param templateId The template to check
+     * @return Readiness response with per-competency status
+     */
+    TemplateReadinessResponse checkTemplateReadiness(UUID templateId);
+
+    /**
      * DTO for current question with context.
      */
     record CurrentQuestionDto(

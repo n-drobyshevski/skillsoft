@@ -8,12 +8,12 @@ import java.util.UUID;
 
 /**
  * Blueprint configuration for TEAM_FIT (Dynamic Gap Analysis) assessment strategy.
- * 
+ *
  * Uses ESCO URIs for skill normalization across team members.
  * Analyzes personality compatibility using Big Five from Competency Passport.
  * Implements Role Saturation scoring to identify team gaps and redundancies.
- * 
- * JSON discriminator: "DYNAMIC_GAP_ANALYSIS"
+ *
+ * JSON discriminator: "TEAM_FIT"
  */
 public class TeamFitBlueprint extends TestBlueprintDto {
 

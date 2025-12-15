@@ -61,7 +61,7 @@ class BehavioralIndicatorTest {
             // Given
             String title = "Test Behavioral Indicator";
             String description = "This is a test behavioral indicator";
-            ProficiencyLevel observabilityLevel = ProficiencyLevel.ADVANCED;
+            ObservabilityLevel observabilityLevel = ObservabilityLevel.INFERRED;
             IndicatorMeasurementType measurementType = IndicatorMeasurementType.QUALITY;
             float weight = 0.8f;
             String examples = "Example behavior patterns";
@@ -140,7 +140,7 @@ class BehavioralIndicatorTest {
         @DisplayName("Should set and get observability level correctly")
         void shouldSetAndGetObservabilityLevel() {
             // Given
-            ProficiencyLevel level = ProficiencyLevel.PROFICIENT;
+            ObservabilityLevel level = ObservabilityLevel.DIRECTLY_OBSERVABLE;
 
             // When
             behavioralIndicator.setObservabilityLevel(level);
@@ -417,9 +417,9 @@ class BehavioralIndicatorTest {
     class EnumIntegrationTests {
 
         @Test
-        @DisplayName("Should work with all ProficiencyLevel values")
-        void shouldWorkWithAllProficiencyLevels() {
-            for (ProficiencyLevel level : ProficiencyLevel.values()) {
+        @DisplayName("Should work with all ObservabilityLevel values")
+        void shouldWorkWithAllObservabilityLevels() {
+            for (ObservabilityLevel level : ObservabilityLevel.values()) {
                 behavioralIndicator.setObservabilityLevel(level);
                 assertThat(behavioralIndicator.getObservabilityLevel()).isEqualTo(level);
             }

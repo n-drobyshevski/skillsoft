@@ -5,7 +5,6 @@ import app.skillsoft.assessmentbackend.config.TestHibernateConfig;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +45,6 @@ class CompetencyRepositorySimpleTest {
         competency.setName("Test Competency");
         competency.setDescription("Test Description");
         competency.setCategory(CompetencyCategory.COGNITIVE);
-        competency.setLevel(ProficiencyLevel.PROFICIENT);
         competency.setStandardCodes(standardCodes);
         competency.setApprovalStatus(ApprovalStatus.APPROVED);
         competency.setActive(true);
@@ -85,7 +83,6 @@ class CompetencyRepositorySimpleTest {
         competency.setName("Competency Without Standards");
         competency.setDescription("Test Description");
         competency.setCategory(CompetencyCategory.COMMUNICATION);
-        competency.setLevel(ProficiencyLevel.NOVICE);
         competency.setApprovalStatus(ApprovalStatus.DRAFT);
         competency.setStandardCodes(null);
         competency.setActive(true);
@@ -123,7 +120,6 @@ class CompetencyRepositorySimpleTest {
         competency.setName("Компетенция по программированию");
         competency.setDescription("Описание компетенции на русском языке");
         competency.setCategory(CompetencyCategory.CRITICAL_THINKING);
-        competency.setLevel(ProficiencyLevel.ADVANCED);
         competency.setApprovalStatus(ApprovalStatus.APPROVED);
         competency.setStandardCodes(standardCodes);
         competency.setActive(true);

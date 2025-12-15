@@ -59,7 +59,6 @@ class BehavioralIndicatorServiceTest {
         mockCompetency.setName("Test Competency");
         mockCompetency.setDescription("A test competency for behavioral indicators");
         mockCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        mockCompetency.setLevel(ProficiencyLevel.PROFICIENT);
         mockCompetency.setActive(true);
         mockCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
         mockCompetency.setVersion(1);
@@ -72,7 +71,7 @@ class BehavioralIndicatorServiceTest {
         mockBehavioralIndicator.setCompetency(mockCompetency);
         mockBehavioralIndicator.setTitle("Test Behavioral Indicator");
         mockBehavioralIndicator.setDescription("A test behavioral indicator");
-        mockBehavioralIndicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
+        mockBehavioralIndicator.setObservabilityLevel(ObservabilityLevel.DIRECTLY_OBSERVABLE);
         mockBehavioralIndicator.setMeasurementType(IndicatorMeasurementType.QUALITY);
         mockBehavioralIndicator.setWeight(0.8f);
         mockBehavioralIndicator.setExamples("Example behaviors");
@@ -158,7 +157,7 @@ class BehavioralIndicatorServiceTest {
             BehavioralIndicator newIndicator = new BehavioralIndicator();
             newIndicator.setTitle("New Indicator");
             newIndicator.setDescription("New description");
-            newIndicator.setObservabilityLevel(ProficiencyLevel.DEVELOPING);
+            newIndicator.setObservabilityLevel(ObservabilityLevel.PARTIALLY_OBSERVABLE);
             newIndicator.setMeasurementType(IndicatorMeasurementType.FREQUENCY);
             newIndicator.setWeight(0.6f);
             newIndicator.setActive(true);
@@ -303,7 +302,7 @@ class BehavioralIndicatorServiceTest {
             BehavioralIndicator updateDetails = new BehavioralIndicator();
             updateDetails.setTitle("Updated Title");
             updateDetails.setDescription("Updated Description");
-            updateDetails.setObservabilityLevel(ProficiencyLevel.ADVANCED);
+            updateDetails.setObservabilityLevel(ObservabilityLevel.INFERRED);
             updateDetails.setMeasurementType(IndicatorMeasurementType.IMPACT);
             updateDetails.setWeight(0.9f);
             updateDetails.setExamples("Updated examples");
@@ -330,7 +329,7 @@ class BehavioralIndicatorServiceTest {
             assertThat(updatedIndicator).isNotNull();
             assertThat(updatedIndicator.getTitle()).isEqualTo("Updated Title");
             assertThat(updatedIndicator.getDescription()).isEqualTo("Updated Description");
-            assertThat(updatedIndicator.getObservabilityLevel()).isEqualTo(ProficiencyLevel.ADVANCED);
+            assertThat(updatedIndicator.getObservabilityLevel()).isEqualTo(ObservabilityLevel.INFERRED);
             assertThat(updatedIndicator.getMeasurementType()).isEqualTo(IndicatorMeasurementType.IMPACT);
             assertThat(updatedIndicator.getWeight()).isEqualTo(0.9f);
             assertThat(updatedIndicator.getExamples()).isEqualTo("Updated examples");
@@ -524,8 +523,8 @@ class BehavioralIndicatorServiceTest {
             when(behavioralIndicatorRepository.save(any(BehavioralIndicator.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-            // Test all ProficiencyLevel values
-            for (ProficiencyLevel level : ProficiencyLevel.values()) {
+            // Test all ObservabilityLevel values
+            for (ObservabilityLevel level : ObservabilityLevel.values()) {
                 BehavioralIndicator indicator = new BehavioralIndicator();
                 indicator.setTitle("Test " + level.name());
                 indicator.setObservabilityLevel(level);
@@ -568,7 +567,7 @@ class BehavioralIndicatorServiceTest {
         indicator.setCompetency(mockCompetency);
         indicator.setTitle(title);
         indicator.setDescription("Description for " + title);
-        indicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
+        indicator.setObservabilityLevel(ObservabilityLevel.DIRECTLY_OBSERVABLE);
         indicator.setMeasurementType(IndicatorMeasurementType.QUALITY);
         indicator.setWeight(0.5f);
         indicator.setActive(true);

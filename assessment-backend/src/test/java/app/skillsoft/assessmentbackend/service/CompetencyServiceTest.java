@@ -4,7 +4,6 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.impl.CompetencyServiceImpl;
 import org.mockito.ArgumentCaptor;
@@ -62,7 +61,6 @@ class CompetencyServiceTest {
         sampleCompetency.setName("Стратегическое планирование");
         sampleCompetency.setDescription("Способность разрабатывать долгосрочные стратегии организации");
         sampleCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        sampleCompetency.setLevel(ProficiencyLevel.ADVANCED);
         sampleCompetency.setStandardCodes(standardCodes);
         sampleCompetency.setActive(true);
         sampleCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -85,7 +83,6 @@ class CompetencyServiceTest {
             createEntity.setName("Эмоциональный интеллект");
             createEntity.setDescription("Способность понимать и управлять эмоциями");
             createEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            createEntity.setLevel(ProficiencyLevel.PROFICIENT);
             createEntity.setStandardCodes(standardCodes);
             createEntity.setActive(true);
             createEntity.setApprovalStatus(ApprovalStatus.DRAFT);
@@ -95,7 +92,6 @@ class CompetencyServiceTest {
             savedEntity.setName("Эмоциональный интеллект");
             savedEntity.setDescription("Способность понимать и управлять эмоциями");
             savedEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            savedEntity.setLevel(ProficiencyLevel.PROFICIENT);
             savedEntity.setStandardCodes(standardCodes);
             savedEntity.setActive(true);
             savedEntity.setApprovalStatus(ApprovalStatus.DRAFT);
@@ -113,7 +109,6 @@ class CompetencyServiceTest {
             assertThat(result.getName()).isEqualTo("Эмоциональный интеллект");
             assertThat(result.getDescription()).contains("эмоциями");
             assertThat(result.getCategory()).isEqualTo(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            assertThat(result.getLevel()).isEqualTo(ProficiencyLevel.PROFICIENT);
             assertThat(result.getStandardCodes()).isNotNull();
             assertThat(result.getStandardCodes().escoRef()).isNotNull();
             assertThat(result.isActive()).isTrue();
@@ -131,7 +126,6 @@ class CompetencyServiceTest {
             createEntity.setName("Базовая компетенция");
             createEntity.setDescription("Простое описание");
             createEntity.setCategory(CompetencyCategory.CRITICAL_THINKING);
-            createEntity.setLevel(ProficiencyLevel.NOVICE);
 
             // When
             ArgumentCaptor<Competency> competencyCaptor = ArgumentCaptor.forClass(Competency.class);
@@ -252,7 +246,6 @@ class CompetencyServiceTest {
             updateEntity.setName("Обновленное название");
             updateEntity.setDescription("Обновленное описание: новая функциональность");
             updateEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            updateEntity.setLevel(ProficiencyLevel.EXPERT);
             updateEntity.setStandardCodes(newStandardCodes);
             updateEntity.setActive(false);
             updateEntity.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
@@ -262,7 +255,6 @@ class CompetencyServiceTest {
             updatedEntity.setName("Обновленное название");
             updatedEntity.setDescription("Обновленное описание: новая функциональность");
             updatedEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            updatedEntity.setLevel(ProficiencyLevel.EXPERT);
             updatedEntity.setStandardCodes(newStandardCodes);
             updatedEntity.setActive(false);
             updatedEntity.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
@@ -363,7 +355,6 @@ class CompetencyServiceTest {
             createEntity.setName("Комплексная коммуникация");
             createEntity.setDescription("Многоуровневые навыки коммуникации");
             createEntity.setCategory(CompetencyCategory.COMMUNICATION);
-            createEntity.setLevel(ProficiencyLevel.EXPERT);
             createEntity.setStandardCodes(complexStandardCodes);
             createEntity.setActive(true);
             createEntity.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -386,7 +377,6 @@ class CompetencyServiceTest {
             createEntity.setName("Простая компетенция");
             createEntity.setDescription("Без стандартных кодов");
             createEntity.setCategory(CompetencyCategory.COGNITIVE);
-            createEntity.setLevel(ProficiencyLevel.NOVICE);
             createEntity.setStandardCodes(null); // Null standard codes
             createEntity.setActive(true);
             createEntity.setApprovalStatus(ApprovalStatus.DRAFT);

@@ -2,7 +2,6 @@ package app.skillsoft.assessmentbackend.domain.dto;
 
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import jakarta.validation.Valid;
 
 import java.time.LocalDateTime;
@@ -14,7 +13,6 @@ public record CompetencyDto(
         String name,
         String description,
         CompetencyCategory category,
-        ProficiencyLevel level,
         @Valid StandardCodesDto standardCodes,
         boolean isActive,
         ApprovalStatus approvalStatus,

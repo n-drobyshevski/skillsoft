@@ -232,6 +232,30 @@ public class UserController {
     }
 
     /**
+     * Get comprehensive user statistics.
+     * Returns total users, active users count, and breakdown by role.
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Object>> getUserStats() {
+        List<User> allUsers = userService.findAllUsers();
+        List<User> activeUsers = userService.findActiveUsers();
+        List<Object[]> roleStats = userService.getUserStatsByRole();
+
+        Map<String, Long> byRole = roleStats.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> ((UserRole) row[0]).name(),
+                        row -> (Long) row[1]
+                ));
+
+        Map<String, Object> stats = new java.util.HashMap<>();
+        stats.put("totalUsers", allUsers.size());
+        stats.put("activeUsers", activeUsers.size());
+        stats.put("byRole", byRole);
+
+        return ResponseEntity.ok(stats);
+    }
+
+    /**
      * Get user statistics by role.
      */
     @GetMapping("/stats/roles")

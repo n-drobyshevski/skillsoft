@@ -68,7 +68,6 @@ class CompetencyTest {
                 "Стратегическое лидерство",
                 "Способность определять долгосрочные цели",
                 CompetencyCategory.LEADERSHIP,
-                ProficiencyLevel.ADVANCED,
                 standardCodes,
                 true,
                 ApprovalStatus.APPROVED,
@@ -77,12 +76,11 @@ class CompetencyTest {
                 now,
                 now
             );
-            
+
             assertThat(fullCompetency.getId()).isEqualTo(id);
             assertThat(fullCompetency.getName()).isEqualTo("Стратегическое лидерство");
             assertThat(fullCompetency.getDescription()).isEqualTo("Способность определять долгосрочные цели");
             assertThat(fullCompetency.getCategory()).isEqualTo(CompetencyCategory.LEADERSHIP);
-            assertThat(fullCompetency.getLevel()).isEqualTo(ProficiencyLevel.ADVANCED);
             assertThat(fullCompetency.getStandardCodes()).isEqualTo(standardCodes);
             assertThat(fullCompetency.getStandardCodes().hasEscoMapping()).isTrue();
             assertThat(fullCompetency.getStandardCodes().hasOnetMapping()).isTrue();
@@ -107,7 +105,6 @@ class CompetencyTest {
             competency.setName("Коммуникация");
             competency.setDescription("Эффективная коммуникация");
             competency.setCategory(CompetencyCategory.COMMUNICATION);
-            competency.setLevel(ProficiencyLevel.PROFICIENT);
             competency.setActive(true);
             competency.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
             competency.setVersion(2);
@@ -118,7 +115,6 @@ class CompetencyTest {
             assertThat(competency.getName()).isEqualTo("Коммуникация");
             assertThat(competency.getDescription()).isEqualTo("Эффективная коммуникация");
             assertThat(competency.getCategory()).isEqualTo(CompetencyCategory.COMMUNICATION);
-            assertThat(competency.getLevel()).isEqualTo(ProficiencyLevel.PROFICIENT);
             assertThat(competency.isActive()).isTrue();
             assertThat(competency.getApprovalStatus()).isEqualTo(ApprovalStatus.PENDING_REVIEW);
             assertThat(competency.getVersion()).isEqualTo(2);
@@ -248,13 +244,7 @@ class CompetencyTest {
                 competency.setCategory(category);
                 assertThat(competency.getCategory()).isEqualTo(category);
             }
-            
-            // Test all ProficiencyLevel values
-            for (ProficiencyLevel level : ProficiencyLevel.values()) {
-                competency.setLevel(level);
-                assertThat(competency.getLevel()).isEqualTo(level);
-            }
-            
+
             // Test all ApprovalStatus values
             for (ApprovalStatus status : ApprovalStatus.values()) {
                 competency.setApprovalStatus(status);

@@ -35,10 +35,6 @@ public class Competency {
     @Enumerated(EnumType.STRING)
     private CompetencyCategory category;
 
-    @Column(name="level", nullable = false)
-    @Enumerated(EnumType.STRING)
-    private ProficiencyLevel level;
-
     /**
      * Triple Standard Mapping for global competency alignment.
      * Per ROADMAP.md Section 1.A "Mapping Strategy":
@@ -93,12 +89,11 @@ public class Competency {
         // Default constructor required by JPA
     }
 
-    public Competency(UUID id, String name, String description, CompetencyCategory category, ProficiencyLevel level, StandardCodesDto standardCodes, boolean isActive, ApprovalStatus approvalStatus, List<BehavioralIndicator> behavioralIndicators, int version, LocalDateTime createdAt, LocalDateTime lastModified) {
+    public Competency(UUID id, String name, String description, CompetencyCategory category, StandardCodesDto standardCodes, boolean isActive, ApprovalStatus approvalStatus, List<BehavioralIndicator> behavioralIndicators, int version, LocalDateTime createdAt, LocalDateTime lastModified) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.category = category;
-        this.level = level;
         this.standardCodes = standardCodes;
         this.isActive = isActive;
         this.approvalStatus = approvalStatus;
@@ -138,14 +133,6 @@ public class Competency {
 
     public void setCategory(CompetencyCategory category) {
         this.category = category;
-    }
-
-    public ProficiencyLevel getLevel() {
-        return level;
-    }
-
-    public void setLevel(ProficiencyLevel level) {
-        this.level = level;
     }
 
     public StandardCodesDto getStandardCodes() {
@@ -257,7 +244,6 @@ public class Competency {
                 ", name='" + name + '\'' +
                 ", description='" + description + '\'' +
                 ", category=" + category +
-                ", level=" + level +
                 ", standardCodes=" + standardCodes +
                 ", isActive=" + isActive +
                 ", approvalStatus=" + approvalStatus +

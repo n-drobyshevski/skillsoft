@@ -5,8 +5,9 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
+import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
 import app.skillsoft.assessmentbackend.domain.mapper.CompetencyMapper;
+import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,7 +37,13 @@ class CompetencyControllerTest {
     private CompetencyService competencyService;
 
     @MockBean
+    private BehavioralIndicatorService behavioralIndicatorService;
+
+    @MockBean
     private CompetencyMapper competencyMapper;
+
+    @MockBean
+    private BehavioralIndicatorMapper behavioralIndicatorMapper;
 
     private Competency testCompetency;
     private CompetencyDto testCompetencyDto;
@@ -50,7 +57,6 @@ class CompetencyControllerTest {
         testCompetency.setName("Test Competency");
         testCompetency.setDescription("Test Description");
         testCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        testCompetency.setLevel(ProficiencyLevel.PROFICIENT);
         testCompetency.setStandardCodes(standardCodes);
         testCompetency.setActive(true);
         testCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -64,7 +70,6 @@ class CompetencyControllerTest {
                 testCompetency.getName(),
                 testCompetency.getDescription(),
                 testCompetency.getCategory(),
-                testCompetency.getLevel(),
                 testCompetency.getStandardCodes(),
                 testCompetency.isActive(),
                 testCompetency.getApprovalStatus(),

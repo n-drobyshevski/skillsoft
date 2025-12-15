@@ -128,10 +128,10 @@ public class TestTemplate {
     /**
      * Type-safe polymorphic blueprint configuration.
      * Uses Jackson polymorphism to deserialize into the correct subclass:
-     * - OverviewBlueprint for UNIVERSAL_BASELINE strategy
-     * - JobFitBlueprint for TARGETED_FIT strategy
-     * - TeamFitBlueprint for DYNAMIC_GAP_ANALYSIS strategy
-     * 
+     * - OverviewBlueprint for OVERVIEW strategy
+     * - JobFitBlueprint for JOB_FIT strategy
+     * - TeamFitBlueprint for TEAM_FIT strategy
+     *
      * Stored in the same JSONB column as legacy blueprint field.
      * When both are set, typedBlueprint takes precedence.
      */

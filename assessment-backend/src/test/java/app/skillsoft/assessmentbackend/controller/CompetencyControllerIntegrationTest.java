@@ -4,7 +4,6 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -105,14 +104,13 @@ class CompetencyControllerIntegrationTest {
             competency.setName("Стратегическое лидерство");
             competency.setDescription("Способность определять долгосрочные цели и вдохновлять команду");
             competency.setCategory(CompetencyCategory.LEADERSHIP);
-            competency.setLevel(ProficiencyLevel.ADVANCED);
             competency.setStandardCodes(standardCodes);
             competency.setActive(true);
             competency.setApprovalStatus(ApprovalStatus.APPROVED);
             competency.setVersion(1);
             competency.setCreatedAt(LocalDateTime.now());
             competency.setLastModified(LocalDateTime.now());
-            
+
             competencyRepository.save(competency);
 
             mockMvc.perform(get("/api/competencies"))
@@ -123,7 +121,6 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$[0].name", is("Стратегическое лидерство")))
                     .andExpect(jsonPath("$[0].description", containsString("цели")))
                     .andExpect(jsonPath("$[0].category", is("LEADERSHIP")))
-                    .andExpect(jsonPath("$[0].level", is("ADVANCED")))
                     .andExpect(jsonPath("$[0].standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
                     .andExpect(jsonPath("$[0].standardCodes.esco_ref.title", is("develop organisational strategies")))
                     .andExpect(jsonPath("$[0].isActive", is(true)));
@@ -150,7 +147,6 @@ class CompetencyControllerIntegrationTest {
             competencyRequest.put("name", "Эффективная коммуникация");
             competencyRequest.put("description", "Навыки четкого изложения идей и активного слушания");
             competencyRequest.put("category", "COMMUNICATION");
-            competencyRequest.put("level", "PROFICIENT");
             competencyRequest.put("standardCodes", standardCodesRequest);
             competencyRequest.put("isActive", true);
             competencyRequest.put("approvalStatus", "PENDING_REVIEW");
@@ -163,7 +159,6 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.name", is("Эффективная коммуникация")))
                     .andExpect(jsonPath("$.description", containsString("идей")))
                     .andExpect(jsonPath("$.category", is("COMMUNICATION")))
-                    .andExpect(jsonPath("$.level", is("PROFICIENT")))
                     .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
                     .andExpect(jsonPath("$.isActive", is(true)))
                     .andExpect(jsonPath("$.approvalStatus", is("PENDING_REVIEW")))
@@ -213,7 +208,6 @@ class CompetencyControllerIntegrationTest {
             competencyRequest.put("name", "Комплексная коммуникация");
             competencyRequest.put("description", "Многоуровневые навыки коммуникации");
             competencyRequest.put("category", "COMMUNICATION");
-            competencyRequest.put("level", "EXPERT");
             competencyRequest.put("standardCodes", complexStandardCodes);
             competencyRequest.put("isActive", true);
             competencyRequest.put("approvalStatus", "APPROVED");
@@ -244,14 +238,13 @@ class CompetencyControllerIntegrationTest {
             competency.setName("Критическое мышление");
             competency.setDescription("Способность анализировать информацию и принимать обоснованные решения");
             competency.setCategory(CompetencyCategory.COGNITIVE);
-            competency.setLevel(ProficiencyLevel.ADVANCED);
             competency.setStandardCodes(standardCodes);
             competency.setActive(true);
             competency.setApprovalStatus(ApprovalStatus.APPROVED);
             competency.setVersion(1);
             competency.setCreatedAt(LocalDateTime.now());
             competency.setLastModified(LocalDateTime.now());
-            
+
             Competency saved = competencyRepository.save(competency);
 
             mockMvc.perform(get("/api/competencies/{id}", saved.getId()))
@@ -288,13 +281,12 @@ class CompetencyControllerIntegrationTest {
             competency.setName("Старое название");
             competency.setDescription("Старое описание");
             competency.setCategory(CompetencyCategory.COMMUNICATION);
-            competency.setLevel(ProficiencyLevel.DEVELOPING);
             competency.setActive(false);
             competency.setApprovalStatus(ApprovalStatus.DRAFT);
             competency.setVersion(1);
             competency.setCreatedAt(LocalDateTime.now());
             competency.setLastModified(LocalDateTime.now());
-            
+
             Competency saved = competencyRepository.save(competency);
 
             // Prepare update with new standard codes using new DTO structure
@@ -311,7 +303,6 @@ class CompetencyControllerIntegrationTest {
             updateRequest.put("name", "Эмпатия и социальная осознанность");
             updateRequest.put("description", "Обновленное описание: способность понимать эмоции других");
             updateRequest.put("category", "EMOTIONAL_INTELLIGENCE");
-            updateRequest.put("level", "PROFICIENT");
             updateRequest.put("standardCodes", newStandardCodes);
             updateRequest.put("isActive", true);
             updateRequest.put("approvalStatus", "APPROVED");
@@ -326,7 +317,6 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.name", is("Эмпатия и социальная осознанность")))
                     .andExpect(jsonPath("$.description", containsString("эмоции")))
                     .andExpect(jsonPath("$.category", is("EMOTIONAL_INTELLIGENCE")))
-                    .andExpect(jsonPath("$.level", is("PROFICIENT")))
                     .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/def456-ghi789-012")))
                     .andExpect(jsonPath("$.standardCodes.esco_ref.title", is("demonstrate empathy")))
                     .andExpect(jsonPath("$.isActive", is(true)))
@@ -343,7 +333,6 @@ class CompetencyControllerIntegrationTest {
             updateRequest.put("name", "Не существует");
             updateRequest.put("description", "Это не должно работать");
             updateRequest.put("category", "LEADERSHIP");
-            updateRequest.put("level", "NOVICE");
 
             mockMvc.perform(put("/api/competencies/{id}", nonExistentId)
                             .contentType(MediaType.APPLICATION_JSON)
@@ -366,7 +355,6 @@ class CompetencyControllerIntegrationTest {
             competency.setName("Удаляемая компетенция");
             competency.setDescription("Эта компетенция будет удалена");
             competency.setCategory(CompetencyCategory.LEADERSHIP);
-            competency.setLevel(ProficiencyLevel.NOVICE);
             competency.setActive(true);
             competency.setApprovalStatus(ApprovalStatus.DRAFT);
             competency.setVersion(1);
@@ -428,7 +416,6 @@ class CompetencyControllerIntegrationTest {
             competencyRequest.put("name", "Тест с длинным описанием");
             competencyRequest.put("description", largeDescription);
             competencyRequest.put("category", "LEADERSHIP");
-            competencyRequest.put("level", "NOVICE");
             competencyRequest.put("isActive", true);
             competencyRequest.put("approvalStatus", "DRAFT");
 

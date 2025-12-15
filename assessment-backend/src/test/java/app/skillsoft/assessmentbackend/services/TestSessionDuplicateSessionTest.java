@@ -10,10 +10,13 @@ import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.exception.DuplicateSessionException;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
+import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
+import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,6 +56,15 @@ class TestSessionDuplicateSessionTest {
     @Mock
     private BehavioralIndicatorRepository indicatorRepository;
 
+    @Mock
+    private CompetencyRepository competencyRepository;
+
+    @Mock
+    private TestResultRepository resultRepository;
+
+    @Mock
+    private InventoryHeatmapService inventoryHeatmapService;
+
     private TestSessionService testSessionService;
 
     private UUID templateId;
@@ -68,9 +80,11 @@ class TestSessionDuplicateSessionTest {
                 sessionRepository,
                 templateRepository,
                 answerRepository,
-                null, // resultRepository - not needed for this test
+                resultRepository,
                 questionRepository,
                 indicatorRepository,
+                competencyRepository,
+                inventoryHeatmapService,
                 Collections.emptyList() // scoringStrategies - not needed for this test
         );
 

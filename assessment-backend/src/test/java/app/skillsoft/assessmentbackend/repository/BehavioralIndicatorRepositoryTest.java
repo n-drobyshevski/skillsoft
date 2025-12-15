@@ -45,7 +45,6 @@ class BehavioralIndicatorRepositoryTest {
         testCompetency.setName("Test Competency");
         testCompetency.setDescription("Test competency for behavioral indicator testing");
         testCompetency.setCategory(CompetencyCategory.COGNITIVE);
-        testCompetency.setLevel(ProficiencyLevel.PROFICIENT);
         testCompetency.setActive(true);
         testCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
         testCompetency.setVersion(1);
@@ -61,7 +60,7 @@ class BehavioralIndicatorRepositoryTest {
         testBehavioralIndicator.setCompetency(testCompetency);
         testBehavioralIndicator.setTitle("Test Behavioral Indicator");
         testBehavioralIndicator.setDescription("Description for test behavioral indicator");
-        testBehavioralIndicator.setObservabilityLevel(ProficiencyLevel.ADVANCED);
+        testBehavioralIndicator.setObservabilityLevel(ObservabilityLevel.INFERRED);
         testBehavioralIndicator.setMeasurementType(IndicatorMeasurementType.FREQUENCY);
         testBehavioralIndicator.setWeight(0.8f);
         testBehavioralIndicator.setExamples("Example behaviors");
@@ -86,7 +85,7 @@ class BehavioralIndicatorRepositoryTest {
             assertThat(saved.getTitle()).isEqualTo("Test Behavioral Indicator");
             assertThat(saved.getDescription()).isEqualTo("Description for test behavioral indicator");
             assertThat(saved.getCompetency().getId()).isEqualTo(testCompetency.getId());
-            assertThat(saved.getObservabilityLevel()).isEqualTo(ProficiencyLevel.ADVANCED);
+            assertThat(saved.getObservabilityLevel()).isEqualTo(ObservabilityLevel.INFERRED);
             assertThat(saved.getMeasurementType()).isEqualTo(IndicatorMeasurementType.FREQUENCY);
             assertThat(saved.getWeight()).isEqualTo(0.8f);
             assertThat(saved.isActive()).isTrue();
@@ -156,7 +155,7 @@ class BehavioralIndicatorRepositoryTest {
             indicator2.setCompetency(testCompetency);
             indicator2.setTitle("Second Behavioral Indicator");
             indicator2.setDescription("Second description");
-            indicator2.setObservabilityLevel(ProficiencyLevel.NOVICE);
+            indicator2.setObservabilityLevel(ObservabilityLevel.DIRECTLY_OBSERVABLE);
             indicator2.setMeasurementType(IndicatorMeasurementType.QUALITY);
             indicator2.setWeight(0.6f);
             indicator2.setActive(true);
@@ -190,7 +189,6 @@ class BehavioralIndicatorRepositoryTest {
             otherCompetency.setName("Other Competency");
             otherCompetency.setDescription("Other competency");
             otherCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-            otherCompetency.setLevel(ProficiencyLevel.DEVELOPING);
             otherCompetency.setActive(true);
             otherCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
             otherCompetency.setVersion(1);
@@ -205,7 +203,7 @@ class BehavioralIndicatorRepositoryTest {
             otherIndicator.setCompetency(otherCompetency);
             otherIndicator.setTitle("Other Indicator");
             otherIndicator.setDescription("Other description");
-            otherIndicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
+            otherIndicator.setObservabilityLevel(ObservabilityLevel.PARTIALLY_OBSERVABLE);
             otherIndicator.setMeasurementType(IndicatorMeasurementType.IMPACT);
             otherIndicator.setWeight(0.5f);
             otherIndicator.setActive(true);
@@ -339,7 +337,7 @@ class BehavioralIndicatorRepositoryTest {
         @DisplayName("Should handle enum persistence correctly")
         void shouldHandleEnumPersistence() {
             // Given - test all enum combinations
-            testBehavioralIndicator.setObservabilityLevel(ProficiencyLevel.EXPERT);
+            testBehavioralIndicator.setObservabilityLevel(ObservabilityLevel.REQUIRES_DOCUMENTATION);
             testBehavioralIndicator.setMeasurementType(IndicatorMeasurementType.CONSISTENCY);
             testBehavioralIndicator.setApprovalStatus(ApprovalStatus.ARCHIVED);
 
@@ -350,7 +348,7 @@ class BehavioralIndicatorRepositoryTest {
 
             // Then
             BehavioralIndicator found = behavioralIndicatorRepository.findById(saved.getId()).orElseThrow();
-            assertThat(found.getObservabilityLevel()).isEqualTo(ProficiencyLevel.EXPERT);
+            assertThat(found.getObservabilityLevel()).isEqualTo(ObservabilityLevel.REQUIRES_DOCUMENTATION);
             assertThat(found.getMeasurementType()).isEqualTo(IndicatorMeasurementType.CONSISTENCY);
             assertThat(found.getApprovalStatus()).isEqualTo(ApprovalStatus.ARCHIVED);
         }
@@ -405,7 +403,7 @@ class BehavioralIndicatorRepositoryTest {
                 indicator.setCompetency(testCompetency);
                 indicator.setTitle("Behavioral Indicator " + i);
                 indicator.setDescription("Description " + i);
-                indicator.setObservabilityLevel(ProficiencyLevel.values()[i % ProficiencyLevel.values().length]);
+                indicator.setObservabilityLevel(ObservabilityLevel.values()[i % ObservabilityLevel.values().length]);
                 indicator.setMeasurementType(IndicatorMeasurementType.values()[i % IndicatorMeasurementType.values().length]);
                 indicator.setWeight(0.1f * i);
                 indicator.setActive(i % 2 == 0);
@@ -489,7 +487,7 @@ class BehavioralIndicatorRepositoryTest {
             indicator.setCompetency(testCompetency);
             indicator.setTitle(title);
             indicator.setDescription("Description for " + title);
-            indicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
+            indicator.setObservabilityLevel(ObservabilityLevel.DIRECTLY_OBSERVABLE);
             indicator.setMeasurementType(IndicatorMeasurementType.QUALITY);
             indicator.setWeight(0.5f);
             indicator.setActive(true);

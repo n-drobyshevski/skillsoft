@@ -11,16 +11,16 @@ import java.util.UUID;
 
 /**
  * Blueprint configuration for OVERVIEW (Universal Baseline) assessment strategy.
- * 
+ *
  * Generates a "Competency Passport" with:
  * - Big Five personality profile
  * - O*NET cross-functional competency mappings
  * - ESCO transversal skill mappings
- * 
+ *
  * Uses Context Neutrality Filter to exclude role-specific questions.
  * Results are reusable across Job Fit and Team Fit scenarios.
- * 
- * JSON discriminator: "UNIVERSAL_BASELINE"
+ *
+ * JSON discriminator: "OVERVIEW"
  */
 public class OverviewBlueprint extends TestBlueprintDto {
 

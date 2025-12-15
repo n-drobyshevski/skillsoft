@@ -577,6 +577,41 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
 
+    /**
+     * Handle TestNotReadyException when a test template cannot be started
+     * because competencies lack sufficient questions.
+     * Returns HTTP 422 Unprocessable Entity with detailed competency issues.
+     */
+    @ExceptionHandler(TestNotReadyException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ResponseEntity<ErrorResponse> handleTestNotReadyException(
+            TestNotReadyException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Test not ready [{}]: Template {} cannot start - {} questions available, {} required. Issues: {}",
+                correlationId, ex.getTemplateId(), ex.getTotalQuestionsAvailable(),
+                ex.getQuestionsRequired(), ex.getCompetencyIssues().size());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            ex.getMessage(),
+            "Please ensure all competencies have sufficient assessment questions before starting the test",
+            request
+        );
+
+        // Set error code for frontend programmatic handling
+        errorResponse.setCode("TEST_NOT_READY");
+
+        // Add detailed context for frontend to display actionable info
+        errorResponse.addContext("templateId", ex.getTemplateId());
+        errorResponse.addContext("totalQuestionsAvailable", ex.getTotalQuestionsAvailable());
+        errorResponse.addContext("questionsRequired", ex.getQuestionsRequired());
+        errorResponse.addContext("competencyIssues", ex.getCompetencyIssues());
+
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+    }
+
     // ===============================
     // DATABASE & SECURITY EXCEPTIONS
     // ===============================

@@ -26,7 +26,7 @@ public class BehavioralIndicator {
 
     @Column(name="observability_level", nullable = false)
     @Enumerated(EnumType.STRING)
-    private ProficiencyLevel observabilityLevel;
+    private ObservabilityLevel observabilityLevel;
 
     @Column(name="measurement_type", nullable = false)
     @Enumerated(EnumType.STRING)
@@ -103,7 +103,7 @@ public class BehavioralIndicator {
         this.description = description;
     }
 
-    public void setObservabilityLevel(ProficiencyLevel observabilityLevel) {
+    public void setObservabilityLevel(ObservabilityLevel observabilityLevel) {
         this.observabilityLevel = observabilityLevel;
     }
 
@@ -156,7 +156,7 @@ public class BehavioralIndicator {
         return description;
     }
 
-    public ProficiencyLevel getObservabilityLevel() {
+    public ObservabilityLevel getObservabilityLevel() {
         return observabilityLevel;
     }
 
@@ -188,7 +188,7 @@ public class BehavioralIndicator {
         return orderIndex;
     }
 
-    public BehavioralIndicator(UUID id, Competency competency, String title, String description, ProficiencyLevel observabilityLevel, IndicatorMeasurementType measurementType, float weight, String examples, String counterExamples, boolean isActive, ApprovalStatus approvalStatus, Integer orderIndex, ContextScope contextScope) {
+    public BehavioralIndicator(UUID id, Competency competency, String title, String description, ObservabilityLevel observabilityLevel, IndicatorMeasurementType measurementType, float weight, String examples, String counterExamples, boolean isActive, ApprovalStatus approvalStatus, Integer orderIndex, ContextScope contextScope) {
         this.id = id;
         this.competency = competency;
         this.title = title;
