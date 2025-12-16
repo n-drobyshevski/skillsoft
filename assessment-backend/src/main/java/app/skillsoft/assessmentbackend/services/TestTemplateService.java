@@ -72,6 +72,29 @@ public interface TestTemplateService {
     TemplateStatistics getStatistics();
 
     /**
+     * Publish a test template, making it available for test sessions.
+     *
+     * Publishing transitions the template from DRAFT to PUBLISHED status,
+     * making it immutable and available for use in test sessions.
+     *
+     * @param templateId The ID of the template to publish
+     * @return PublishResult containing success status, version number, and message
+     * @throws app.skillsoft.assessmentbackend.exception.ResourceNotFoundException if template not found
+     * @throws IllegalStateException if template cannot be published (not in DRAFT status)
+     * @throws IllegalArgumentException if template is not ready to publish (missing configuration)
+     */
+    PublishResult publishTemplate(UUID templateId);
+
+    /**
+     * Result record for template publishing operation.
+     */
+    record PublishResult(
+            boolean published,
+            int version,
+            String message
+    ) {}
+
+    /**
      * Statistics record for templates.
      */
     record TemplateStatistics(

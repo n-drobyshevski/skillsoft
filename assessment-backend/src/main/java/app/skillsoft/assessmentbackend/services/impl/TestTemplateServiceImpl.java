@@ -1,24 +1,31 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
+import app.skillsoft.assessmentbackend.domain.entities.TemplateStatus;
 import app.skillsoft.assessmentbackend.domain.dto.CreateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateSummaryDto;
 import app.skillsoft.assessmentbackend.domain.dto.UpdateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
+import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class TestTemplateServiceImpl implements TestTemplateService {
+
+    private static final Logger log = LoggerFactory.getLogger(TestTemplateServiceImpl.class);
 
     private final TestTemplateRepository templateRepository;
 
@@ -194,6 +201,88 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         long total = templateRepository.count();
         long active = templateRepository.countByIsActiveTrue();
         return new TemplateStatistics(total, active, total - active);
+    }
+
+    @Override
+    @Transactional
+    public PublishResult publishTemplate(UUID templateId) {
+        log.info("Publishing template: {}", templateId);
+
+        // 1. Find the template or throw 404
+        TestTemplate template = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", templateId));
+
+        // 2. Validate template is ready to publish
+        List<String> validationErrors = validateTemplateForPublishing(template);
+        if (!validationErrors.isEmpty()) {
+            String errorMessage = "Template is not ready to publish: " + String.join("; ", validationErrors);
+            log.warn("Publishing failed for template {}: {}", templateId, errorMessage);
+            throw new IllegalArgumentException(errorMessage);
+        }
+
+        // 3. Check if template is in DRAFT status (can be published)
+        if (template.getStatus() != TemplateStatus.DRAFT) {
+            String errorMessage = String.format(
+                    "Only DRAFT templates can be published. Current status: %s",
+                    template.getStatus()
+            );
+            log.warn("Publishing failed for template {}: {}", templateId, errorMessage);
+            throw new IllegalStateException(errorMessage);
+        }
+
+        // 4. Publish the template (uses entity method which handles status and isActive)
+        template.publish();
+        TestTemplate savedTemplate = templateRepository.save(template);
+
+        log.info("Template {} published successfully. Version: {}, Status: {}",
+                templateId, savedTemplate.getVersion(), savedTemplate.getStatus());
+
+        return new PublishResult(
+                true,
+                savedTemplate.getVersion(),
+                "Template published successfully"
+        );
+    }
+
+    /**
+     * Validates that a template has all required configuration to be published.
+     *
+     * @param template The template to validate
+     * @return List of validation error messages (empty if valid)
+     */
+    private List<String> validateTemplateForPublishing(TestTemplate template) {
+        List<String> errors = new ArrayList<>();
+
+        // Check template has a name
+        if (template.getName() == null || template.getName().trim().isEmpty()) {
+            errors.add("Template must have a name");
+        }
+
+        // Check template has blueprint configuration (either typed or legacy)
+        boolean hasTypedBlueprint = template.getTypedBlueprint() != null;
+        boolean hasLegacyBlueprint = template.getBlueprint() != null && !template.getBlueprint().isEmpty();
+        boolean hasLegacyCompetencies = template.getCompetencyIds() != null && !template.getCompetencyIds().isEmpty();
+
+        if (!hasTypedBlueprint && !hasLegacyBlueprint && !hasLegacyCompetencies) {
+            errors.add("Template must have a blueprint configuration or competencies defined");
+        }
+
+        // Check assessment goal is set
+        if (template.getGoal() == null) {
+            errors.add("Template must have an assessment goal defined");
+        }
+
+        // Check time limit is reasonable
+        if (template.getTimeLimitMinutes() == null || template.getTimeLimitMinutes() <= 0) {
+            errors.add("Template must have a valid time limit (> 0 minutes)");
+        }
+
+        // Check passing score is reasonable (0-100%)
+        if (template.getPassingScore() == null || template.getPassingScore() < 0 || template.getPassingScore() > 100) {
+            errors.add("Template must have a valid passing score (0-100)");
+        }
+
+        return errors;
     }
 
     // Mapping methods

@@ -622,6 +622,19 @@ public class TestSessionServiceImpl implements TestSessionService {
                     answer.setTextResponse(request.textResponse());
                 }
                 break;
+            default:
+                // Handle unknown or future question types gracefully
+                log.warn("Unhandled question type '{}' for question {}. Storing raw response data.",
+                        question.getQuestionType(), question.getId());
+                // Store any available response data
+                if (request.selectedOptionIds() != null && !request.selectedOptionIds().isEmpty()) {
+                    answer.setSelectedOptionIds(request.selectedOptionIds());
+                } else if (request.likertValue() != null) {
+                    answer.setLikertValue(request.likertValue());
+                } else if (request.textResponse() != null) {
+                    answer.setTextResponse(request.textResponse());
+                }
+                break;
         }
 
         answer.setMaxScore(1.0); // Default max score (normalized)
@@ -679,10 +692,13 @@ public class TestSessionServiceImpl implements TestSessionService {
                 if (scoreValue != null) {
                     try {
                         double score = ((Number) scoreValue).doubleValue();
-                        // Normalize score to 0-1 range if it's on a 0-4 or 1-5 scale
+                        // Normalize score to 0-1 range if it's on a scale greater than 1
                         if (score > 1.0) {
-                            // Assume 0-4 scale for SJT effectiveness
-                            score = score / 4.0;
+                            // Detect the max score from answer options
+                            double maxOptionScore = findMaxScoreInOptions(answerOptions);
+                            if (maxOptionScore > 1.0) {
+                                score = score / maxOptionScore;
+                            }
                         }
                         log.debug("Extracted score {} for option {} in question {}",
                             score, selectedId, question.getId());
@@ -703,6 +719,44 @@ public class TestSessionServiceImpl implements TestSessionService {
         log.warn("Selected option {} not found in question {} options", selectedId, question.getId());
         return 0.0;
     }
+
+    /**
+     * Find the maximum score value among all answer options.
+     * Used to dynamically determine the scale for score normalization.
+     *
+     * @param answerOptions The list of answer options to scan
+     * @return The maximum score found, or 1.0 if no scores are found
+     */
+    private double findMaxScoreInOptions(List<Map<String, Object>> answerOptions) {
+        if (answerOptions == null || answerOptions.isEmpty()) {
+            return 1.0;
+        }
+
+        double maxScore = 0.0;
+        for (Map<String, Object> option : answerOptions) {
+            Object scoreValue = null;
+            if (option.containsKey("effectiveness")) {
+                scoreValue = option.get("effectiveness");
+            } else if (option.containsKey("score")) {
+                scoreValue = option.get("score");
+            }
+
+            if (scoreValue != null) {
+                try {
+                    double score = ((Number) scoreValue).doubleValue();
+                    if (score > maxScore) {
+                        maxScore = score;
+                    }
+                } catch (ClassCastException | NullPointerException e) {
+                    // Ignore invalid values
+                }
+            }
+        }
+
+        // Return at least 1.0 to avoid division by zero
+        return maxScore > 0 ? maxScore : 1.0;
+    }
+
     private TestResultDto calculateAndSaveResult(TestSession session) {
         List<TestAnswer> answers = answerRepository.findBySession_Id(session.getId());
 
@@ -745,32 +799,172 @@ public class TestSessionServiceImpl implements TestSessionService {
         // Calculate passed/failed
         result.calculatePassed(session.getTemplate().getPassingScore());
 
-        // TODO: Calculate percentile
+        // Calculate percentile based on historical results for this template
+        Integer percentile = calculatePercentile(session.getTemplate().getId(), result.getOverallPercentage());
+        result.setPercentile(percentile);
 
         TestResult saved = resultRepository.save(result);
         return toResultDto(saved, session);
     }
     
     /**
+     * Calculate the percentile rank for a given score based on historical results.
+     * Percentile indicates what percentage of test takers scored below this score.
+     *
+     * @param templateId The template ID to compare against
+     * @param score The current score to calculate percentile for
+     * @return Percentile rank (0-100), or 50 if no historical data exists
+     */
+    private Integer calculatePercentile(UUID templateId, Double score) {
+        if (score == null) {
+            log.debug("Cannot calculate percentile: score is null");
+            return null;
+        }
+
+        try {
+            // Get count of results below this score
+            long belowCount = resultRepository.countResultsBelowScore(templateId, score);
+
+            // Get total count of results for this template
+            long totalCount = resultRepository.countResultsByTemplateId(templateId);
+
+            // Handle edge cases
+            if (totalCount == 0) {
+                // First result for this template - default to 50th percentile
+                log.debug("First result for template {}, defaulting to 50th percentile", templateId);
+                return 50;
+            }
+
+            if (totalCount == 1) {
+                // Only one result (the current one being saved)
+                // Return 50 as baseline
+                log.debug("Only one result for template {}, defaulting to 50th percentile", templateId);
+                return 50;
+            }
+
+            // Calculate percentile: (count below / total) * 100
+            // Using (totalCount - 1) to exclude the current result from denominator
+            double percentile = ((double) belowCount / (totalCount - 1)) * 100;
+
+            // Round and clamp to 0-100 range
+            int result = (int) Math.round(percentile);
+            result = Math.max(0, Math.min(100, result));
+
+            log.debug("Calculated percentile for template {}: {} (below: {}, total: {})",
+                    templateId, result, belowCount, totalCount);
+
+            return result;
+        } catch (Exception e) {
+            log.warn("Error calculating percentile for template {}: {}", templateId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Legacy scoring calculation for backward compatibility.
      * Used when no specific strategy is available for the goal.
+     * Calculates basic competency scores by grouping answers by their question's competency.
      */
     private ScoringResult calculateLegacyScore(TestSession session, List<TestAnswer> answers) {
         Double totalScore = answerRepository.sumScoreBySessionId(session.getId());
         Double maxScore = answerRepository.sumMaxScoreBySessionId(session.getId());
-        
+
         double percentage = 0.0;
         if (maxScore != null && maxScore > 0) {
             percentage = (totalScore != null ? totalScore / maxScore : 0) * 100;
         }
-        
+
         ScoringResult result = new ScoringResult();
         result.setOverallScore(totalScore != null ? totalScore : 0.0);
         result.setOverallPercentage(percentage);
         result.setGoal(session.getTemplate().getGoal());
-        result.setCompetencyScores(new ArrayList<>()); // Empty for legacy
-        
+
+        // Calculate basic competency scores even in legacy mode
+        List<CompetencyScoreDto> competencyScores = calculateLegacyCompetencyScores(answers);
+        result.setCompetencyScores(competencyScores);
+
         return result;
+    }
+
+    /**
+     * Calculate competency scores for legacy scoring mode.
+     * Groups answers by their question's behavioral indicator's competency and calculates averages.
+     *
+     * @param answers List of test answers
+     * @return List of competency scores
+     */
+    private List<CompetencyScoreDto> calculateLegacyCompetencyScores(List<TestAnswer> answers) {
+        // Map to track scores per competency: competencyId -> (totalScore, count, maxScore)
+        Map<UUID, double[]> competencyAggregates = new HashMap<>();
+        Map<UUID, String> competencyNames = new HashMap<>();
+        Map<UUID, String> competencyOnetCodes = new HashMap<>();
+
+        for (TestAnswer answer : answers) {
+            // Skip unanswered questions
+            if (answer.getIsSkipped() || answer.getScore() == null) {
+                continue;
+            }
+
+            AssessmentQuestion question = answer.getQuestion();
+            if (question == null) {
+                continue;
+            }
+
+            BehavioralIndicator indicator = question.getBehavioralIndicator();
+            if (indicator == null) {
+                continue;
+            }
+
+            Competency competency = indicator.getCompetency();
+            if (competency == null) {
+                continue;
+            }
+
+            UUID compId = competency.getId();
+
+            // Initialize aggregates if first encounter
+            if (!competencyAggregates.containsKey(compId)) {
+                competencyAggregates.put(compId, new double[]{0.0, 0.0, 0.0}); // totalScore, count, maxScore
+                competencyNames.put(compId, competency.getName());
+                // Get O*NET code if available
+                if (competency.getOnetCode() != null) {
+                    competencyOnetCodes.put(compId, competency.getOnetCode());
+                }
+            }
+
+            // Aggregate scores
+            double[] aggregate = competencyAggregates.get(compId);
+            aggregate[0] += answer.getScore() != null ? answer.getScore() : 0.0;
+            aggregate[1] += 1.0;
+            aggregate[2] += answer.getMaxScore() != null ? answer.getMaxScore() : 1.0;
+        }
+
+        // Convert aggregates to CompetencyScoreDto
+        List<CompetencyScoreDto> competencyScores = new ArrayList<>();
+        for (Map.Entry<UUID, double[]> entry : competencyAggregates.entrySet()) {
+            UUID compId = entry.getKey();
+            double[] aggregate = entry.getValue();
+            double totalScore = aggregate[0];
+            int count = (int) aggregate[1];
+            double maxScore = aggregate[2];
+
+            double compPercentage = maxScore > 0 ? (totalScore / maxScore) * 100 : 0.0;
+
+            CompetencyScoreDto dto = new CompetencyScoreDto(
+                    compId,
+                    competencyNames.get(compId),
+                    totalScore,
+                    maxScore,
+                    compPercentage
+            );
+            dto.setQuestionsAnswered(count);
+            dto.setOnetCode(competencyOnetCodes.get(compId));
+
+            competencyScores.add(dto);
+        }
+
+        log.debug("Calculated {} competency scores in legacy mode", competencyScores.size());
+        return competencyScores;
     }
 
     // Mapping methods

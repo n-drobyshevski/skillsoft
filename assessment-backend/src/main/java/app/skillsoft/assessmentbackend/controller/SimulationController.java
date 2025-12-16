@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.*;
+import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import app.skillsoft.assessmentbackend.services.simulation.TestSimulatorService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import jakarta.validation.Valid;
@@ -12,7 +13,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -34,6 +34,7 @@ public class SimulationController {
 
     private final TestSimulatorService simulatorService;
     private final InventoryHeatmapService heatmapService;
+    private final TestTemplateService templateService;
 
     // ==================== SIMULATION ENDPOINTS ====================
 
@@ -133,13 +134,20 @@ public class SimulationController {
     ) {}
 
     /**
-     * Publish a template (locks the version and makes it available).
-     * 
-     * Note: This is a stub endpoint. Full implementation requires
-     * the versioning logic in TestTemplateService.
-     * 
-     * @param templateId The template to publish
-     * @return Publish result with version number
+     * Publish a template, making it available for test sessions.
+     *
+     * Publishing transitions the template from DRAFT to PUBLISHED status:
+     * - DRAFT templates can be edited and are not available for test sessions
+     * - PUBLISHED templates are immutable and available for test sessions
+     * - ARCHIVED templates are preserved for history but not available
+     *
+     * Validation checks before publishing:
+     * - Template must exist (404 if not found)
+     * - Template must be in DRAFT status (400 if already published/archived)
+     * - Template must have required configuration (name, blueprint/competencies, goal, etc.)
+     *
+     * @param templateId The UUID of the template to publish
+     * @return Publish result with success status, version number, and message
      */
     @PostMapping("/templates/{templateId}/publish")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
@@ -147,9 +155,15 @@ public class SimulationController {
             @PathVariable UUID templateId) {
         log.info("POST /api/v1/tests/templates/{}/publish", templateId);
 
-        // TODO: Implement full versioning logic via TestTemplateService
-        // For now, return a successful response to unblock frontend
-        
-        return ResponseEntity.ok(new PublishResponse(true, 1, "Template published successfully"));
+        TestTemplateService.PublishResult result = templateService.publishTemplate(templateId);
+
+        log.info("Template {} publish result: published={}, version={}",
+                templateId, result.published(), result.version());
+
+        return ResponseEntity.ok(new PublishResponse(
+                result.published(),
+                result.version(),
+                result.message()
+        ));
     }
 }
