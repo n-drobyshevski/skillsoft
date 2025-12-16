@@ -67,9 +67,9 @@ class CompetencyRepositorySimpleTest {
         String jsonData = row[1] != null ? 
             (row[1] instanceof String ? (String) row[1] : new String((byte[]) row[1])) : null;
         
-        // Then
+        // Then - JSON uses camelCase (onetRef, not onet_ref)
         assertThat(name).isEqualTo("Test Competency");
-        assertThat(jsonData).contains("onet_ref");
+        assertThat(jsonData).contains("onetRef");
         assertThat(jsonData).contains("2.B.1.a");
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getStandardCodes().hasOnetMapping()).isTrue();
@@ -144,10 +144,10 @@ class CompetencyRepositorySimpleTest {
         String jsonData = row[2] != null ? 
             (row[2] instanceof String ? (String) row[2] : new String((byte[]) row[2])) : null;
 
-        // Then
+        // Then - JSON uses camelCase (onetRef, not onet_ref)
         assertThat(name).isEqualTo("Компетенция по программированию");
         assertThat(description).isEqualTo("Описание компетенции на русском языке");
-        assertThat(jsonData).contains("onet_ref");
+        assertThat(jsonData).contains("onetRef");
         assertThat(jsonData).contains("2.A.1.a");
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getStandardCodes().hasOnetMapping()).isTrue();

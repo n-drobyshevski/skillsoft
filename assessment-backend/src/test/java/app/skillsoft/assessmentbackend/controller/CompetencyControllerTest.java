@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -23,6 +24,7 @@ import java.util.*;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -81,6 +83,7 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/competencies - Should return all competencies")
     void shouldReturnAllCompetencies() throws Exception {
         when(competencyService.listCompetencies())
@@ -97,6 +100,7 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/competencies/{id} - Should return competency by id")
     void shouldReturnCompetencyById() throws Exception {
         when(competencyService.findCompetencyById(testCompetency.getId()))
@@ -113,6 +117,7 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("POST /api/competencies - Should create new competency")
     void shouldCreateNewCompetency() throws Exception {
         when(competencyMapper.fromDto(any(CompetencyDto.class)))
@@ -123,15 +128,17 @@ class CompetencyControllerTest {
                 .thenReturn(testCompetencyDto);
 
         mockMvc.perform(post("/api/competencies")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Test Competency\",\"description\":\"Test Description\"}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.name").value(testCompetency.getName()))
                 .andExpect(jsonPath("$.description").value(testCompetency.getDescription()));
     }
 
     @Test
+    @WithMockUser
     @DisplayName("PUT /api/competencies/{id} - Should update existing competency")
     void shouldUpdateExistingCompetency() throws Exception {
         when(competencyMapper.fromDto(any(CompetencyDto.class)))
@@ -142,6 +149,7 @@ class CompetencyControllerTest {
                 .thenReturn(testCompetencyDto);
 
         mockMvc.perform(put("/api/competencies/" + testCompetency.getId())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Updated Competency\",\"description\":\"Updated Description\"}"))
                 .andExpect(status().isOk())
@@ -151,9 +159,13 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("DELETE /api/competencies/{id} - Should delete competency")
     void shouldDeleteCompetency() throws Exception {
-        mockMvc.perform(delete("/api/competencies/" + testCompetency.getId()))
+        when(competencyService.deleteCompetency(testCompetency.getId())).thenReturn(true);
+
+        mockMvc.perform(delete("/api/competencies/" + testCompetency.getId())
+                .with(csrf()))
                 .andExpect(status().isNoContent());
     }
 }

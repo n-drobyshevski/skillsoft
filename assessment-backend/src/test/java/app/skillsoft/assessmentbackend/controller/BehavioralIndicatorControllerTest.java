@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
@@ -22,6 +23,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -87,6 +89,7 @@ class BehavioralIndicatorControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/behavioral-indicators - Should return all indicators")
     void shouldReturnAllIndicators() throws Exception {
         when(behavioralIndicatorService.listAllBehavioralIndicators())
@@ -102,6 +105,7 @@ class BehavioralIndicatorControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/behavioral-indicators/{id} - Should return indicator by id")
     void shouldReturnIndicatorById() throws Exception {
         when(behavioralIndicatorService.findBehavioralIndicatorById(testIndicator.getId()))
@@ -117,28 +121,32 @@ class BehavioralIndicatorControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("POST /api/behavioral-indicators - Should create new indicator")
     void shouldCreateNewIndicator() throws Exception {
+        when(behavioralIndicatorMapper.fromDto(any(BehavioralIndicatorDto.class)))
+                .thenReturn(testIndicator);
         when(behavioralIndicatorService.createBehavioralIndicator(any(UUID.class), any(BehavioralIndicator.class)))
                 .thenReturn(testIndicator);
         when(behavioralIndicatorMapper.toDto(any(BehavioralIndicator.class)))
                 .thenReturn(testIndicatorDto);
 
-        String requestBody = """
+        String requestBody = String.format("""
                 {
+                    "competencyId": "%s",
                     "title": "Test Indicator",
                     "description": "Test Description",
-                    "observabilityLevel": "PROFICIENT",
+                    "observabilityLevel": "DIRECTLY_OBSERVABLE",
                     "measurementType": "FREQUENCY",
                     "weight": 1.0,
                     "examples": "Test Examples",
                     "active": true,
-                    "approvalStatus": "PENDING",
+                    "approvalStatus": "PENDING_REVIEW",
                     "orderIndex": 1
-                }""";
+                }""", competencyId);
 
         mockMvc.perform(post("/api/behavioral-indicators")
-                .param("competencyId", competencyId.toString())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isOk())
@@ -147,27 +155,33 @@ class BehavioralIndicatorControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("PUT /api/behavioral-indicators/{id} - Should update existing indicator")
     void shouldUpdateExistingIndicator() throws Exception {
+        when(behavioralIndicatorMapper.fromDto(any(BehavioralIndicatorDto.class)))
+                .thenReturn(testIndicator);
         when(behavioralIndicatorService.updateBehavioralIndicator(any(UUID.class), any(BehavioralIndicator.class)))
                 .thenReturn(testIndicator);
         when(behavioralIndicatorMapper.toDto(any(BehavioralIndicator.class)))
                 .thenReturn(testIndicatorDto);
 
-        String requestBody = """
+        String requestBody = String.format("""
                 {
+                    "id": "%s",
+                    "competencyId": "%s",
                     "title": "Updated Indicator",
                     "description": "Updated Description",
-                    "observabilityLevel": "ADVANCED",
-                    "measurementType": "SCALE",
+                    "observabilityLevel": "PARTIALLY_OBSERVABLE",
+                    "measurementType": "QUALITY",
                     "weight": 2.0,
                     "examples": "Updated Examples",
                     "active": false,
                     "approvalStatus": "APPROVED",
                     "orderIndex": 2
-                }""";
+                }""", testIndicator.getId(), competencyId);
 
         mockMvc.perform(put("/api/behavioral-indicators/" + testIndicator.getId())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isOk())
@@ -176,9 +190,11 @@ class BehavioralIndicatorControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("DELETE /api/behavioral-indicators/{id} - Should delete indicator")
     void shouldDeleteIndicator() throws Exception {
-        mockMvc.perform(delete("/api/behavioral-indicators/" + testIndicator.getId()))
+        mockMvc.perform(delete("/api/behavioral-indicators/" + testIndicator.getId())
+                .with(csrf()))
                 .andExpect(status().isNoContent());
     }
 }

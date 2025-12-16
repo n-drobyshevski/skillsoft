@@ -99,12 +99,12 @@ class CompetencyDeserializationTest {
         @DisplayName("Should deserialize CompetencyDto with nested StandardCodesDto (BigFiveRefDto)")
         void shouldDeserializeCompetencyDtoWithStandardCodes() throws Exception {
             // This is the new JSON structure with bigFiveRef following ONET/ESCO pattern
+            // Note: "level" field was removed from CompetencyDto per domain migration
             String json = """
                 {
                     "name": "Test Competency",
                     "description": "A test competency description that is long enough",
                     "category": "LEADERSHIP",
-                    "level": "PROFICIENT",
                     "isActive": true,
                     "approvalStatus": "DRAFT",
                     "standardCodes": {

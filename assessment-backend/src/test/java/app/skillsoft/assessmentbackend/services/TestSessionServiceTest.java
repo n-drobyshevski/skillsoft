@@ -1,10 +1,15 @@
 package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.HealthStatus;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryHeatmapDto;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryHeatmapDto.HeatmapSummary;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
+import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -24,6 +29,7 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import java.util.Map;
 
 /**
  * Unit tests for TestSessionService implementation.
@@ -57,9 +63,14 @@ class TestSessionServiceTest {
     private BehavioralIndicatorRepository indicatorRepository;
 
     @Mock
+    private CompetencyRepository competencyRepository;
+
+    @Mock
+    private InventoryHeatmapService inventoryHeatmapService;
+
+    @Mock
     private List<ScoringStrategy> scoringStrategies;
 
-    @InjectMocks
     private TestSessionServiceImpl testSessionService;
 
     private UUID sessionId;
@@ -71,6 +82,19 @@ class TestSessionServiceTest {
 
     @BeforeEach
     void setUp() {
+        // Initialize service with all mocks
+        testSessionService = new TestSessionServiceImpl(
+                sessionRepository,
+                templateRepository,
+                answerRepository,
+                resultRepository,
+                questionRepository,
+                indicatorRepository,
+                competencyRepository,
+                inventoryHeatmapService,
+                scoringStrategies
+        );
+
         sessionId = UUID.randomUUID();
         templateId = UUID.randomUUID();
         questionId = UUID.randomUUID();
@@ -106,6 +130,20 @@ class TestSessionServiceTest {
         mockSession.setQuestionOrder(List.of(questionId, UUID.randomUUID(), UUID.randomUUID()));
         mockSession.setCreatedAt(LocalDateTime.now());
         mockSession.setLastActivityAt(LocalDateTime.now());
+    }
+
+    /**
+     * Helper method to create a mock InventoryHeatmapDto with specified health status for competencies.
+     */
+    private InventoryHeatmapDto createMockHeatmap(Map<UUID, HealthStatus> competencyHealth) {
+        HeatmapSummary summary = new HeatmapSummary(
+                competencyHealth.size(),
+                (int) competencyHealth.values().stream().filter(h -> h == HealthStatus.CRITICAL).count(),
+                (int) competencyHealth.values().stream().filter(h -> h == HealthStatus.MODERATE).count(),
+                (int) competencyHealth.values().stream().filter(h -> h == HealthStatus.HEALTHY).count(),
+                10 // totalQuestions
+        );
+        return new InventoryHeatmapDto(competencyHealth, new java.util.HashMap<>(), summary);
     }
 
     @Nested
@@ -392,8 +430,8 @@ class TestSessionServiceTest {
     class StartSessionEmptyQuestionValidationTests {
 
         @Test
-        @DisplayName("Should throw IllegalStateException when no questions available for competencies")
-        void startSession_WithNoQuestions_ShouldThrowIllegalStateException() {
+        @DisplayName("Should throw TestNotReadyException when no questions available for competencies")
+        void startSession_WithNoQuestions_ShouldThrowTestNotReadyException() {
             // Given: A template with competencies that have no questions
             UUID competencyWithNoQuestions = UUID.randomUUID();
             mockTemplate.setCompetencyIds(List.of(competencyWithNoQuestions));
@@ -420,24 +458,32 @@ class TestSessionServiceTest {
             when(indicatorRepository.findByCompetencyId(competencyWithNoQuestions))
                     .thenReturn(Collections.emptyList());
 
-            // When & Then: Should throw IllegalStateException
+            // Mock fallback query
+            when(questionRepository.findAnyActiveQuestionsForCompetency(eq(competencyWithNoQuestions), anyInt()))
+                    .thenReturn(Collections.emptyList());
+
+            // Mock heatmap service to return CRITICAL status
+            when(inventoryHeatmapService.generateHeatmapFor(anyList()))
+                    .thenReturn(createMockHeatmap(Map.of(competencyWithNoQuestions, HealthStatus.CRITICAL)));
+
+            // When & Then: Should throw TestNotReadyException
             assertThatThrownBy(() -> testSessionService.startSession(request))
-                    .isInstanceOf(IllegalStateException.class)
+                    .isInstanceOf(TestNotReadyException.class)
                     .hasMessageContaining("Cannot start test session")
-                    .hasMessageContaining("No questions are available")
-                    .hasMessageContaining("competencies have behavioral indicators with active questions");
+                    .hasMessageContaining("missing questions");
 
             // Verify that session was never saved
             verify(sessionRepository, never()).save(any(TestSession.class));
 
             // Verify that we attempted to find questions
             verify(questionRepository).findUniversalQuestions(eq(competencyWithNoQuestions), anyInt());
-            verify(indicatorRepository).findByCompetencyId(competencyWithNoQuestions);
+            // Note: indicatorRepository.findByCompetencyId may be called multiple times (diagnostics + readiness check)
+            verify(indicatorRepository, atLeastOnce()).findByCompetencyId(competencyWithNoQuestions);
         }
 
         @Test
-        @DisplayName("Should throw IllegalStateException when indicators exist but have no active questions")
-        void startSession_WithIndicatorsButNoActiveQuestions_ShouldThrowIllegalStateException() {
+        @DisplayName("Should throw TestNotReadyException when indicators exist but have no active questions")
+        void startSession_WithIndicatorsButNoActiveQuestions_ShouldThrowTestNotReadyException() {
             // Given: A template with competency that has indicators but no active questions
             UUID competencyId = UUID.randomUUID();
             UUID indicatorId = UUID.randomUUID();
@@ -470,19 +516,27 @@ class TestSessionServiceTest {
             when(questionRepository.findByBehavioralIndicator_Id(indicatorId))
                     .thenReturn(Collections.emptyList());
 
-            // When & Then: Should throw IllegalStateException
+            // Mock fallback query
+            when(questionRepository.findAnyActiveQuestionsForCompetency(eq(competencyId), anyInt()))
+                    .thenReturn(Collections.emptyList());
+
+            // Mock heatmap service to return CRITICAL status
+            when(inventoryHeatmapService.generateHeatmapFor(anyList()))
+                    .thenReturn(createMockHeatmap(Map.of(competencyId, HealthStatus.CRITICAL)));
+
+            // When & Then: Should throw TestNotReadyException
             assertThatThrownBy(() -> testSessionService.startSession(request))
-                    .isInstanceOf(IllegalStateException.class)
+                    .isInstanceOf(TestNotReadyException.class)
                     .hasMessageContaining("Cannot start test session")
-                    .hasMessageContaining("No questions are available");
+                    .hasMessageContaining("missing questions");
 
             // Verify that session was never saved
             verify(sessionRepository, never()).save(any(TestSession.class));
         }
 
         @Test
-        @DisplayName("Should throw IllegalStateException for JOB_FIT goal with no questions (legacy fallback)")
-        void startSession_JobFitGoalWithNoQuestions_ShouldThrowIllegalStateException() {
+        @DisplayName("Should throw TestNotReadyException for JOB_FIT goal with no questions (legacy fallback)")
+        void startSession_JobFitGoalWithNoQuestions_ShouldThrowTestNotReadyException() {
             // Given: A template with JOB_FIT goal that falls back to legacy logic
             UUID competencyId = UUID.randomUUID();
             mockTemplate.setCompetencyIds(List.of(competencyId));
@@ -505,11 +559,15 @@ class TestSessionServiceTest {
             when(indicatorRepository.findByCompetencyId(competencyId))
                     .thenReturn(Collections.emptyList());
 
-            // When & Then: Should throw IllegalStateException
+            // Mock heatmap service to return CRITICAL status
+            when(inventoryHeatmapService.generateHeatmapFor(anyList()))
+                    .thenReturn(createMockHeatmap(Map.of(competencyId, HealthStatus.CRITICAL)));
+
+            // When & Then: Should throw TestNotReadyException
             assertThatThrownBy(() -> testSessionService.startSession(request))
-                    .isInstanceOf(IllegalStateException.class)
+                    .isInstanceOf(TestNotReadyException.class)
                     .hasMessageContaining("Cannot start test session")
-                    .hasMessageContaining("No questions are available");
+                    .hasMessageContaining("missing questions");
 
             // Verify that session was never saved
             verify(sessionRepository, never()).save(any(TestSession.class));
@@ -552,6 +610,8 @@ class TestSessionServiceTest {
             // Mock Scenario A question generation - return questions
             when(questionRepository.findUniversalQuestions(eq(competencyId), eq(3)))
                     .thenReturn(List.of(mockQuestion1, mockQuestion2, mockQuestion3));
+
+            // Note: No heatmap mock needed - heatmap is only checked when questions are not found
 
             // Mock session save
             when(sessionRepository.save(any(TestSession.class))).thenAnswer(invocation -> {

@@ -591,13 +591,20 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         // Set the appropriate answer field based on question type
         switch (question.getQuestionType()) {
+            case MCQ:
             case MULTIPLE_CHOICE:
+            case SJT:
             case SITUATIONAL_JUDGMENT:
                 answer.setSelectedOptionIds(request.selectedOptionIds());
+                // Calculate score from selected option
+                Double optionScore = extractScoreFromSelectedOption(question, request.selectedOptionIds());
+                answer.setScore(optionScore);
                 break;
+            case LIKERT:
             case LIKERT_SCALE:
             case FREQUENCY_SCALE:
                 answer.setLikertValue(request.likertValue());
+                // Likert scores are normalized later in scoring strategy
                 break;
             case OPEN_TEXT:
             case BEHAVIORAL_EXAMPLE:
@@ -609,15 +616,92 @@ public class TestSessionServiceImpl implements TestSessionService {
                 // These may require specific handling
                 if (request.selectedOptionIds() != null) {
                     answer.setSelectedOptionIds(request.selectedOptionIds());
+                    Double capScore = extractScoreFromSelectedOption(question, request.selectedOptionIds());
+                    answer.setScore(capScore);
                 } else if (request.textResponse() != null) {
                     answer.setTextResponse(request.textResponse());
                 }
                 break;
         }
 
-        // TODO: Calculate score based on scoring rubric
-        // For now, set max score but leave score null until grading
-        answer.setMaxScore(1.0); // Default max score
+        answer.setMaxScore(1.0); // Default max score (normalized)
+    }
+
+    /**
+     * Extract score from the selected option in a question's answer options.
+     *
+     * Handles both SJT and MCQ question types where options have a "score" field.
+     * For SJT: score represents effectiveness (0-1 scale, or integer 0-4)
+     * For MCQ: score typically 1 for correct, 0 for incorrect
+     *
+     * @param question The assessment question with answer options
+     * @param selectedOptionIds The list of selected option IDs (typically one element)
+     * @return The score value from the matched option, or 0.0 if not found
+     */
+    private Double extractScoreFromSelectedOption(AssessmentQuestion question, List<String> selectedOptionIds) {
+        if (selectedOptionIds == null || selectedOptionIds.isEmpty()) {
+            log.debug("No selected option IDs provided for question {}", question.getId());
+            return 0.0;
+        }
+
+        List<Map<String, Object>> answerOptions = question.getAnswerOptions();
+        if (answerOptions == null || answerOptions.isEmpty()) {
+            log.debug("No answer options available for question {}", question.getId());
+            return 0.0;
+        }
+
+        // Get the first selected option ID (most questions are single-select)
+        String selectedId = selectedOptionIds.get(0);
+
+        // Search for matching option by ID
+        for (int i = 0; i < answerOptions.size(); i++) {
+            Map<String, Object> option = answerOptions.get(i);
+
+            // Check for matching ID (options may have "id" field or use index-based ID)
+            String optionId = null;
+            if (option.containsKey("id")) {
+                optionId = String.valueOf(option.get("id"));
+            } else {
+                // Fallback to index-based ID (consistent with transformAnswerOptions)
+                optionId = "option-" + i;
+            }
+
+            if (selectedId.equals(optionId)) {
+                // Extract score from option
+                // SJT uses "effectiveness" field, MCQ uses "score" field
+                Object scoreValue = null;
+                if (option.containsKey("effectiveness")) {
+                    scoreValue = option.get("effectiveness");
+                } else if (option.containsKey("score")) {
+                    scoreValue = option.get("score");
+                }
+
+                if (scoreValue != null) {
+                    try {
+                        double score = ((Number) scoreValue).doubleValue();
+                        // Normalize score to 0-1 range if it's on a 0-4 or 1-5 scale
+                        if (score > 1.0) {
+                            // Assume 0-4 scale for SJT effectiveness
+                            score = score / 4.0;
+                        }
+                        log.debug("Extracted score {} for option {} in question {}",
+                            score, selectedId, question.getId());
+                        return score;
+                    } catch (ClassCastException | NullPointerException e) {
+                        log.warn("Could not parse score value '{}' for option {} in question {}",
+                            scoreValue, selectedId, question.getId());
+                        return 0.0;
+                    }
+                } else {
+                    log.debug("No score field found for option {} in question {}",
+                        selectedId, question.getId());
+                    return 0.0;
+                }
+            }
+        }
+
+        log.warn("Selected option {} not found in question {} options", selectedId, question.getId());
+        return 0.0;
     }
     private TestResultDto calculateAndSaveResult(TestSession session) {
         List<TestAnswer> answers = answerRepository.findBySession_Id(session.getId());
@@ -802,18 +886,32 @@ public class TestSessionServiceImpl implements TestSessionService {
                 transformed.put("id", "option-" + i);
 
                 // Map "action" field to "text" field (frontend expects "text")
+                // Also preserve "text" field if already present (for backwards compatibility)
                 if (option.containsKey("action")) {
                     transformed.put("text", option.get("action"));
+                } else if (option.containsKey("text")) {
+                    transformed.put("text", option.get("text"));
                 }
 
                 // Preserve effectiveness as score
+                // Also preserve "score" field if already present (for backwards compatibility)
                 if (option.containsKey("effectiveness")) {
                     transformed.put("score", option.get("effectiveness"));
+                } else if (option.containsKey("score")) {
+                    transformed.put("score", option.get("score"));
                 }
 
                 // Preserve explanation for feedback
                 if (option.containsKey("explanation")) {
                     transformed.put("explanation", option.get("explanation"));
+                }
+
+                // Map option letter to "label" field (frontend expects "label")
+                // V5 data uses "label" field, V6 data uses "option" field
+                if (option.containsKey("label")) {
+                    transformed.put("label", option.get("label"));
+                } else if (option.containsKey("option")) {
+                    transformed.put("label", option.get("option"));
                 }
 
                 transformedList.add(transformed);

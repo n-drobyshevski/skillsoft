@@ -4,6 +4,11 @@ import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.domain.entities.QuestionType;
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
+import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
+import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.services.TestSessionService.CurrentQuestionDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,6 +58,18 @@ class TestSessionControllerTest {
 
     @MockBean
     private TestSessionService testSessionService;
+
+    @MockBean
+    private TestTemplateRepository templateRepository;
+
+    @MockBean
+    private CompetencyRepository competencyRepository;
+
+    @MockBean
+    private BehavioralIndicatorRepository indicatorRepository;
+
+    @MockBean
+    private AssessmentQuestionRepository questionRepository;
 
     private UUID sessionId;
     private UUID templateId;
@@ -199,7 +216,7 @@ class TestSessionControllerTest {
             // Given
             StartTestSessionRequest request = new StartTestSessionRequest(templateId, clerkUserId);
             when(testSessionService.startSession(any(StartTestSessionRequest.class)))
-                    .thenThrow(new RuntimeException("Template not found"));
+                    .thenThrow(new ResourceNotFoundException("Template", templateId));
 
             // When & Then
             mockMvc.perform(post("/api/v1/tests/sessions")
@@ -302,7 +319,7 @@ class TestSessionControllerTest {
             // Given
             UUID nonExistentId = UUID.randomUUID();
             when(testSessionService.completeSession(nonExistentId))
-                    .thenThrow(new RuntimeException("Session not found"));
+                    .thenThrow(new ResourceNotFoundException("Session", nonExistentId));
 
             // When & Then
             mockMvc.perform(post("/api/v1/tests/sessions/{sessionId}/complete", nonExistentId)

@@ -121,8 +121,8 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$[0].name", is("Стратегическое лидерство")))
                     .andExpect(jsonPath("$[0].description", containsString("цели")))
                     .andExpect(jsonPath("$[0].category", is("LEADERSHIP")))
-                    .andExpect(jsonPath("$[0].standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
-                    .andExpect(jsonPath("$[0].standardCodes.esco_ref.title", is("develop organisational strategies")))
+                    .andExpect(jsonPath("$[0].standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
+                    .andExpect(jsonPath("$[0].standardCodes.escoRef.title", is("develop organisational strategies")))
                     .andExpect(jsonPath("$[0].isActive", is(true)));
         }
     }
@@ -141,7 +141,7 @@ class CompetencyControllerIntegrationTest {
             escoRef.put("skill_type", "skill");
 
             Map<String, Object> standardCodesRequest = new HashMap<>();
-            standardCodesRequest.put("esco_ref", escoRef);
+            standardCodesRequest.put("escoRef", escoRef);
 
             Map<String, Object> competencyRequest = new HashMap<>();
             competencyRequest.put("name", "Эффективная коммуникация");
@@ -159,7 +159,7 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.name", is("Эффективная коммуникация")))
                     .andExpect(jsonPath("$.description", containsString("идей")))
                     .andExpect(jsonPath("$.category", is("COMMUNICATION")))
-                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
+                    .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
                     .andExpect(jsonPath("$.isActive", is(true)))
                     .andExpect(jsonPath("$.approvalStatus", is("PENDING_REVIEW")))
                     .andExpect(jsonPath("$.version", is(1)))
@@ -200,9 +200,9 @@ class CompetencyControllerIntegrationTest {
             globalCategory.put("trait", "extraversion");
 
             Map<String, Object> complexStandardCodes = new HashMap<>();
-            complexStandardCodes.put("esco_ref", escoRef);
-            complexStandardCodes.put("onet_ref", onetRef);
-            complexStandardCodes.put("global_category", globalCategory);
+            complexStandardCodes.put("escoRef", escoRef);
+            complexStandardCodes.put("onetRef", onetRef);
+            complexStandardCodes.put("bigFiveRef", globalCategory);
 
             Map<String, Object> competencyRequest = new HashMap<>();
             competencyRequest.put("name", "Комплексная коммуникация");
@@ -217,11 +217,11 @@ class CompetencyControllerIntegrationTest {
                             .content(objectMapper.writeValueAsString(competencyRequest)))
                     .andDo(print())
                     .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
-                    .andExpect(jsonPath("$.standardCodes.onet_ref.code", is("2.A.1.b")))
-                    .andExpect(jsonPath("$.standardCodes.global_category.domain", is("big_five")))
-                    .andExpect(jsonPath("$.standardCodes.esco_ref.title", is("communicate with others")))
-                    .andExpect(jsonPath("$.standardCodes.onet_ref.title", is("Oral Comprehension")));
+                    .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
+                    .andExpect(jsonPath("$.standardCodes.onetRef.code", is("2.A.1.b")))
+                    .andExpect(jsonPath("$.standardCodes.bigFiveRef.trait", is("extraversion")))
+                    .andExpect(jsonPath("$.standardCodes.escoRef.title", is("communicate with others")))
+                    .andExpect(jsonPath("$.standardCodes.onetRef.title", is("Oral Comprehension")));
         }
     }
 
@@ -254,7 +254,7 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.name", is("Критическое мышление")))
                     .andExpect(jsonPath("$.description", containsString("анализировать")))
                     .andExpect(jsonPath("$.category", is("COGNITIVE")))
-                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")));
+                    .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")));
         }
 
         @Test
@@ -296,7 +296,7 @@ class CompetencyControllerIntegrationTest {
             newEscoRef.put("skill_type", "skill");
 
             Map<String, Object> newStandardCodes = new HashMap<>();
-            newStandardCodes.put("esco_ref", newEscoRef);
+            newStandardCodes.put("escoRef", newEscoRef);
 
             Map<String, Object> updateRequest = new HashMap<>();
             updateRequest.put("id", saved.getId().toString());
@@ -317,8 +317,8 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.name", is("Эмпатия и социальная осознанность")))
                     .andExpect(jsonPath("$.description", containsString("эмоции")))
                     .andExpect(jsonPath("$.category", is("EMOTIONAL_INTELLIGENCE")))
-                    .andExpect(jsonPath("$.standardCodes.esco_ref.uri", is("http://data.europa.eu/esco/skill/def456-ghi789-012")))
-                    .andExpect(jsonPath("$.standardCodes.esco_ref.title", is("demonstrate empathy")))
+                    .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/def456-ghi789-012")))
+                    .andExpect(jsonPath("$.standardCodes.escoRef.title", is("demonstrate empathy")))
                     .andExpect(jsonPath("$.isActive", is(true)))
                     .andExpect(jsonPath("$.approvalStatus", is("APPROVED")))
                     .andExpect(jsonPath("$.version", is(2))); // Version should increment

@@ -263,7 +263,7 @@ class CompetencyServiceTest {
             updatedEntity.setLastModified(LocalDateTime.now());
 
             when(competencyRepository.findById(competencyId)).thenReturn(Optional.of(sampleCompetency));
-            when(competencyRepository.save(any(Competency.class))).thenReturn(updatedEntity);
+            when(competencyRepository.saveAndFlush(any(Competency.class))).thenReturn(updatedEntity);
 
             // When
             Competency result = competencyService.updateCompetency(competencyId, updateEntity);
@@ -276,7 +276,7 @@ class CompetencyServiceTest {
             assertThat(result.getStandardCodes().escoRef()).isNotNull();
 
             verify(competencyRepository).findById(competencyId);
-            verify(competencyRepository).save(any(Competency.class));
+            verify(competencyRepository).saveAndFlush(any(Competency.class));
         }
 
         @Test
@@ -312,27 +312,31 @@ class CompetencyServiceTest {
         void shouldDeleteCompetencyWhenIdExists() {
             // Given
             UUID competencyId = sampleCompetency.getId();
-            // Note: No need to stub existsById since service doesn't use it
+            when(competencyRepository.existsById(competencyId)).thenReturn(true);
 
             // When
-            competencyService.deleteCompetency(competencyId);
+            boolean result = competencyService.deleteCompetency(competencyId);
 
             // Then
+            assertThat(result).isTrue();
+            verify(competencyRepository).existsById(competencyId);
             verify(competencyRepository).deleteById(competencyId);
         }
 
         @Test
-        @DisplayName("Should delete even when competency does not exist")
-        void shouldDeleteEvenWhenCompetencyDoesNotExist() {
+        @DisplayName("Should return false when competency does not exist")
+        void shouldReturnFalseWhenCompetencyDoesNotExist() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            // Note: No need to stub existsById since service doesn't use it
+            when(competencyRepository.existsById(nonExistentId)).thenReturn(false);
 
             // When
-            competencyService.deleteCompetency(nonExistentId);
+            boolean result = competencyService.deleteCompetency(nonExistentId);
 
             // Then
-            verify(competencyRepository).deleteById(nonExistentId);
+            assertThat(result).isFalse();
+            verify(competencyRepository).existsById(nonExistentId);
+            verify(competencyRepository, never()).deleteById(any());
         }
     }
 

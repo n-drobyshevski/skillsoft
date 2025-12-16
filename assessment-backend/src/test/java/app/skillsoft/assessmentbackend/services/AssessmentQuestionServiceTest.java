@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.impl.AssessmentQuestionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +38,9 @@ class AssessmentQuestionServiceTest {
     @Mock
     private AssessmentQuestionRepository assessmentQuestionRepository;
 
+    @Mock
+    private BehavioralIndicatorRepository behavioralIndicatorRepository;
+
     @InjectMocks
     private AssessmentQuestionServiceImpl assessmentQuestionService;
 
@@ -53,6 +57,7 @@ class AssessmentQuestionServiceTest {
         mockBehavioralIndicator = new BehavioralIndicator();
         mockBehavioralIndicator.setId(behavioralIndicatorId);
         mockBehavioralIndicator.setTitle("Test Behavioral Indicator");
+        mockBehavioralIndicator.setContextScope(ContextScope.UNIVERSAL);
 
         mockAssessmentQuestion = new AssessmentQuestion();
         mockAssessmentQuestion.setId(assessmentQuestionId);
@@ -155,6 +160,10 @@ class AssessmentQuestionServiceTest {
             newQuestion.setActive(true);
             newQuestion.setOrderIndex(2);
 
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
+                    .thenReturn(Optional.of(mockBehavioralIndicator));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
             when(assessmentQuestionRepository.save(any(AssessmentQuestion.class)))
                     .thenReturn(mockAssessmentQuestion);
 
@@ -190,6 +199,10 @@ class AssessmentQuestionServiceTest {
             savedRussianQuestion.setQuestionText("Как часто вы демонстрируете лидерские качества?");
             savedRussianQuestion.setScoringRubric("Оценка от 1 до 5 баллов на основе частоты проявления поведения");
 
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
+                    .thenReturn(Optional.of(mockBehavioralIndicator));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
             when(assessmentQuestionRepository.save(any(AssessmentQuestion.class)))
                     .thenReturn(savedRussianQuestion);
 
@@ -219,6 +232,10 @@ class AssessmentQuestionServiceTest {
             complexQuestion.setActive(true);
             complexQuestion.setOrderIndex(1);
 
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
+                    .thenReturn(Optional.of(mockBehavioralIndicator));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
             when(assessmentQuestionRepository.save(any(AssessmentQuestion.class)))
                     .thenReturn(mockAssessmentQuestion);
 
@@ -250,6 +267,10 @@ class AssessmentQuestionServiceTest {
             questionWithNullOptions.setActive(true);
             questionWithNullOptions.setOrderIndex(1);
 
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
+                    .thenReturn(Optional.of(mockBehavioralIndicator));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
             when(assessmentQuestionRepository.save(any(AssessmentQuestion.class)))
                     .thenReturn(mockAssessmentQuestion);
 
@@ -309,10 +330,9 @@ class AssessmentQuestionServiceTest {
         }
 
         @Test
-        @DisplayName("Should return empty when behavioral indicator ID doesn't match")
-        void shouldReturnEmptyWhenBehavioralIndicatorIdDoesNotMatch() {
-            // Given
-            UUID wrongBehavioralIndicatorId = UUID.randomUUID();
+        @DisplayName("Should return question regardless of behavioral indicator association")
+        void shouldReturnQuestionRegardlessOfBehavioralIndicatorAssociation() {
+            // Given - The service returns the question based on question ID only
             when(assessmentQuestionRepository.findById(assessmentQuestionId))
                     .thenReturn(Optional.of(mockAssessmentQuestion));
 
@@ -320,9 +340,10 @@ class AssessmentQuestionServiceTest {
             Optional<AssessmentQuestion> foundQuestion = assessmentQuestionService
                     .findAssesmentQuestionById(assessmentQuestionId);
 
-            // Then
-            assertThat(foundQuestion).isEmpty();
-            
+            // Then - Service does not filter by behavioral indicator, returns the question
+            assertThat(foundQuestion).isPresent();
+            assertThat(foundQuestion.get().getId()).isEqualTo(assessmentQuestionId);
+
             verify(assessmentQuestionRepository).findById(assessmentQuestionId);
         }
 
@@ -447,25 +468,30 @@ class AssessmentQuestionServiceTest {
         }
 
         @Test
-        @DisplayName("Should return null when behavioral indicator ID doesn't match")
-        void shouldReturnNullWhenBehavioralIndicatorIdDoesNotMatch() {
-            // Given
-            UUID wrongBehavioralIndicatorId = UUID.randomUUID();
+        @DisplayName("Should update question regardless of behavioral indicator association")
+        void shouldUpdateQuestionRegardlessOfBehavioralIndicatorAssociation() {
+            // Given - Service updates based on question ID only
             AssessmentQuestion updateDetails = new AssessmentQuestion();
             updateDetails.setQuestionText("Updated text");
+            updateDetails.setOrderIndex(1);
 
             when(assessmentQuestionRepository.findById(assessmentQuestionId))
                     .thenReturn(Optional.of(mockAssessmentQuestion));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
+            when(assessmentQuestionRepository.save(any(AssessmentQuestion.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
 
             // When
             AssessmentQuestion updatedQuestion = assessmentQuestionService
                     .updateAssesmentQuestion(assessmentQuestionId, updateDetails);
 
-            // Then
-            assertThat(updatedQuestion).isNull();
-            
+            // Then - Service does not filter by behavioral indicator, updates the question
+            assertThat(updatedQuestion).isNotNull();
+            assertThat(updatedQuestion.getQuestionText()).isEqualTo("Updated text");
+
             verify(assessmentQuestionRepository).findById(assessmentQuestionId);
-            verify(assessmentQuestionRepository, never()).save(any());
+            verify(assessmentQuestionRepository).save(any());
         }
 
         @Test
@@ -542,21 +568,21 @@ class AssessmentQuestionServiceTest {
         }
 
         @Test
-        @DisplayName("Should not delete when behavioral indicator ID doesn't match")
-        void shouldNotDeleteWhenBehavioralIndicatorIdDoesNotMatch() {
-            // Given
-            UUID wrongBehavioralIndicatorId = UUID.randomUUID();
+        @DisplayName("Should delete question regardless of behavioral indicator association")
+        void shouldDeleteQuestionRegardlessOfBehavioralIndicatorAssociation() {
+            // Given - Service deletes based on question ID only
             when(assessmentQuestionRepository.findById(assessmentQuestionId))
                     .thenReturn(Optional.of(mockAssessmentQuestion));
+            doNothing().when(assessmentQuestionRepository).delete(mockAssessmentQuestion);
 
             // When
             assertThatCode(() -> assessmentQuestionService
                     .deleteAssesmentQuestion(assessmentQuestionId))
                     .doesNotThrowAnyException();
 
-            // Then
+            // Then - Service does not filter by behavioral indicator, deletes the question
             verify(assessmentQuestionRepository).findById(assessmentQuestionId);
-            verify(assessmentQuestionRepository, never()).delete(any());
+            verify(assessmentQuestionRepository).delete(mockAssessmentQuestion);
         }
     }
 
@@ -567,7 +593,13 @@ class AssessmentQuestionServiceTest {
         @Test
         @DisplayName("Should handle all question types correctly")
         void shouldHandleAllQuestionTypesCorrectly() {
-            // Given & When & Then - Test all question types
+            // Given - Setup common mocks
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
+                    .thenReturn(Optional.of(mockBehavioralIndicator));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
+
+            // When & Then - Test all question types
             for (QuestionType questionType : QuestionType.values()) {
                 AssessmentQuestion question = new AssessmentQuestion();
                 question.setQuestionText("Test question for " + questionType.name());
@@ -591,7 +623,13 @@ class AssessmentQuestionServiceTest {
         @Test
         @DisplayName("Should handle all difficulty levels correctly")
         void shouldHandleAllDifficultyLevelsCorrectly() {
-            // Given & When & Then - Test all difficulty levels
+            // Given - Setup common mocks
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
+                    .thenReturn(Optional.of(mockBehavioralIndicator));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
+
+            // When & Then - Test all difficulty levels
             for (DifficultyLevel difficultyLevel : DifficultyLevel.values()) {
                 AssessmentQuestion question = new AssessmentQuestion();
                 question.setQuestionText("Test question for " + difficultyLevel.name());
@@ -615,7 +653,12 @@ class AssessmentQuestionServiceTest {
         @Test
         @DisplayName("Should handle extreme time limits")
         void shouldHandleExtremeTimeLimits() {
-            // Given
+            // Given - Setup common mocks
+            when(behavioralIndicatorRepository.findById(behavioralIndicatorId))
+                    .thenReturn(Optional.of(mockBehavioralIndicator));
+            when(assessmentQuestionRepository.findByBehavioralIndicator_Id(behavioralIndicatorId))
+                    .thenReturn(Collections.emptyList());
+
             AssessmentQuestion shortTimeQuestion = new AssessmentQuestion();
             shortTimeQuestion.setQuestionText("Quick question");
             shortTimeQuestion.setQuestionType(QuestionType.MULTIPLE_CHOICE);
