@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class OverviewAssembler implements TestAssembler {
 
     private final BehavioralIndicatorRepository indicatorRepository;
     private final AssessmentQuestionRepository questionRepository;
+    private final PsychometricBlueprintValidator psychometricValidator;
 
     /**
      * Default number of questions per indicator if not specified.
@@ -101,23 +103,26 @@ public class OverviewAssembler implements TestAssembler {
 
     /**
      * Collect questions for each indicator, preferring INTERMEDIATE difficulty.
+     * Uses psychometric validation to filter out RETIRED items and prioritize validated questions.
      */
     private Map<UUID, List<UUID>> collectQuestionsForIndicators(List<BehavioralIndicator> indicators) {
         var result = new HashMap<UUID, List<UUID>>();
-        
+
         for (var indicator : indicators) {
             var questions = questionRepository.findByBehavioralIndicator_Id(indicator.getId())
                 .stream()
                 .filter(AssessmentQuestion::isActive)
+                // Filter using psychometric validation (excludes RETIRED items)
+                .filter(q -> psychometricValidator.isEligibleForAssembly(q.getId()))
                 // Prefer INTERMEDIATE, but include others as fallback
-                .sorted(Comparator.comparing(q -> 
+                .sorted(Comparator.comparing(q ->
                     q.getDifficultyLevel() == DifficultyLevel.INTERMEDIATE ? 0 : 1))
                 .map(AssessmentQuestion::getId)
                 .collect(Collectors.toList());
-            
+
             result.put(indicator.getId(), questions);
         }
-        
+
         return result;
     }
 

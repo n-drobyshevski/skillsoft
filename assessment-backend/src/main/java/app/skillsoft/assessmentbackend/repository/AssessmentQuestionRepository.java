@@ -19,6 +19,12 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
     List<AssessmentQuestion> findByBehavioralIndicator_Id(UUID behavioralIndicatorId);
 
     /**
+     * Find active assessment questions for a specific behavioral indicator.
+     * Used by PsychometricBlueprintValidator for item analysis.
+     */
+    List<AssessmentQuestion> findByBehavioralIndicator_IdAndIsActiveTrue(UUID behavioralIndicatorId);
+
+    /**
      * Find active questions by behavioral indicator and difficulty.
      */
     List<AssessmentQuestion> findByBehavioralIndicator_IdAndDifficultyLevelAndIsActiveTrue(

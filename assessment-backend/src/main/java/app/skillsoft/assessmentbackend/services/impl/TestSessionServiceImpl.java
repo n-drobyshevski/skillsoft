@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.exception.DuplicateSessionException;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
+import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
@@ -36,6 +37,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final CompetencyRepository competencyRepository;
     private final InventoryHeatmapService inventoryHeatmapService;
     private final List<ScoringStrategy> scoringStrategies;
+    private final PsychometricAuditJob psychometricAuditJob;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -46,7 +48,8 @@ public class TestSessionServiceImpl implements TestSessionService {
             BehavioralIndicatorRepository indicatorRepository,
             CompetencyRepository competencyRepository,
             InventoryHeatmapService inventoryHeatmapService,
-            List<ScoringStrategy> scoringStrategies) {
+            List<ScoringStrategy> scoringStrategies,
+            PsychometricAuditJob psychometricAuditJob) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -56,6 +59,7 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.competencyRepository = competencyRepository;
         this.inventoryHeatmapService = inventoryHeatmapService;
         this.scoringStrategies = scoringStrategies;
+        this.psychometricAuditJob = psychometricAuditJob;
     }
 
     @Override
@@ -200,6 +204,11 @@ public class TestSessionServiceImpl implements TestSessionService {
         sessionRepository.save(session);
 
         TestAnswer saved = answerRepository.save(answer);
+
+        // Trigger psychometric analysis on answer submission
+        // This will recalculate item statistics if the question reaches a response threshold (50, 100, 150, etc.)
+        psychometricAuditJob.onAnswerSubmitted(question.getId());
+
         return toAnswerDto(saved);
     }
 

@@ -11,6 +11,7 @@ import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.OnetService.OnetProfile;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
+import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,7 @@ public class JobFitAssembler implements TestAssembler {
     private final CompetencyRepository competencyRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
     private final AssessmentQuestionRepository questionRepository;
+    private final PsychometricBlueprintValidator psychometricValidator;
 
     /**
      * Gap threshold for selecting ADVANCED questions.
@@ -162,6 +164,7 @@ public class JobFitAssembler implements TestAssembler {
 
     /**
      * Find questions matching a competency name and difficulty.
+     * Uses psychometric validation to exclude RETIRED items and prioritize validated questions.
      * In real implementation, would use proper competency ID matching via standard codes.
      */
     private List<UUID> findQuestionsForCompetencyName(String competencyName, DifficultyLevel targetDifficulty) {
@@ -170,9 +173,11 @@ public class JobFitAssembler implements TestAssembler {
         // 1. Map O*NET competency name to internal competency IDs via standard_codes JSONB
         // 2. Get indicators for those competencies
         // 3. Get questions for those indicators with target difficulty
-        
+
         return questionRepository.findAll().stream()
-            .filter(q -> q.isActive())
+            .filter(AssessmentQuestion::isActive)
+            // Filter using psychometric validation (excludes RETIRED items)
+            .filter(q -> psychometricValidator.isEligibleForAssembly(q.getId()))
             .filter(q -> q.getDifficultyLevel() == targetDifficulty)
             .map(AssessmentQuestion::getId)
             .limit(DEFAULT_QUESTIONS_PER_GAP)

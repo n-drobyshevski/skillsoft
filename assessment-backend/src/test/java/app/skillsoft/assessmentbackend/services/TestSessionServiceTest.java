@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
+import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +72,9 @@ class TestSessionServiceTest {
     @Mock
     private List<ScoringStrategy> scoringStrategies;
 
+    @Mock
+    private PsychometricAuditJob psychometricAuditJob;
+
     private TestSessionServiceImpl testSessionService;
 
     private UUID sessionId;
@@ -92,7 +96,8 @@ class TestSessionServiceTest {
                 indicatorRepository,
                 competencyRepository,
                 inventoryHeatmapService,
-                scoringStrategies
+                scoringStrategies,
+                psychometricAuditJob
         );
 
         sessionId = UUID.randomUUID();

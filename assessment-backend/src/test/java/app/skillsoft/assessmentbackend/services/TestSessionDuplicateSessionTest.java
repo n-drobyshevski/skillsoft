@@ -16,6 +16,7 @@ import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
+import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,6 +66,9 @@ class TestSessionDuplicateSessionTest {
     @Mock
     private InventoryHeatmapService inventoryHeatmapService;
 
+    @Mock
+    private PsychometricAuditJob psychometricAuditJob;
+
     private TestSessionService testSessionService;
 
     private UUID templateId;
@@ -85,7 +89,8 @@ class TestSessionDuplicateSessionTest {
                 indicatorRepository,
                 competencyRepository,
                 inventoryHeatmapService,
-                Collections.emptyList() // scoringStrategies - not needed for this test
+                Collections.emptyList(), // scoringStrategies - not needed for this test
+                psychometricAuditJob
         );
 
         // Initialize test data

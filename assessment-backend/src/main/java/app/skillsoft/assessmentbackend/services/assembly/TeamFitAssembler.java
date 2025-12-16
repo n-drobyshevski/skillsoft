@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
+import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class TeamFitAssembler implements TestAssembler {
     private final TeamService teamService;
     private final BehavioralIndicatorRepository indicatorRepository;
     private final AssessmentQuestionRepository questionRepository;
+    private final PsychometricBlueprintValidator psychometricValidator;
 
     /**
      * Default saturation threshold for identifying team gaps.
@@ -113,6 +115,7 @@ public class TeamFitAssembler implements TestAssembler {
     /**
      * Select questions for the specified competencies, prioritizing by saturation level.
      * Lower saturation = more questions (more critical gap).
+     * Uses psychometric validation to exclude RETIRED items and prioritize validated questions.
      */
     private List<UUID> selectQuestionsForCompetencies(
             List<UUID> competencyIds,
@@ -147,6 +150,8 @@ public class TeamFitAssembler implements TestAssembler {
                 var questions = questionRepository.findByBehavioralIndicator_Id(indicator.getId())
                     .stream()
                     .filter(AssessmentQuestion::isActive)
+                    // Filter using psychometric validation (excludes RETIRED items)
+                    .filter(q -> psychometricValidator.isEligibleForAssembly(q.getId()))
                     .map(AssessmentQuestion::getId)
                     .toList();
 
