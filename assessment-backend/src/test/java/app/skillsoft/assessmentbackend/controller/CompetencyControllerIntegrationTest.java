@@ -143,13 +143,13 @@ class CompetencyControllerIntegrationTest {
             Map<String, Object> standardCodesRequest = new HashMap<>();
             standardCodesRequest.put("escoRef", escoRef);
 
+            // Description must be at least 50 characters per validation
             Map<String, Object> competencyRequest = new HashMap<>();
             competencyRequest.put("name", "Эффективная коммуникация");
-            competencyRequest.put("description", "Навыки четкого изложения идей и активного слушания");
+            competencyRequest.put("description", "Навыки четкого изложения идей и активного слушания в профессиональной среде");
             competencyRequest.put("category", "COMMUNICATION");
             competencyRequest.put("standardCodes", standardCodesRequest);
             competencyRequest.put("isActive", true);
-            competencyRequest.put("approvalStatus", "PENDING_REVIEW");
 
             mockMvc.perform(post("/api/competencies")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -161,7 +161,6 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.category", is("COMMUNICATION")))
                     .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
                     .andExpect(jsonPath("$.isActive", is(true)))
-                    .andExpect(jsonPath("$.approvalStatus", is("PENDING_REVIEW")))
                     .andExpect(jsonPath("$.version", is(1)))
                     .andExpect(jsonPath("$.id", notNullValue()))
                     .andExpect(jsonPath("$.createdAt", notNullValue()))
@@ -204,13 +203,13 @@ class CompetencyControllerIntegrationTest {
             complexStandardCodes.put("onetRef", onetRef);
             complexStandardCodes.put("bigFiveRef", globalCategory);
 
+            // Description must be at least 50 characters per validation
             Map<String, Object> competencyRequest = new HashMap<>();
             competencyRequest.put("name", "Комплексная коммуникация");
-            competencyRequest.put("description", "Многоуровневые навыки коммуникации");
+            competencyRequest.put("description", "Многоуровневые навыки коммуникации включающие устное и письменное общение");
             competencyRequest.put("category", "COMMUNICATION");
             competencyRequest.put("standardCodes", complexStandardCodes);
             competencyRequest.put("isActive", true);
-            competencyRequest.put("approvalStatus", "APPROVED");
 
             mockMvc.perform(post("/api/competencies")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -279,7 +278,7 @@ class CompetencyControllerIntegrationTest {
             // Create initial competency
             Competency competency = new Competency();
             competency.setName("Старое название");
-            competency.setDescription("Старое описание");
+            competency.setDescription("Старое описание которое достаточно длинное для валидации");
             competency.setCategory(CompetencyCategory.COMMUNICATION);
             competency.setActive(false);
             competency.setApprovalStatus(ApprovalStatus.DRAFT);
@@ -298,15 +297,13 @@ class CompetencyControllerIntegrationTest {
             Map<String, Object> newStandardCodes = new HashMap<>();
             newStandardCodes.put("escoRef", newEscoRef);
 
+            // Description must be at least 50 characters per validation
             Map<String, Object> updateRequest = new HashMap<>();
-            updateRequest.put("id", saved.getId().toString());
             updateRequest.put("name", "Эмпатия и социальная осознанность");
-            updateRequest.put("description", "Обновленное описание: способность понимать эмоции других");
+            updateRequest.put("description", "Обновленное описание: способность понимать эмоции других людей в рабочей среде");
             updateRequest.put("category", "EMOTIONAL_INTELLIGENCE");
             updateRequest.put("standardCodes", newStandardCodes);
             updateRequest.put("isActive", true);
-            updateRequest.put("approvalStatus", "APPROVED");
-            updateRequest.put("version", 1);
 
             mockMvc.perform(put("/api/competencies/{id}", saved.getId())
                             .contentType(MediaType.APPLICATION_JSON)
@@ -320,7 +317,6 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/def456-ghi789-012")))
                     .andExpect(jsonPath("$.standardCodes.escoRef.title", is("demonstrate empathy")))
                     .andExpect(jsonPath("$.isActive", is(true)))
-                    .andExpect(jsonPath("$.approvalStatus", is("APPROVED")))
                     .andExpect(jsonPath("$.version", is(2))); // Version should increment
         }
 
@@ -328,11 +324,13 @@ class CompetencyControllerIntegrationTest {
         @DisplayName("Should return 404 when updating non-existent competency")
         void shouldReturn404WhenUpdatingNonExistentCompetency() throws Exception {
             UUID nonExistentId = UUID.randomUUID();
-            
+
+            // Description must be at least 50 characters per validation
             Map<String, Object> updateRequest = new HashMap<>();
             updateRequest.put("name", "Не существует");
-            updateRequest.put("description", "Это не должно работать");
+            updateRequest.put("description", "Это не должно работать потому что компетенция не существует в базе данных");
             updateRequest.put("category", "LEADERSHIP");
+            updateRequest.put("isActive", true);
 
             mockMvc.perform(put("/api/competencies/{id}", nonExistentId)
                             .contentType(MediaType.APPLICATION_JSON)
@@ -410,14 +408,14 @@ class CompetencyControllerIntegrationTest {
         @Test
         @DisplayName("Should handle large Russian text content")
         void shouldHandleLargeRussianTextContent() throws Exception {
-            String largeDescription = "Очень длинное описание. ".repeat(100);
-            
+            // Description must be between 50-1000 characters per validation
+            String largeDescription = "Очень длинное описание компетенции. ".repeat(20); // ~760 chars
+
             Map<String, Object> competencyRequest = new HashMap<>();
             competencyRequest.put("name", "Тест с длинным описанием");
             competencyRequest.put("description", largeDescription);
             competencyRequest.put("category", "LEADERSHIP");
             competencyRequest.put("isActive", true);
-            competencyRequest.put("approvalStatus", "DRAFT");
 
             mockMvc.perform(post("/api/competencies")
                             .contentType(MediaType.APPLICATION_JSON)

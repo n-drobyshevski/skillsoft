@@ -2,6 +2,8 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
 import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateIndicatorRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateIndicatorRequest;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
 import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
@@ -124,26 +126,25 @@ class BehavioralIndicatorControllerTest {
     @WithMockUser
     @DisplayName("POST /api/behavioral-indicators - Should create new indicator")
     void shouldCreateNewIndicator() throws Exception {
-        when(behavioralIndicatorMapper.fromDto(any(BehavioralIndicatorDto.class)))
+        when(behavioralIndicatorMapper.fromCreateRequest(any(CreateIndicatorRequest.class)))
                 .thenReturn(testIndicator);
         when(behavioralIndicatorService.createBehavioralIndicator(any(UUID.class), any(BehavioralIndicator.class)))
                 .thenReturn(testIndicator);
         when(behavioralIndicatorMapper.toDto(any(BehavioralIndicator.class)))
                 .thenReturn(testIndicatorDto);
 
+        // Description must be at least 20 characters per validation
+        String validDescription = "This is a valid behavioral indicator description";
+
         String requestBody = String.format("""
                 {
                     "competencyId": "%s",
-                    "title": "Test Indicator",
-                    "description": "Test Description",
+                    "title": "Test Indicator Title",
+                    "description": "%s",
                     "observabilityLevel": "DIRECTLY_OBSERVABLE",
                     "measurementType": "FREQUENCY",
-                    "weight": 1.0,
-                    "examples": "Test Examples",
-                    "active": true,
-                    "approvalStatus": "PENDING_REVIEW",
-                    "orderIndex": 1
-                }""", competencyId);
+                    "weight": 0.5
+                }""", competencyId, validDescription);
 
         mockMvc.perform(post("/api/behavioral-indicators")
                 .with(csrf())
@@ -158,27 +159,25 @@ class BehavioralIndicatorControllerTest {
     @WithMockUser
     @DisplayName("PUT /api/behavioral-indicators/{id} - Should update existing indicator")
     void shouldUpdateExistingIndicator() throws Exception {
-        when(behavioralIndicatorMapper.fromDto(any(BehavioralIndicatorDto.class)))
+        when(behavioralIndicatorMapper.fromUpdateRequest(any(UpdateIndicatorRequest.class)))
                 .thenReturn(testIndicator);
         when(behavioralIndicatorService.updateBehavioralIndicator(any(UUID.class), any(BehavioralIndicator.class)))
                 .thenReturn(testIndicator);
         when(behavioralIndicatorMapper.toDto(any(BehavioralIndicator.class)))
                 .thenReturn(testIndicatorDto);
 
+        // Description must be at least 20 characters per validation
+        String validDescription = "This is an updated behavioral indicator description";
+
         String requestBody = String.format("""
                 {
-                    "id": "%s",
-                    "competencyId": "%s",
-                    "title": "Updated Indicator",
-                    "description": "Updated Description",
+                    "title": "Updated Indicator Title",
+                    "description": "%s",
                     "observabilityLevel": "PARTIALLY_OBSERVABLE",
                     "measurementType": "QUALITY",
-                    "weight": 2.0,
-                    "examples": "Updated Examples",
-                    "active": false,
-                    "approvalStatus": "APPROVED",
-                    "orderIndex": 2
-                }""", testIndicator.getId(), competencyId);
+                    "weight": 0.8,
+                    "isActive": false
+                }""", validDescription);
 
         mockMvc.perform(put("/api/behavioral-indicators/" + testIndicator.getId())
                 .with(csrf())

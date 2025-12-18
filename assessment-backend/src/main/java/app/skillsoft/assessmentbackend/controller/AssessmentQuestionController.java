@@ -2,9 +2,12 @@ package app.skillsoft.assessmentbackend.controller;
 
 
 import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateQuestionRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateQuestionRequest;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
 import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -15,11 +18,16 @@ import java.util.UUID;
 
 /**
  * REST Controller for Assessment Question management.
- * 
+ *
+ * @deprecated This controller is deprecated and will be removed in a future version.
+ *             Use {@link app.skillsoft.assessmentbackend.controller.v1.AssessmentQuestionControllerV1} instead
+ *             with the endpoint path /api/v1/questions.
+ *
  * Security:
  * - GET endpoints: All authenticated users (ROLE_USER)
  * - POST/PUT/DELETE: ADMIN or EDITOR role required
  */
+@Deprecated(since = "1.0", forRemoval = true)
 @RestController
 @RequestMapping(value = "/api/questions")
 public class AssessmentQuestionController {
@@ -52,10 +60,11 @@ public class AssessmentQuestionController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public AssessmentQuestionDto createQuestion(
-            @RequestParam(name="behavioralIndicatorId") UUID behavioralIndicatorId,
-            @RequestBody AssessmentQuestion question) {
-        
-        AssessmentQuestion createdQuestion = assessmentQuestionService.createAssesmentQuestion(behavioralIndicatorId, question);
+            @Valid @RequestBody CreateQuestionRequest request) {
+
+        AssessmentQuestion questionEntity = assessmentQuestionMapper.fromCreateRequest(request);
+        AssessmentQuestion createdQuestion = assessmentQuestionService.createAssesmentQuestion(
+                request.behavioralIndicatorId(), questionEntity);
         return assessmentQuestionMapper.toDto(createdQuestion);
     }
     
@@ -63,10 +72,11 @@ public class AssessmentQuestionController {
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<AssessmentQuestionDto> updateQuestion(
             @PathVariable(name="questionId") UUID questionId,
-            @RequestBody AssessmentQuestion question) {
-        
-        AssessmentQuestion updatedQuestion = assessmentQuestionService.updateAssesmentQuestion(questionId, question);
-                
+            @Valid @RequestBody UpdateQuestionRequest request) {
+
+        AssessmentQuestion questionEntity = assessmentQuestionMapper.fromUpdateRequest(request);
+        AssessmentQuestion updatedQuestion = assessmentQuestionService.updateAssesmentQuestion(questionId, questionEntity);
+
         if (updatedQuestion != null) {
             return ResponseEntity.ok(assessmentQuestionMapper.toDto(updatedQuestion));
         } else {

@@ -1,4 +1,4 @@
-package app.skillsoft.assessmentbackend.controller;
+package app.skillsoft.assessmentbackend.controller.v1;
 
 
 import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
@@ -14,6 +14,7 @@ import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,29 +23,31 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * REST Controller for Behavioral Indicator management.
+ * V1 REST Controller for Behavioral Indicator management.
  *
- * @deprecated This controller is deprecated and will be removed in a future version.
- *             Use {@link app.skillsoft.assessmentbackend.controller.v1.BehavioralIndicatorControllerV1} instead
- *             with the endpoint path /api/v1/behavioral-indicators.
+ * This is the standardized API version per docs/API_STANDARDIZATION_STRATEGY.md.
+ * All endpoints use validated Request DTOs and follow consistent patterns.
  *
  * Security:
  * - GET endpoints: All authenticated users (ROLE_USER)
  * - POST/PUT/DELETE: ADMIN or EDITOR role required
  */
-@Deprecated(since = "1.0", forRemoval = true)
 @RestController
-@RequestMapping(value = "/api/behavioral-indicators")
-public class BehavioralIndicatorController {
+@RequestMapping("/api/v1/behavioral-indicators")
+public class BehavioralIndicatorControllerV1 {
 
-    private static final Logger logger = LoggerFactory.getLogger(BehavioralIndicatorController.class);
+    private static final Logger logger = LoggerFactory.getLogger(BehavioralIndicatorControllerV1.class);
 
     private final BehavioralIndicatorService behavioralIndicatorService;
     private final AssessmentQuestionService assessmentQuestionService;
     private final AssessmentQuestionMapper assessmentQuestionMapper;
     private final BehavioralIndicatorMapper behavioralIndicatorMapper;
 
-    public BehavioralIndicatorController(BehavioralIndicatorService behavioralIndicatorService, AssessmentQuestionService assessmentQuestionService, AssessmentQuestionMapper assessmentQuestionMapper, BehavioralIndicatorMapper behavioralIndicatorMapper) {
+    public BehavioralIndicatorControllerV1(
+            BehavioralIndicatorService behavioralIndicatorService,
+            AssessmentQuestionService assessmentQuestionService,
+            AssessmentQuestionMapper assessmentQuestionMapper,
+            BehavioralIndicatorMapper behavioralIndicatorMapper) {
         this.behavioralIndicatorService = behavioralIndicatorService;
         this.assessmentQuestionService = assessmentQuestionService;
         this.assessmentQuestionMapper = assessmentQuestionMapper;
@@ -53,78 +56,87 @@ public class BehavioralIndicatorController {
 
     @GetMapping
     public List<BehavioralIndicatorDto> listBehavioralIndicators() {
-        logger.info("GET /api/behavioral-indicators endpoint called");
+        logger.info("GET /api/v1/behavioral-indicators endpoint called");
         List<BehavioralIndicator> indicators = behavioralIndicatorService.listAllBehavioralIndicators();
         logger.info("Found {} behavioral indicators", indicators.size());
         return indicators.stream().map(behavioralIndicatorMapper::toDto).toList();
     }
 
-
-    @GetMapping("/{biId}")
+    @GetMapping("/{id}")
     public ResponseEntity<BehavioralIndicatorDto> getBehavioralIndicatorById(
-            @PathVariable("biId") UUID biId) {
-        logger.info("GET /api/behavioral-indicators/{} endpoint called",  biId);
-        return behavioralIndicatorService.findBehavioralIndicatorById(biId)
+            @PathVariable("id") UUID id) {
+        logger.info("GET /api/v1/behavioral-indicators/{} endpoint called", id);
+        return behavioralIndicatorService.findBehavioralIndicatorById(id)
                 .map(indicator -> ResponseEntity.ok(behavioralIndicatorMapper.toDto(indicator)))
-                .orElse(ResponseEntity.notFound().build());
+                .orElseGet(() -> {
+                    logger.warn("Behavioral indicator with id {} not found", id);
+                    return ResponseEntity.notFound().build();
+                });
     }
 
-    @GetMapping("/{behavioralIndicatorId}/questions")
-    public List<AssessmentQuestionDto> listAssessmentQuestions(@PathVariable(name="behavioralIndicatorId") UUID behavioralIndicatorId) {
-        List<AssessmentQuestion> assessmentQuestions = assessmentQuestionService.listIndicatorAssessmentQuestions(behavioralIndicatorId);
+    @GetMapping("/{id}/questions")
+    public List<AssessmentQuestionDto> listIndicatorQuestions(
+            @PathVariable("id") UUID id) {
+        logger.info("GET /api/v1/behavioral-indicators/{}/questions endpoint called", id);
+        List<AssessmentQuestion> assessmentQuestions = assessmentQuestionService.listIndicatorAssessmentQuestions(id);
+        logger.info("Found {} questions for behavioral indicator {}", assessmentQuestions.size(), id);
         return assessmentQuestions.stream().map(assessmentQuestionMapper::toDto).toList();
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
-    public BehavioralIndicatorDto createBehavioralIndicator(
+    public ResponseEntity<BehavioralIndicatorDto> createBehavioralIndicator(
             @Valid @RequestBody CreateIndicatorRequest request) {
-        logger.info("POST /api/behavioral-indicators endpoint called");
+        logger.info("POST /api/v1/behavioral-indicators endpoint called");
 
-        BehavioralIndicator indicatorEntity = behavioralIndicatorMapper.fromCreateRequest(request);
-        BehavioralIndicator createdBI = behavioralIndicatorService.createBehavioralIndicator(
-                request.competencyId(), indicatorEntity);
-
-        logger.info("Created behavioral indicator with id: {}", createdBI.getId());
-        return behavioralIndicatorMapper.toDto(createdBI);
+        try {
+            BehavioralIndicator indicatorEntity = behavioralIndicatorMapper.fromCreateRequest(request);
+            BehavioralIndicator createdBI = behavioralIndicatorService.createBehavioralIndicator(
+                    request.competencyId(), indicatorEntity);
+            logger.info("Created behavioral indicator with id: {}", createdBI.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(behavioralIndicatorMapper.toDto(createdBI));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid behavioral indicator data: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
     }
 
-    @PutMapping("/{biId}")
+    @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<BehavioralIndicatorDto> updateBehavioralIndicator(
-            @PathVariable("biId") UUID biId,
+            @PathVariable("id") UUID id,
             @Valid @RequestBody UpdateIndicatorRequest request) {
-        logger.info("PUT /api/behavioral-indicators/{} endpoint called", biId);
+        logger.info("PUT /api/v1/behavioral-indicators/{} endpoint called", id);
         try {
             BehavioralIndicator indicatorEntity = behavioralIndicatorMapper.fromUpdateRequest(request);
-            BehavioralIndicator updatedIndicator = behavioralIndicatorService.updateBehavioralIndicator(biId, indicatorEntity);
+            BehavioralIndicator updatedIndicator = behavioralIndicatorService.updateBehavioralIndicator(id, indicatorEntity);
             logger.info("Updated behavioral indicator with id: {}", updatedIndicator.getId());
             return ResponseEntity.ok(behavioralIndicatorMapper.toDto(updatedIndicator));
         } catch (RuntimeException e) {
             if (e.getMessage().contains("not found")) {
-                logger.warn("Behavioral indicator with id {} not found for update", biId);
+                logger.warn("Behavioral indicator with id {} not found for update", id);
                 return ResponseEntity.notFound().build();
             }
-            logger.error("Error updating behavioral indicator with id {}: {}", biId, e.getMessage());
+            logger.error("Error updating behavioral indicator with id {}: {}", id, e.getMessage());
             throw e;
         }
     }
 
-    @DeleteMapping("/{biId}")
+    @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<Void> deleteBehavioralIndicator(
-            @PathVariable("biId") UUID biId) {
-        logger.info("DELETE /api/behavioral-indicators/{} endpoint called",  biId);
+            @PathVariable("id") UUID id) {
+        logger.info("DELETE /api/v1/behavioral-indicators/{} endpoint called", id);
         try {
-            behavioralIndicatorService.deleteBehavioralIndicator( biId);
-            logger.info("Deleted behavioral indicator with id: {} ", biId);
+            behavioralIndicatorService.deleteBehavioralIndicator(id);
+            logger.info("Deleted behavioral indicator with id: {}", id);
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
             if (e.getMessage().contains("not found")) {
-                logger.warn("Behavioral indicator with id {} not found for deletion", biId);
+                logger.warn("Behavioral indicator with id {} not found for deletion", id);
                 return ResponseEntity.notFound().build();
             }
-            logger.error("Error deleting behavioral indicator with id {} : {}", biId, e.getMessage());
+            logger.error("Error deleting behavioral indicator with id {}: {}", id, e.getMessage());
             throw e;
         }
     }

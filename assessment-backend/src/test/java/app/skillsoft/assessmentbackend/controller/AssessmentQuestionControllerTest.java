@@ -1,6 +1,8 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateQuestionRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateQuestionRequest;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
 import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
@@ -118,29 +120,28 @@ class AssessmentQuestionControllerTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("POST /api/questions - Should create new question")
     void shouldCreateNewQuestion() throws Exception {
+        when(assessmentQuestionMapper.fromCreateRequest(any(CreateQuestionRequest.class)))
+                .thenReturn(testQuestion);
         when(assessmentQuestionService.createAssesmentQuestion(any(UUID.class), any(AssessmentQuestion.class)))
                 .thenReturn(testQuestion);
         when(assessmentQuestionMapper.toDto(any(AssessmentQuestion.class)))
                 .thenReturn(testQuestionDto);
 
+        // Question text must be at least 10 characters
         String requestBody = String.format("""
                 {
-                    "questionText": "Test Question",
+                    "behavioralIndicatorId": "%s",
+                    "questionText": "This is a test question with adequate length",
                     "answerOptions": [
                         {"label": "Option 1", "value": 1},
                         {"label": "Option 2", "value": 2}
                     ],
                     "questionType": "MULTIPLE_CHOICE",
-                    "scoringRubric": "Test Rubric",
-                    "timeLimit": 300,
-                    "difficultyLevel": "INTERMEDIATE",
-                    "active": true,
-                    "orderIndex": 1
-                }""");
+                    "difficultyLevel": "INTERMEDIATE"
+                }""", behavioralIndicatorId);
 
         mockMvc.perform(post("/api/questions")
                 .with(csrf())
-                .param("behavioralIndicatorId", behavioralIndicatorId.toString())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isOk())
@@ -152,24 +153,24 @@ class AssessmentQuestionControllerTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("PUT /api/questions/{id} - Should update existing question")
     void shouldUpdateExistingQuestion() throws Exception {
+        when(assessmentQuestionMapper.fromUpdateRequest(any(UpdateQuestionRequest.class)))
+                .thenReturn(testQuestion);
         when(assessmentQuestionService.updateAssesmentQuestion(any(UUID.class), any(AssessmentQuestion.class)))
                 .thenReturn(testQuestion);
         when(assessmentQuestionMapper.toDto(any(AssessmentQuestion.class)))
                 .thenReturn(testQuestionDto);
 
+        // Question text must be at least 10 characters
         String requestBody = String.format("""
                 {
-                    "questionText": "Updated Question",
+                    "questionText": "This is an updated question with adequate length",
                     "answerOptions": [
                         {"label": "Updated Option 1", "value": 1},
                         {"label": "Updated Option 2", "value": 2}
                     ],
                     "questionType": "MULTIPLE_CHOICE",
-                    "scoringRubric": "Updated Rubric",
-                    "timeLimit": 600,
                     "difficultyLevel": "FOUNDATIONAL",
-                    "active": false,
-                    "orderIndex": 2
+                    "isActive": false
                 }""");
 
         mockMvc.perform(put("/api/questions/" + testQuestion.getId())
@@ -205,22 +206,22 @@ class AssessmentQuestionControllerTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("PUT /api/questions/{id} - Should return 404 when updating non-existent question")
     void shouldReturn404WhenUpdatingNonExistentQuestion() throws Exception {
+        when(assessmentQuestionMapper.fromUpdateRequest(any(UpdateQuestionRequest.class)))
+                .thenReturn(testQuestion);
         when(assessmentQuestionService.updateAssesmentQuestion(any(UUID.class), any(AssessmentQuestion.class)))
                 .thenReturn(null);
 
+        // Question text must be at least 10 characters
         String requestBody = String.format("""
                 {
-                    "questionText": "Updated Question",
+                    "questionText": "This is an updated question with adequate length",
                     "answerOptions": [
                         {"label": "Updated Option 1", "value": 1},
                         {"label": "Updated Option 2", "value": 2}
                     ],
                     "questionType": "MULTIPLE_CHOICE",
-                    "scoringRubric": "Updated Rubric",
-                    "timeLimit": 600,
                     "difficultyLevel": "FOUNDATIONAL",
-                    "active": false,
-                    "orderIndex": 2
+                    "isActive": false
                 }""");
 
         mockMvc.perform(put("/api/questions/" + UUID.randomUUID())

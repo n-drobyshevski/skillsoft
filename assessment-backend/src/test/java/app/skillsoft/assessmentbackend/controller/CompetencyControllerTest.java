@@ -2,6 +2,8 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateCompetencyRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
@@ -120,17 +122,20 @@ class CompetencyControllerTest {
     @WithMockUser
     @DisplayName("POST /api/competencies - Should create new competency")
     void shouldCreateNewCompetency() throws Exception {
-        when(competencyMapper.fromDto(any(CompetencyDto.class)))
+        when(competencyMapper.fromCreateRequest(any(CreateCompetencyRequest.class)))
                 .thenReturn(testCompetency);
         when(competencyService.createCompetency(any(Competency.class)))
                 .thenReturn(testCompetency);
         when(competencyMapper.toDto(any(Competency.class)))
                 .thenReturn(testCompetencyDto);
 
+        // Description must be at least 50 characters per validation
+        String validDescription = "This is a valid description that is at least fifty characters long for testing";
+
         mockMvc.perform(post("/api/competencies")
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Test Competency\",\"description\":\"Test Description\"}"))
+                .content("{\"name\":\"Test Competency\",\"description\":\"" + validDescription + "\",\"category\":\"LEADERSHIP\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.name").value(testCompetency.getName()))
@@ -141,17 +146,20 @@ class CompetencyControllerTest {
     @WithMockUser
     @DisplayName("PUT /api/competencies/{id} - Should update existing competency")
     void shouldUpdateExistingCompetency() throws Exception {
-        when(competencyMapper.fromDto(any(CompetencyDto.class)))
+        when(competencyMapper.fromUpdateRequest(any(UpdateCompetencyRequest.class)))
                 .thenReturn(testCompetency);
         when(competencyService.updateCompetency(any(UUID.class), any(Competency.class)))
                 .thenReturn(testCompetency);
         when(competencyMapper.toDto(any(Competency.class)))
                 .thenReturn(testCompetencyDto);
 
+        // Description must be at least 50 characters per validation
+        String validDescription = "This is a valid updated description that is at least fifty characters long";
+
         mockMvc.perform(put("/api/competencies/" + testCompetency.getId())
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Updated Competency\",\"description\":\"Updated Description\"}"))
+                .content("{\"name\":\"Updated Competency\",\"description\":\"" + validDescription + "\",\"category\":\"LEADERSHIP\",\"isActive\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.name").value(testCompetency.getName()))

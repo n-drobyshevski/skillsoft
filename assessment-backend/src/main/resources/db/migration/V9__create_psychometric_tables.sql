@@ -122,8 +122,8 @@ CREATE INDEX IF NOT EXISTS idx_big_five_reliability_status ON big_five_reliabili
 -- INITIALIZE ITEM STATISTICS FOR EXISTING QUESTIONS
 -- All existing questions start in PROBATION status
 -- ============================================
-INSERT INTO item_statistics (question_id, validity_status, response_count)
-SELECT id, 'PROBATION', 0
+INSERT INTO item_statistics (id, question_id, validity_status, response_count)
+SELECT gen_random_uuid(), id, 'PROBATION', 0
 FROM assessment_questions
 WHERE NOT EXISTS (
     SELECT 1 FROM item_statistics WHERE question_id = assessment_questions.id
@@ -133,8 +133,8 @@ WHERE NOT EXISTS (
 -- INITIALIZE COMPETENCY RELIABILITY RECORDS
 -- All existing competencies start with INSUFFICIENT_DATA status
 -- ============================================
-INSERT INTO competency_reliability (competency_id, reliability_status)
-SELECT id, 'INSUFFICIENT_DATA'
+INSERT INTO competency_reliability (id, competency_id, reliability_status)
+SELECT gen_random_uuid(), id, 'INSUFFICIENT_DATA'
 FROM competencies
 WHERE NOT EXISTS (
     SELECT 1 FROM competency_reliability WHERE competency_id = competencies.id
@@ -144,13 +144,13 @@ WHERE NOT EXISTS (
 -- INITIALIZE BIG FIVE RELIABILITY RECORDS
 -- One record per Big Five trait
 -- ============================================
-INSERT INTO big_five_reliability (trait, reliability_status)
+INSERT INTO big_five_reliability (id, trait, reliability_status)
 VALUES
-    ('OPENNESS', 'INSUFFICIENT_DATA'),
-    ('CONSCIENTIOUSNESS', 'INSUFFICIENT_DATA'),
-    ('EXTRAVERSION', 'INSUFFICIENT_DATA'),
-    ('AGREEABLENESS', 'INSUFFICIENT_DATA'),
-    ('EMOTIONAL_STABILITY', 'INSUFFICIENT_DATA')
+    (gen_random_uuid(), 'OPENNESS', 'INSUFFICIENT_DATA'),
+    (gen_random_uuid(), 'CONSCIENTIOUSNESS', 'INSUFFICIENT_DATA'),
+    (gen_random_uuid(), 'EXTRAVERSION', 'INSUFFICIENT_DATA'),
+    (gen_random_uuid(), 'AGREEABLENESS', 'INSUFFICIENT_DATA'),
+    (gen_random_uuid(), 'EMOTIONAL_STABILITY', 'INSUFFICIENT_DATA')
 ON CONFLICT (trait) DO NOTHING;
 
 -- ============================================
