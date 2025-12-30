@@ -21,6 +21,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -73,6 +74,7 @@ public class TestSessionController {
      * @return Created session with 201 status
      */
     @PostMapping
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#request.clerkUserId())")
     public ResponseEntity<TestSessionDto> startSession(
             @Valid @RequestBody StartTestSessionRequest request) {
         logger.debug("POST /api/v1/tests/sessions - Starting session for template: {}, user: {}",
@@ -112,12 +114,46 @@ public class TestSessionController {
     }
 
     /**
+     * Get the assembly progress for a template.
+     *
+     * Used during session start to track long-running assembly operations.
+     * Clients can poll this endpoint to get real-time progress updates
+     * during test assembly for large templates with many competencies.
+     *
+     * @param templateId Template UUID being assembled
+     * @return Current assembly progress or 404 if no assembly is in progress
+     */
+    @Operation(
+        summary = "Get assembly progress",
+        description = "Poll assembly progress during test session start for templates with many competencies"
+    )
+    @ApiResponse(responseCode = "200", description = "Assembly progress retrieved")
+    @ApiResponse(responseCode = "404", description = "No assembly in progress for this template")
+    @GetMapping("/templates/{templateId}/assembly-progress")
+    public ResponseEntity<AssemblyProgressDto> getAssemblyProgress(@PathVariable UUID templateId) {
+        logger.debug("GET /api/v1/tests/sessions/templates/{}/assembly-progress", templateId);
+
+        return testSessionService.getAssemblyProgress(templateId)
+                .map(progress -> {
+                    AssemblyProgressDto dto = AssemblyProgressDto.from(progress);
+                    logger.debug("Assembly progress for template {}: {}% (phase: {})",
+                            templateId, dto.percentComplete(), dto.phase());
+                    return ResponseEntity.ok(dto);
+                })
+                .orElseGet(() -> {
+                    logger.debug("No active assembly found for template {}", templateId);
+                    return ResponseEntity.notFound().build();
+                });
+    }
+
+    /**
      * Get a session by ID.
      *
      * @param sessionId Session UUID
      * @return Session details or 404 if not found
      */
     @GetMapping("/{sessionId}")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestSessionDto> getSession(@PathVariable UUID sessionId) {
         logger.debug("GET /api/v1/tests/sessions/{}", sessionId);
 
@@ -136,6 +172,7 @@ public class TestSessionController {
      * @return Test result with scores
      */
     @PostMapping("/{sessionId}/complete")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestResultDto> completeSession(@PathVariable UUID sessionId) {
         logger.debug("POST /api/v1/tests/sessions/{}/complete", sessionId);
 
@@ -154,6 +191,7 @@ public class TestSessionController {
      * @return Updated session or 404 if not found
      */
     @PostMapping("/{sessionId}/abandon")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestSessionDto> abandonSession(@PathVariable UUID sessionId) {
         logger.debug("POST /api/v1/tests/sessions/{}/abandon", sessionId);
 
@@ -175,6 +213,7 @@ public class TestSessionController {
      * @return Submitted answer details
      */
     @PostMapping("/{sessionId}/answers")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestAnswerDto> submitAnswer(
             @PathVariable UUID sessionId,
             @Valid @RequestBody SubmitAnswerRequest request) {
@@ -201,6 +240,7 @@ public class TestSessionController {
      * @return List of all submitted answers
      */
     @GetMapping("/{sessionId}/answers")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<List<TestAnswerDto>> getSessionAnswers(@PathVariable UUID sessionId) {
         logger.debug("GET /api/v1/tests/sessions/{}/answers", sessionId);
 
@@ -226,6 +266,7 @@ public class TestSessionController {
      * @return Current question details
      */
     @GetMapping("/{sessionId}/current-question")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestSessionService.CurrentQuestionDto> getCurrentQuestion(@PathVariable UUID sessionId) {
         logger.debug("GET /api/v1/tests/sessions/{}/current-question", sessionId);
 
@@ -246,6 +287,7 @@ public class TestSessionController {
      * @return Updated session with new current question index
      */
     @PostMapping("/{sessionId}/navigate")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestSessionDto> navigateToQuestion(
             @PathVariable UUID sessionId,
             @RequestParam int questionIndex) {
@@ -267,6 +309,7 @@ public class TestSessionController {
      * @return Updated session
      */
     @PutMapping("/{sessionId}/time")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestSessionDto> updateTimeRemaining(
             @PathVariable UUID sessionId,
             @RequestParam int timeRemainingSeconds) {
@@ -288,6 +331,7 @@ public class TestSessionController {
      * @return Page of user's session summaries
      */
     @GetMapping("/user/{clerkUserId}")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<Page<TestSessionSummaryDto>> getUserSessions(
             @PathVariable String clerkUserId,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
@@ -308,6 +352,7 @@ public class TestSessionController {
      * @return List of matching sessions
      */
     @GetMapping("/user/{clerkUserId}/status/{status}")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<List<TestSessionSummaryDto>> getUserSessionsByStatus(
             @PathVariable String clerkUserId,
             @PathVariable SessionStatus status) {
@@ -327,6 +372,7 @@ public class TestSessionController {
      * @return In-progress session if exists, 404 otherwise
      */
     @GetMapping("/user/{clerkUserId}/in-progress")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<TestSessionDto> findInProgressSession(
             @PathVariable String clerkUserId,
             @RequestParam UUID templateId) {
@@ -360,6 +406,7 @@ public class TestSessionController {
     @ApiResponse(responseCode = "200", description = "Diagnostics retrieved successfully")
     @ApiResponse(responseCode = "404", description = "Template not found")
     @GetMapping("/templates/{templateId}/diagnostics")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<Map<String, Object>> getTemplateDiagnostics(@PathVariable UUID templateId) {
         logger.info("GET /api/v1/tests/sessions/templates/{}/diagnostics", templateId);
 

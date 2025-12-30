@@ -2,6 +2,8 @@ package app.skillsoft.assessmentbackend.services.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.dto.TemplateReadinessResponse.CompetencyReadiness;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.HealthStatus;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.DuplicateSessionException;
@@ -15,13 +17,24 @@ import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
+import app.skillsoft.assessmentbackend.events.assembly.AssemblyCompletedEvent;
+import app.skillsoft.assessmentbackend.events.assembly.AssemblyFailedEvent;
+import app.skillsoft.assessmentbackend.events.assembly.AssemblyProgress;
+import app.skillsoft.assessmentbackend.events.assembly.AssemblyStartedEvent;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
+import app.skillsoft.assessmentbackend.events.scoring.ScoringCompletedEvent;
+import app.skillsoft.assessmentbackend.events.scoring.ScoringFailedEvent;
+import app.skillsoft.assessmentbackend.events.scoring.ScoringStartedEvent;
+import app.skillsoft.assessmentbackend.util.LoggingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -41,6 +54,8 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final List<ScoringStrategy> scoringStrategies;
     private final PsychometricAuditJob psychometricAuditJob;
     private final TestAssemblerFactory assemblerFactory;
+    private final ApplicationEventPublisher eventPublisher;
+    private final AssemblyProgressTracker assemblyProgressTracker;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -53,7 +68,9 @@ public class TestSessionServiceImpl implements TestSessionService {
             InventoryHeatmapService inventoryHeatmapService,
             List<ScoringStrategy> scoringStrategies,
             PsychometricAuditJob psychometricAuditJob,
-            TestAssemblerFactory assemblerFactory) {
+            TestAssemblerFactory assemblerFactory,
+            ApplicationEventPublisher eventPublisher,
+            AssemblyProgressTracker assemblyProgressTracker) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -65,16 +82,27 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.scoringStrategies = scoringStrategies;
         this.psychometricAuditJob = psychometricAuditJob;
         this.assemblerFactory = assemblerFactory;
+        this.eventPublisher = eventPublisher;
+        this.assemblyProgressTracker = assemblyProgressTracker;
     }
 
     @Override
     @Transactional
     public TestSessionDto startSession(StartTestSessionRequest request) {
+        // Set logging context for this operation
+        LoggingContext.setUserId(request.clerkUserId());
+        LoggingContext.setTemplateId(request.templateId());
+        LoggingContext.setOperation("startSession");
+
+        log.info("Starting new test session for user={} template={}",
+                request.clerkUserId(), request.templateId());
+
         // Verify template exists and is active
         TestTemplate template = templateRepository.findById(request.templateId())
                 .orElseThrow(() -> new ResourceNotFoundException("Template", request.templateId()));
 
         if (!template.getIsActive()) {
+            log.warn("Attempted to start session for inactive template={}", request.templateId());
             throw new IllegalStateException("Cannot start session for inactive template");
         }
 
@@ -84,8 +112,8 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         if (existingSession.isPresent()) {
             TestSession existing = existingSession.get();
-            log.info("User {} attempted to start new session for template {} but session {} is still in progress",
-                    request.clerkUserId(), request.templateId(), existing.getId());
+            log.info("Duplicate session detected: user={} has existing session={} for template={}",
+                    request.clerkUserId(), existing.getId(), request.templateId());
             throw new DuplicateSessionException(existing.getId(), request.templateId(), request.clerkUserId());
         }
 
@@ -93,7 +121,8 @@ public class TestSessionServiceImpl implements TestSessionService {
         TestSession session = new TestSession(template, request.clerkUserId());
 
         // Generate question order based on template configuration
-        List<UUID> questionOrder = generateQuestionOrder(template);
+        // Pass clerkUserId for Delta Testing (gap-based question selection)
+        List<UUID> questionOrder = generateQuestionOrder(template, request.clerkUserId());
 
         // CRITICAL VALIDATION: Prevent sessions with empty question order
         if (questionOrder == null || questionOrder.isEmpty()) {
@@ -143,25 +172,69 @@ public class TestSessionServiceImpl implements TestSessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<TestSessionDto> findById(UUID sessionId) {
-        return sessionRepository.findById(sessionId)
+        return sessionRepository.findByIdWithTemplate(sessionId)
                 .map(this::toDto);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<TestSessionSummaryDto> findByUser(String clerkUserId, Pageable pageable) {
-        return sessionRepository.findByClerkUserId(clerkUserId, pageable)
-                .map(this::toSummaryDto);
+        // Use JOIN FETCH to avoid N+1 when accessing template
+        Page<TestSession> sessions = sessionRepository.findByClerkUserIdWithTemplate(clerkUserId, pageable);
+
+        // Batch fetch answer counts to avoid N+1 queries
+        List<UUID> sessionIds = sessions.getContent().stream()
+                .map(TestSession::getId)
+                .toList();
+
+        Map<UUID, Long> answerCounts = batchFetchAnswerCounts(sessionIds);
+
+        return sessions.map(session -> toSummaryDto(session, answerCounts.getOrDefault(session.getId(), 0L)));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<TestSessionSummaryDto> findByUserAndStatus(String clerkUserId, SessionStatus status) {
-        return sessionRepository.findByClerkUserIdAndStatus(clerkUserId, status).stream()
-                .map(this::toSummaryDto)
+        // Use JOIN FETCH to avoid N+1 when accessing template
+        List<TestSession> sessions = sessionRepository.findByClerkUserIdAndStatusWithTemplate(clerkUserId, status);
+
+        // Batch fetch answer counts to avoid N+1 queries
+        List<UUID> sessionIds = sessions.stream()
+                .map(TestSession::getId)
+                .toList();
+
+        Map<UUID, Long> answerCounts = batchFetchAnswerCounts(sessionIds);
+
+        return sessions.stream()
+                .map(session -> toSummaryDto(session, answerCounts.getOrDefault(session.getId(), 0L)))
                 .toList();
     }
 
+    /**
+     * Batch fetch answer counts for multiple sessions in a single query.
+     * Prevents N+1 queries when mapping session lists.
+     */
+    private Map<UUID, Long> batchFetchAnswerCounts(List<UUID> sessionIds) {
+        if (sessionIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Object[]> results = answerRepository.countAnsweredBySessionIds(sessionIds);
+        Map<UUID, Long> countMap = new HashMap<>();
+
+        for (Object[] row : results) {
+            UUID sessionId = (UUID) row[0];
+            Long count = (Long) row[1];
+            countMap.put(sessionId, count);
+        }
+
+        return countMap;
+    }
+
     @Override
+    @Transactional(readOnly = true)
     public Optional<TestSessionDto> findInProgressSession(String clerkUserId, UUID templateId) {
         return sessionRepository.findByClerkUserIdAndTemplate_IdAndStatus(
                 clerkUserId, templateId, SessionStatus.IN_PROGRESS)
@@ -218,6 +291,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public CurrentQuestionDto getCurrentQuestion(UUID sessionId) {
         // ===== 5-LAYER VALIDATION FOR GETCURRENTQUESTION =====
 
@@ -333,16 +407,29 @@ public class TestSessionServiceImpl implements TestSessionService {
     @Override
     @Transactional
     public TestResultDto completeSession(UUID sessionId) {
+        // Set logging context for session completion
+        LoggingContext.setSessionId(sessionId);
+        LoggingContext.setOperation("completeSession");
+
+        log.info("Completing test session sessionId={}", sessionId);
+
         TestSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
+        // Enrich logging context with session details
+        LoggingContext.setUserId(session.getClerkUserId());
+        LoggingContext.setTemplateId(session.getTemplate().getId());
+
         if (session.getStatus() != SessionStatus.IN_PROGRESS) {
+            log.warn("Attempted to complete session in invalid state: sessionId={} status={}",
+                    sessionId, session.getStatus());
             throw new IllegalStateException("Cannot complete a session that is not in progress");
         }
 
         session.complete();
         sessionRepository.save(session);
 
+        log.info("Session marked as COMPLETED, calculating results sessionId={}", sessionId);
         return calculateAndSaveResult(session);
     }
 
@@ -358,6 +445,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<TestAnswerDto> getSessionAnswers(UUID sessionId) {
         return answerRepository.findBySession_IdOrderByAnsweredAtAsc(sessionId).stream()
                 .map(this::toAnswerDto)
@@ -383,244 +471,148 @@ public class TestSessionServiceImpl implements TestSessionService {
     }
 
     // Helper methods
-    private List<UUID> generateQuestionOrder(TestTemplate template) {
-        // Strategy Pattern: Use assemblers for templates with typed blueprints
+
+    /**
+     * Generate question order for a test session.
+     *
+     * Uses the Strategy Pattern with TestAssemblers for templates with typed blueprints.
+     * For JOB_FIT assessments, injects the candidate's clerkUserId into the blueprint
+     * to enable Delta Testing (gap-based question selection using Competency Passport).
+     *
+     * Publishes observability events for assembly tracking:
+     * - AssemblyStartedEvent before assembly begins
+     * - AssemblyCompletedEvent on success with question count and duration
+     * - AssemblyFailedEvent on failure with error details
+     *
+     * @param template The test template
+     * @param clerkUserId The Clerk User ID of the candidate taking the test
+     * @return Ordered list of question UUIDs for the session
+     * @throws IllegalStateException if template has no typed blueprint configured
+     */
+    private List<UUID> generateQuestionOrder(TestTemplate template, String clerkUserId) {
         var typedBlueprint = template.getTypedBlueprint();
+        Instant assemblyStartTime = Instant.now();
 
-        if (typedBlueprint != null) {
-            try {
-                log.info("Using TestAssembler for goal: {} (blueprint type: {})",
-                    typedBlueprint.getStrategy(), typedBlueprint.getClass().getSimpleName());
-
-                TestAssembler assembler = assemblerFactory.getAssembler(typedBlueprint);
-                List<UUID> questions = assembler.assemble(typedBlueprint);
-
-                log.info("TestAssembler produced {} questions for goal: {}",
-                    questions.size(), typedBlueprint.getStrategy());
-
-                return questions;
-            } catch (Exception e) {
-                log.warn("Assembler failed for goal {}: {}. Falling back to legacy logic.",
-                    typedBlueprint.getStrategy(), e.getMessage());
-                // Fall through to legacy logic
-            }
-        } else {
-            log.debug("No typed blueprint found for template {}. Using legacy question selection.",
-                template.getId());
+        if (typedBlueprint == null) {
+            log.error("Template {} has no typed blueprint configured. " +
+                    "All templates must have a typed blueprint for test assembly.", template.getId());
+            throw new IllegalStateException(
+                    "Template must have a typed blueprint for test assembly. " +
+                    "Please configure the blueprint in the template settings.");
         }
 
-        // Fallback: Legacy question selection for old templates without typed blueprints
-        return switch (template.getGoal()) {
-            case OVERVIEW -> generateScenarioAOrder(template);
-            case JOB_FIT -> generateScenarioBOrder(template);
-            case TEAM_FIT -> generateScenarioCOrder(template);
-        };
-    }
+        // Inject candidate context into the blueprint for Delta Testing
+        // This allows assemblers to use existing passport scores for gap analysis
+        TestBlueprintDto enrichedBlueprint = enrichBlueprintWithCandidateContext(typedBlueprint, clerkUserId);
 
-    /**
-     * Scenario A: Universal Baseline (Competency Passport)
-     *
-     * Strategy:
-     * - Only UNIVERSAL context scope indicators (or NULL for backward compatibility)
-     * - Only GENERAL tagged questions or questions without restrictive tags
-     * - Flat distribution (no adaptive difficulty yet)
-     *
-     * This ensures construct validity by filtering out role-specific content,
-     * measuring transferable soft skills suitable for reuse across job roles.
-     *
-     * DEFENSIVE FALLBACK CHAIN:
-     * 1. Try UNIVERSAL + GENERAL questions (strict filter)
-     * 2. Try ANY active questions for the competency (direct query)
-     * 3. Log detailed diagnostics if still empty
-     */
-    private List<UUID> generateScenarioAOrder(TestTemplate template) {
-        List<UUID> questionIds = new ArrayList<>();
+        TestAssembler assembler = assemblerFactory.getAssembler(enrichedBlueprint);
+        String assemblerType = assembler.getClass().getSimpleName();
 
-        List<UUID> targetCompetencies = template.getCompetencyIds();
-        int questionsPerComp = template.getQuestionsPerIndicator();
+        // Use template ID as tracking ID since session ID is not yet available
+        // This allows clients to poll for assembly progress using template ID
+        UUID trackingId = template.getId();
+        int totalCompetencies = template.getCompetencyIds() != null ? template.getCompetencyIds().size() : 0;
 
-        log.debug("Starting Scenario A question generation for {} competencies, {} questions per indicator",
-                  targetCompetencies.size(), questionsPerComp);
+        // Start progress tracking
+        assemblyProgressTracker.start(
+                trackingId,
+                template.getId(),
+                enrichedBlueprint.getStrategy(),
+                totalCompetencies
+        );
 
-        for (UUID compId : targetCompetencies) {
-            List<AssessmentQuestion> questions = new ArrayList<>();
+        // Publish assembly started event
+        eventPublisher.publishEvent(AssemblyStartedEvent.now(
+                null, // Session ID not yet available
+                template.getId(),
+                enrichedBlueprint.getStrategy(),
+                assemblerType
+        ));
 
-            // STEP 1: Try strict UNIVERSAL + GENERAL filter (improved query handles NULL values)
-            try {
-                questions = questionRepository.findUniversalQuestions(compId, questionsPerComp);
-                log.debug("Found {} UNIVERSAL+GENERAL questions for competency {}", questions.size(), compId);
-            } catch (Exception e) {
-                log.warn("Error executing findUniversalQuestions for competency {}: {}", compId, e.getMessage());
-            }
+        log.info("Using TestAssembler for goal: {} (blueprint type: {}, candidateId: {})",
+            enrichedBlueprint.getStrategy(),
+            enrichedBlueprint.getClass().getSimpleName(),
+            clerkUserId);
 
-            // STEP 2: Fallback to ANY active questions if strict filter returns empty
-            if (questions.isEmpty()) {
-                log.warn("No UNIVERSAL+GENERAL questions for competency {}. Trying fallback query.", compId);
-
-                try {
-                    questions = questionRepository.findAnyActiveQuestionsForCompetency(compId, questionsPerComp);
-                    if (!questions.isEmpty()) {
-                        log.info("Fallback query found {} active questions for competency {}", questions.size(), compId);
-                    }
-                } catch (Exception e) {
-                    log.warn("Error executing fallback query for competency {}: {}", compId, e.getMessage());
-                }
-            }
-
-            // STEP 3: If still empty, log diagnostics
-            if (questions.isEmpty()) {
-                logQuestionDiagnostics(compId);
-            }
-
-            questionIds.addAll(questions.stream()
-                .map(AssessmentQuestion::getId)
-                .toList());
-        }
-
-        // Shuffle to prevent clustering by competency
-        if (Boolean.TRUE.equals(template.getShuffleQuestions())) {
-            Collections.shuffle(questionIds);
-            log.debug("Questions shuffled");
-        }
-
-        if (questionIds.isEmpty()) {
-            log.error("CRITICAL: Generated empty question order for template {} (Scenario A). " +
-                    "This will cause session failures. Check competency configuration and question availability. " +
-                    "Competencies: {}, QuestionsPerIndicator: {}",
-                    template.getId(), targetCompetencies, questionsPerComp);
-        }
-
-        log.info("Generated Scenario A question order: {} questions from {} competencies",
-                 questionIds.size(), targetCompetencies.size());
-
-        return questionIds;
-    }
-
-    /**
-     * Log detailed diagnostics for question availability issues.
-     * Helps identify whether the problem is missing questions, inactive questions,
-     * or missing tags/context_scope configuration.
-     */
-    private void logQuestionDiagnostics(UUID competencyId) {
         try {
-            // Get competency name for better logging
-            String compName = competencyRepository.findById(competencyId)
-                    .map(Competency::getName)
-                    .orElse("Unknown");
+            // Update progress to SELECTING phase
+            assemblyProgressTracker.updatePhase(
+                    trackingId,
+                    AssemblyProgress.AssemblyPhase.SELECTING,
+                    5.0,
+                    "Starting question selection"
+            );
 
-            // Count behavioral indicators
-            List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(competencyId);
-            int indicatorCount = indicators.size();
+            List<UUID> questions = assembler.assemble(enrichedBlueprint);
 
-            // Count questions directly
-            long activeCount = questionRepository.countActiveQuestionsForCompetency(competencyId);
+            // Update progress to VALIDATING phase
+            assemblyProgressTracker.updatePhase(
+                    trackingId,
+                    AssemblyProgress.AssemblyPhase.VALIDATING,
+                    90.0,
+                    "Validating selected questions"
+            );
 
-            // Log diagnostic summary
-            log.error("DIAGNOSTIC for competency '{}' ({}): " +
-                      "indicators={}, activeQuestions={}. " +
-                      "Check: 1) Are questions linked to behavioral indicators? " +
-                      "2) Are questions marked as active (is_active=true)? " +
-                      "3) Do behavioral indicators exist for this competency?",
-                    compName, competencyId, indicatorCount, activeCount);
+            // Complete progress tracking
+            assemblyProgressTracker.complete(trackingId, questions.size());
 
-            // Log indicator details if we have them but no questions
-            if (indicatorCount > 0 && activeCount == 0) {
-                for (BehavioralIndicator ind : indicators) {
-                    long indQuestionCount = questionRepository.findByBehavioralIndicator_Id(ind.getId()).size();
-                    log.error("  - Indicator '{}' ({}): {} total questions, contextScope={}",
-                            ind.getTitle(), ind.getId(), indQuestionCount, ind.getContextScope());
-                }
-            }
+            // Publish assembly completed event
+            eventPublisher.publishEvent(AssemblyCompletedEvent.fromStart(
+                    null, // Session ID not yet available
+                    template.getId(),
+                    enrichedBlueprint.getStrategy(),
+                    questions.size(),
+                    assemblyStartTime
+            ));
+
+            log.info("TestAssembler produced {} questions for goal: {}",
+                questions.size(), enrichedBlueprint.getStrategy());
+
+            return questions;
         } catch (Exception e) {
-            log.error("Error generating diagnostics for competency {}: {}", competencyId, e.getMessage());
+            // Mark progress as failed
+            assemblyProgressTracker.fail(trackingId, e.getMessage());
+
+            // Publish assembly failed event
+            eventPublisher.publishEvent(AssemblyFailedEvent.fromException(
+                    null, // Session ID not yet available
+                    template.getId(),
+                    enrichedBlueprint.getStrategy(),
+                    e,
+                    assemblyStartTime
+            ));
+
+            log.error("Assembly failed for template {} with goal {}: {}",
+                template.getId(), enrichedBlueprint.getStrategy(), e.getMessage());
+            throw e; // Re-throw to preserve original behavior
         }
     }
 
     /**
-     * Scenario B: Job Fit Assessment
-     * 
-     * Future implementation:
-     * - Filter by O*NET SOC code requirements
-     * - Apply targeted context scopes (PROFESSIONAL, TECHNICAL)
-     * - Use role-specific tags
-     * - Implement adaptive difficulty based on passport baseline
+     * Enrich a blueprint with candidate context for Delta Testing.
+     *
+     * For JOB_FIT blueprints, sets the candidateClerkUserId to enable
+     * the assembler to fetch passport data and perform gap analysis.
+     *
+     * Creates a deep copy to avoid mutating the original template blueprint.
+     *
+     * @param blueprint The original blueprint from the template
+     * @param clerkUserId The Clerk User ID of the candidate
+     * @return An enriched copy of the blueprint with candidate context
      */
-    private List<UUID> generateScenarioBOrder(TestTemplate template) {
-        log.warn("Scenario B (Job Fit) question selection not yet implemented. Falling back to legacy logic.");
-        return generateLegacyQuestionOrder(template);
-    }
+    private TestBlueprintDto enrichBlueprintWithCandidateContext(TestBlueprintDto blueprint, String clerkUserId) {
+        // Create a deep copy to avoid mutating the template's stored blueprint
+        TestBlueprintDto enrichedBlueprint = blueprint.deepCopy();
 
-    /**
-     * Scenario C: Team Fit Analysis
-     * 
-     * Future implementation:
-     * - ESCO skill normalization
-     * - Team gap analysis
-     * - Personality compatibility checks
-     */
-    private List<UUID> generateScenarioCOrder(TestTemplate template) {
-        log.warn("Scenario C (Team Fit) question selection not yet implemented. Falling back to legacy logic.");
-        return generateLegacyQuestionOrder(template);
-    }
-
-    /**
-     * Legacy question selection logic (pre-Smart Assessment).
-     * Used as fallback for scenarios B and C until fully implemented.
-     */
-    private List<UUID> generateLegacyQuestionOrder(TestTemplate template) {
-        List<UUID> questionIds = new ArrayList<>();
-
-        log.debug("Starting legacy question generation for {} competencies",
-                  template.getCompetencyIds().size());
-
-        // For each competency in the template
-        for (UUID competencyId : template.getCompetencyIds()) {
-            // Get behavioral indicators for this competency
-            List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(competencyId);
-            log.debug("Competency {} has {} behavioral indicators", competencyId, indicators.size());
-
-            int questionsAddedForComp = 0;
-
-            for (BehavioralIndicator indicator : indicators) {
-                // Get active questions for this indicator
-                List<AssessmentQuestion> questions = questionRepository
-                        .findByBehavioralIndicator_Id(indicator.getId()).stream()
-                        .filter(AssessmentQuestion::isActive)
-                        .toList();
-
-                log.debug("Indicator {} has {} active questions", indicator.getId(), questions.size());
-
-                // Shuffle if required
-                List<AssessmentQuestion> selectedQuestions = new ArrayList<>(questions);
-                if (template.getShuffleQuestions()) {
-                    Collections.shuffle(selectedQuestions);
-                }
-
-                // Take only the configured number of questions per indicator
-                int limit = Math.min(template.getQuestionsPerIndicator(), selectedQuestions.size());
-                for (int i = 0; i < limit; i++) {
-                    questionIds.add(selectedQuestions.get(i).getId());
-                    questionsAddedForComp++;
-                }
-            }
-
-            log.debug("Added {} questions for competency {}", questionsAddedForComp, competencyId);
-
-            if (questionsAddedForComp == 0) {
-                log.warn("No questions added for competency {}. This competency has no active questions.", competencyId);
-            }
+        // Inject candidate context into JOB_FIT blueprints for Delta Testing
+        if (enrichedBlueprint instanceof JobFitBlueprint jobFitBlueprint) {
+            jobFitBlueprint.setCandidateClerkUserId(clerkUserId);
+            log.debug("Injected candidateClerkUserId '{}' into JobFitBlueprint for Delta Testing", clerkUserId);
         }
 
-        // Final shuffle of all questions if configured
-        if (template.getShuffleQuestions()) {
-            Collections.shuffle(questionIds);
-            log.debug("Final shuffle applied to {} questions", questionIds.size());
-        }
+        // TODO: Future enhancement - inject candidate context for TEAM_FIT blueprints as well
 
-        log.info("Generated legacy question order: {} questions from {} competencies",
-                 questionIds.size(), template.getCompetencyIds().size());
-
-        return questionIds;
+        return enrichedBlueprint;
     }
 
     private void updateAnswer(TestAnswer answer, SubmitAnswerRequest request, AssessmentQuestion question) {
@@ -796,54 +788,108 @@ public class TestSessionServiceImpl implements TestSessionService {
         return maxScore > 0 ? maxScore : 1.0;
     }
 
+    /**
+     * Calculate and save test results for a completed session.
+     *
+     * Publishes observability events for scoring tracking:
+     * - ScoringStartedEvent before scoring begins
+     * - ScoringCompletedEvent on success with score and duration
+     * - ScoringFailedEvent on failure with error details
+     *
+     * @param session The test session to score
+     * @return TestResultDto with the calculated results
+     */
     private TestResultDto calculateAndSaveResult(TestSession session) {
-        List<TestAnswer> answers = answerRepository.findBySession_Id(session.getId());
+        // Set operation context for scoring
+        LoggingContext.setOperation("scoring");
+        Instant scoringStartTime = Instant.now();
 
-        // Calculate statistics
-        long answered = answers.stream().filter(a -> !a.getIsSkipped() && a.getAnsweredAt() != null).count();
-        long skipped = answers.stream().filter(TestAnswer::getIsSkipped).count();
-        int totalTime = answers.stream()
-                .mapToInt(a -> a.getTimeSpentSeconds() != null ? a.getTimeSpentSeconds() : 0)
-                .sum();
+        log.info("Calculating results for session={} goal={} user={}",
+                session.getId(), session.getTemplate().getGoal(), session.getClerkUserId());
+
+        List<TestAnswer> answers = answerRepository.findBySession_Id(session.getId());
 
         // Get template goal for strategy selection
         AssessmentGoal goal = session.getTemplate().getGoal();
-        
-        // Find appropriate scoring strategy
-        ScoringStrategy strategy = scoringStrategies.stream()
-                .filter(s -> s.getSupportedGoal() == goal)
-                .findFirst()
-                .orElse(null);
-        
-        ScoringResult scoringResult;
-        if (strategy != null) {
-            log.info("Using {} strategy for goal: {}", strategy.getClass().getSimpleName(), goal);
-            scoringResult = strategy.calculate(session, answers);
-        } else {
-            log.warn("No scoring strategy found for goal: {}, using legacy calculation", goal);
-            // Fallback to legacy scoring
-            scoringResult = calculateLegacyScore(session, answers);
+
+        // Publish scoring started event
+        eventPublisher.publishEvent(ScoringStartedEvent.beforeResult(
+                session.getId(),
+                goal,
+                answers.size()
+        ));
+
+        try {
+            // Calculate statistics
+            long answered = answers.stream().filter(a -> !a.getIsSkipped() && a.getAnsweredAt() != null).count();
+            long skipped = answers.stream().filter(TestAnswer::getIsSkipped).count();
+            int totalTime = answers.stream()
+                    .mapToInt(a -> a.getTimeSpentSeconds() != null ? a.getTimeSpentSeconds() : 0)
+                    .sum();
+
+            log.debug("Session statistics: answered={} skipped={} totalTimeSeconds={}",
+                    answered, skipped, totalTime);
+
+            // Find appropriate scoring strategy
+            ScoringStrategy strategy = scoringStrategies.stream()
+                    .filter(s -> s.getSupportedGoal() == goal)
+                    .findFirst()
+                    .orElse(null);
+
+            ScoringResult scoringResult;
+            if (strategy != null) {
+                log.info("Using scoring strategy={} for goal={}",
+                        strategy.getClass().getSimpleName(), goal);
+                scoringResult = strategy.calculate(session, answers);
+            } else {
+                log.warn("No scoring strategy found for goal={}, using legacy calculation", goal);
+                // Fallback to legacy scoring
+                scoringResult = calculateLegacyScore(session, answers);
+            }
+
+            // Create result entity
+            TestResult result = new TestResult(session, session.getClerkUserId());
+            result.setOverallScore(scoringResult.getOverallScore());
+            result.setOverallPercentage(scoringResult.getOverallPercentage());
+            result.setCompetencyScores(scoringResult.getCompetencyScores());
+            result.setQuestionsAnswered((int) answered);
+            result.setQuestionsSkipped((int) skipped);
+            result.setTotalTimeSeconds(totalTime);
+            result.setCompletedAt(LocalDateTime.now());
+
+            // Calculate passed/failed
+            result.calculatePassed(session.getTemplate().getPassingScore());
+
+            // Calculate percentile based on historical results for this template
+            Integer percentile = calculatePercentile(session.getTemplate().getId(), result.getOverallPercentage());
+            result.setPercentile(percentile);
+
+            TestResult saved = resultRepository.save(result);
+
+            // Publish scoring completed event
+            eventPublisher.publishEvent(ScoringCompletedEvent.fromStart(
+                    session.getId(),
+                    saved.getId(),
+                    goal,
+                    saved.getOverallScore(),
+                    Boolean.TRUE.equals(saved.getPassed()),
+                    scoringStartTime
+            ));
+
+            return toResultDto(saved, session);
+
+        } catch (Exception e) {
+            // Publish scoring failed event
+            eventPublisher.publishEvent(ScoringFailedEvent.fromException(
+                    session.getId(),
+                    goal,
+                    e,
+                    scoringStartTime
+            ));
+
+            log.error("Scoring failed for session={}: {}", session.getId(), e.getMessage());
+            throw e; // Re-throw to preserve original behavior
         }
-
-        // Create result entity
-        TestResult result = new TestResult(session, session.getClerkUserId());
-        result.setOverallScore(scoringResult.getOverallScore());
-        result.setOverallPercentage(scoringResult.getOverallPercentage());
-        result.setCompetencyScores(scoringResult.getCompetencyScores());
-        result.setQuestionsAnswered((int) answered);
-        result.setQuestionsSkipped((int) skipped);
-        result.setTotalTimeSeconds(totalTime);
-        result.setCompletedAt(LocalDateTime.now());
-
-        // Calculate passed/failed
-        result.calculatePassed(session.getTemplate().getPassingScore());
-
-        // Calculate percentile based on historical results for this template
-        Integer percentile = calculatePercentile(session.getTemplate().getId(), result.getOverallPercentage());
-        result.setPercentile(percentile);
-
-        TestResult saved = resultRepository.save(result);
-        return toResultDto(saved, session);
     }
     
     /**
@@ -1028,10 +1074,21 @@ public class TestSessionServiceImpl implements TestSessionService {
     }
 
     private TestSessionSummaryDto toSummaryDto(TestSession session) {
+        long answered = 0;
+        if (session.getQuestionOrder() != null && !session.getQuestionOrder().isEmpty()) {
+            answered = answerRepository.countAnsweredBySessionId(session.getId());
+        }
+        return toSummaryDto(session, answered);
+    }
+
+    /**
+     * Overloaded toSummaryDto that accepts pre-fetched answer count.
+     * Use this when mapping multiple sessions to avoid N+1 queries.
+     */
+    private TestSessionSummaryDto toSummaryDto(TestSession session, long answeredCount) {
         int progress = 0;
         if (session.getQuestionOrder() != null && !session.getQuestionOrder().isEmpty()) {
-            long answered = answerRepository.countAnsweredBySessionId(session.getId());
-            progress = (int) ((answered * 100) / session.getQuestionOrder().size());
+            progress = (int) ((answeredCount * 100) / session.getQuestionOrder().size());
         }
 
         return new TestSessionSummaryDto(
@@ -1293,5 +1350,11 @@ public class TestSessionServiceImpl implements TestSessionService {
                     totalQuestionsRequired
             );
         }
+    }
+
+    @Override
+    public Optional<AssemblyProgress> getAssemblyProgress(UUID templateId) {
+        // Template ID is used as tracking ID during assembly
+        return assemblyProgressTracker.getProgress(templateId);
     }
 }

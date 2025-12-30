@@ -106,4 +106,45 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
      * Count sessions by status (for dashboard statistics)
      */
     long countByStatus(SessionStatus status);
+
+    // ============================================
+    // OPTIMIZED QUERIES (N+1 Prevention)
+    // ============================================
+
+    /**
+     * Find sessions for a user with template eagerly loaded.
+     * Avoids N+1 query when accessing session.template in mapping loops.
+     */
+    @Query("SELECT s FROM TestSession s JOIN FETCH s.template WHERE s.clerkUserId = :userId")
+    List<TestSession> findByClerkUserIdWithTemplate(@Param("userId") String userId);
+
+    /**
+     * Find sessions for a user with template eagerly loaded (paginated).
+     * Note: COUNT query is separate to avoid pagination issues with JOIN FETCH.
+     */
+    @Query(value = "SELECT s FROM TestSession s JOIN FETCH s.template WHERE s.clerkUserId = :userId",
+           countQuery = "SELECT COUNT(s) FROM TestSession s WHERE s.clerkUserId = :userId")
+    Page<TestSession> findByClerkUserIdWithTemplate(@Param("userId") String userId, Pageable pageable);
+
+    /**
+     * Find sessions by user and status with template eagerly loaded.
+     */
+    @Query("SELECT s FROM TestSession s JOIN FETCH s.template WHERE s.clerkUserId = :userId AND s.status = :status")
+    List<TestSession> findByClerkUserIdAndStatusWithTemplate(
+            @Param("userId") String userId,
+            @Param("status") SessionStatus status);
+
+    /**
+     * Find sessions by user and multiple statuses with template eagerly loaded.
+     */
+    @Query("SELECT s FROM TestSession s JOIN FETCH s.template WHERE s.clerkUserId = :userId AND s.status IN :statuses")
+    List<TestSession> findByClerkUserIdAndStatusInWithTemplate(
+            @Param("userId") String userId,
+            @Param("statuses") List<SessionStatus> statuses);
+
+    /**
+     * Find session by ID with template eagerly loaded.
+     */
+    @Query("SELECT s FROM TestSession s JOIN FETCH s.template WHERE s.id = :sessionId")
+    Optional<TestSession> findByIdWithTemplate(@Param("sessionId") UUID sessionId);
 }

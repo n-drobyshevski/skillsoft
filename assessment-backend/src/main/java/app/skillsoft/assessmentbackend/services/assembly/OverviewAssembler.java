@@ -3,44 +3,47 @@ package app.skillsoft.assessmentbackend.services.assembly;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
-import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
-import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
-import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
-import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
-import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
+import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.util.LoggingContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Assembler for OVERVIEW (Universal Baseline) assessment strategy.
- * 
+ *
  * Algorithm:
  * 1. Fetch all BehavioralIndicators for the specified competencies
  * 2. Sort indicators by weight (descending) for prioritization
  * 3. Select questions with INTERMEDIATE difficulty for balanced assessment
  * 4. Apply "Waterfall" distribution: cycle through indicators to ensure coverage
  *    (Indicator 1, Indicator 2, Indicator 1, Indicator 2, ...)
- * 
+ *
  * This creates a balanced assessment suitable for generating a Competency Passport.
+ *
+ * Refactored to use QuestionSelectionService for centralized question selection logic.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OverviewAssembler implements TestAssembler {
 
-    private final BehavioralIndicatorRepository indicatorRepository;
-    private final AssessmentQuestionRepository questionRepository;
-    private final PsychometricBlueprintValidator psychometricValidator;
+    private final QuestionSelectionService questionSelectionService;
 
     /**
      * Default number of questions per indicator if not specified.
      */
     private static final int DEFAULT_QUESTIONS_PER_INDICATOR = 3;
+
+    /**
+     * Default difficulty for OVERVIEW assessments.
+     * INTERMEDIATE provides balanced assessment suitable for baseline measurement.
+     */
+    private static final DifficultyLevel DEFAULT_DIFFICULTY = DifficultyLevel.INTERMEDIATE;
 
     @Override
     public AssessmentGoal getSupportedGoal() {
@@ -49,9 +52,14 @@ public class OverviewAssembler implements TestAssembler {
 
     @Override
     public List<UUID> assemble(TestBlueprintDto blueprint) {
+        // Set operation context for assembly logging
+        LoggingContext.setOperation("overview-assembly");
+
         if (!(blueprint instanceof OverviewBlueprint overviewBlueprint)) {
+            log.error("Invalid blueprint type for OverviewAssembler: expected=OverviewBlueprint actual={}",
+                    blueprint != null ? blueprint.getClass().getSimpleName() : "null");
             throw new IllegalArgumentException(
-                "OverviewAssembler requires OverviewBlueprint, got: " + 
+                "OverviewAssembler requires OverviewBlueprint, got: " +
                 (blueprint != null ? blueprint.getClass().getSimpleName() : "null")
             );
         }
@@ -62,113 +70,38 @@ public class OverviewAssembler implements TestAssembler {
             return List.of();
         }
 
-        log.info("Assembling OVERVIEW test for {} competencies", competencyIds.size());
+        log.info("Assembling OVERVIEW test: competencies={} count={}",
+                competencyIds, competencyIds.size());
 
-        // Step 1: Fetch all indicators for the competencies, sorted by weight DESC
-        var allIndicators = fetchIndicatorsSortedByWeight(competencyIds);
-        
-        if (allIndicators.isEmpty()) {
-            log.warn("No behavioral indicators found for competencies: {}", competencyIds);
-            return List.of();
-        }
+        // Determine questions per indicator from blueprint or use default
+        int questionsPerIndicator = overviewBlueprint.getQuestionsPerIndicator() > 0
+                ? overviewBlueprint.getQuestionsPerIndicator()
+                : DEFAULT_QUESTIONS_PER_INDICATOR;
 
-        log.debug("Found {} indicators across {} competencies", 
-            allIndicators.size(), competencyIds.size());
+        // Determine difficulty preference from blueprint or use default
+        DifficultyLevel preferredDifficulty = overviewBlueprint.getPreferredDifficulty() != null
+                ? overviewBlueprint.getPreferredDifficulty()
+                : DEFAULT_DIFFICULTY;
 
-        // Step 2: Collect available questions for each indicator (INTERMEDIATE difficulty)
-        var indicatorQuestions = collectQuestionsForIndicators(allIndicators);
+        // Determine shuffle preference from blueprint
+        boolean shuffle = overviewBlueprint.isShuffleQuestions();
 
-        // Step 3: Apply waterfall distribution to select questions
-        var selectedQuestions = applyWaterfallDistribution(
-            allIndicators, 
-            indicatorQuestions,
-            DEFAULT_QUESTIONS_PER_INDICATOR
+        // Use QuestionSelectionService for centralized selection logic
+        // This applies:
+        // - Psychometric validation (excludes RETIRED items)
+        // - WATERFALL distribution across indicators
+        // - Difficulty preference with fallback
+        // - Optional shuffling
+        List<UUID> selectedQuestions = questionSelectionService.selectQuestionsForCompetencies(
+                competencyIds,
+                questionsPerIndicator,
+                preferredDifficulty,
+                shuffle
         );
 
-        log.info("Assembled {} questions for OVERVIEW assessment", selectedQuestions.size());
-        
-        return selectedQuestions;
-    }
+        log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {})",
+                selectedQuestions.size(), competencyIds.size(), questionsPerIndicator);
 
-    /**
-     * Fetch behavioral indicators for competencies, sorted by weight descending.
-     */
-    private List<BehavioralIndicator> fetchIndicatorsSortedByWeight(List<UUID> competencyIds) {
-        return competencyIds.stream()
-            .flatMap(compId -> indicatorRepository.findByCompetencyId(compId).stream())
-            .filter(BehavioralIndicator::isActive)
-            .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
-            .collect(Collectors.toList());
-    }
-
-    /**
-     * Collect questions for each indicator, preferring INTERMEDIATE difficulty.
-     * Uses psychometric validation to filter out RETIRED items and prioritize validated questions.
-     */
-    private Map<UUID, List<UUID>> collectQuestionsForIndicators(List<BehavioralIndicator> indicators) {
-        var result = new HashMap<UUID, List<UUID>>();
-
-        for (var indicator : indicators) {
-            var questions = questionRepository.findByBehavioralIndicator_Id(indicator.getId())
-                .stream()
-                .filter(AssessmentQuestion::isActive)
-                // Filter using psychometric validation (excludes RETIRED items)
-                .filter(q -> psychometricValidator.isEligibleForAssembly(q.getId()))
-                // Prefer INTERMEDIATE, but include others as fallback
-                .sorted(Comparator.comparing(q ->
-                    q.getDifficultyLevel() == DifficultyLevel.INTERMEDIATE ? 0 : 1))
-                .map(AssessmentQuestion::getId)
-                .collect(Collectors.toList());
-
-            result.put(indicator.getId(), questions);
-        }
-
-        return result;
-    }
-
-    /**
-     * Apply waterfall distribution to select questions across indicators.
-     * 
-     * The waterfall pattern ensures each indicator gets questions in rotation:
-     * Round 1: Indicator1-Q1, Indicator2-Q1, Indicator3-Q1...
-     * Round 2: Indicator1-Q2, Indicator2-Q2, Indicator3-Q2...
-     * 
-     * This ensures balanced coverage even if we hit limits early.
-     */
-    private List<UUID> applyWaterfallDistribution(
-            List<BehavioralIndicator> indicators,
-            Map<UUID, List<UUID>> indicatorQuestions,
-            int questionsPerIndicator
-    ) {
-        var selectedQuestions = new ArrayList<UUID>();
-        var usedQuestions = new HashSet<UUID>();
-        var indicatorCursors = new HashMap<UUID, Integer>();
-        
-        // Initialize cursors
-        indicators.forEach(ind -> indicatorCursors.put(ind.getId(), 0));
-        
-        // Waterfall: iterate round by round
-        for (int round = 0; round < questionsPerIndicator; round++) {
-            for (var indicator : indicators) {
-                var questions = indicatorQuestions.getOrDefault(indicator.getId(), List.of());
-                var cursor = indicatorCursors.get(indicator.getId());
-                
-                // Find next available question for this indicator
-                while (cursor < questions.size()) {
-                    var questionId = questions.get(cursor);
-                    cursor++;
-                    
-                    if (!usedQuestions.contains(questionId)) {
-                        selectedQuestions.add(questionId);
-                        usedQuestions.add(questionId);
-                        break;
-                    }
-                }
-                
-                indicatorCursors.put(indicator.getId(), cursor);
-            }
-        }
-        
         return selectedQuestions;
     }
 }

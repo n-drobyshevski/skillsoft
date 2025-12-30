@@ -42,11 +42,12 @@ public class TestResultController {
 
     /**
      * Get a result by ID.
-     * 
+     *
      * @param resultId Result UUID
      * @return Result details or 404 if not found
      */
     @GetMapping("/{resultId}")
+    @PreAuthorize("@sessionSecurity.isResultOwner(#resultId)")
     public ResponseEntity<TestResultDto> getResultById(@PathVariable UUID resultId) {
         logger.info("GET /api/v1/tests/results/{}", resultId);
         
@@ -63,11 +64,12 @@ public class TestResultController {
 
     /**
      * Get result for a specific session.
-     * 
+     *
      * @param sessionId Session UUID
      * @return Result details or 404 if not found
      */
     @GetMapping("/session/{sessionId}")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
     public ResponseEntity<TestResultDto> getResultBySession(@PathVariable UUID sessionId) {
         logger.info("GET /api/v1/tests/results/session/{}", sessionId);
         
@@ -84,14 +86,15 @@ public class TestResultController {
 
     /**
      * Get the percentile rank for a result.
-     * 
+     *
      * Calculates where this result falls compared to all results
      * for the same template.
-     * 
+     *
      * @param resultId Result UUID
      * @return Percentile value (0-100)
      */
     @GetMapping("/{resultId}/percentile")
+    @PreAuthorize("@sessionSecurity.isResultOwner(#resultId)")
     public ResponseEntity<Integer> getPercentile(@PathVariable UUID resultId) {
         logger.info("GET /api/v1/tests/results/{}/percentile", resultId);
         
@@ -112,12 +115,13 @@ public class TestResultController {
 
     /**
      * Get all results for a user with pagination.
-     * 
+     *
      * @param clerkUserId User's Clerk ID
      * @param pageable Pagination parameters
      * @return Page of user's result summaries
      */
     @GetMapping("/user/{clerkUserId}")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<Page<TestResultSummaryDto>> getUserResults(
             @PathVariable String clerkUserId,
             @PageableDefault(size = 20, sort = "completedAt", direction = Sort.Direction.DESC) 
@@ -132,11 +136,12 @@ public class TestResultController {
 
     /**
      * Get all results for a user ordered by date.
-     * 
+     *
      * @param clerkUserId User's Clerk ID
      * @return List of result summaries
      */
     @GetMapping("/user/{clerkUserId}/all")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<List<TestResultSummaryDto>> getAllUserResults(@PathVariable String clerkUserId) {
         logger.info("GET /api/v1/tests/results/user/{}/all", clerkUserId);
         
@@ -148,12 +153,13 @@ public class TestResultController {
 
     /**
      * Get user's results for a specific template.
-     * 
+     *
      * @param clerkUserId User's Clerk ID
      * @param templateId Template UUID
      * @return List of results for this template
      */
     @GetMapping("/user/{clerkUserId}/template/{templateId}")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<List<TestResultSummaryDto>> getUserResultsForTemplate(
             @PathVariable String clerkUserId,
             @PathVariable UUID templateId) {
@@ -167,12 +173,13 @@ public class TestResultController {
 
     /**
      * Get the most recent result for a user on a template.
-     * 
+     *
      * @param clerkUserId User's Clerk ID
      * @param templateId Template UUID
      * @return Latest result or 404 if none
      */
     @GetMapping("/user/{clerkUserId}/template/{templateId}/latest")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<TestResultDto> getLatestResult(
             @PathVariable String clerkUserId,
             @PathVariable UUID templateId) {
@@ -191,11 +198,12 @@ public class TestResultController {
 
     /**
      * Get passed results for a user.
-     * 
+     *
      * @param clerkUserId User's Clerk ID
      * @return List of results where user passed
      */
     @GetMapping("/user/{clerkUserId}/passed")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<List<TestResultSummaryDto>> getPassedResults(@PathVariable String clerkUserId) {
         logger.info("GET /api/v1/tests/results/user/{}/passed", clerkUserId);
         
@@ -209,11 +217,12 @@ public class TestResultController {
 
     /**
      * Get user statistics.
-     * 
+     *
      * @param clerkUserId User's Clerk ID
      * @return User's test statistics
      */
     @GetMapping("/user/{clerkUserId}/statistics")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
     public ResponseEntity<TestResultService.UserTestStatistics> getUserStatistics(
             @PathVariable String clerkUserId) {
         logger.info("GET /api/v1/tests/results/user/{}/statistics", clerkUserId);

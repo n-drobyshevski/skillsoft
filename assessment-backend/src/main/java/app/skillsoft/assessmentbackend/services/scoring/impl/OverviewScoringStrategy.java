@@ -5,6 +5,7 @@ import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
+import app.skillsoft.assessmentbackend.util.LoggingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,8 +40,13 @@ public class OverviewScoringStrategy implements ScoringStrategy {
     
     @Override
     public ScoringResult calculate(TestSession session, List<TestAnswer> answers) {
-        log.info("Calculating Scenario A (Overview) score for session: {}", session.getId());
-        
+        // Set session context for all scoring log messages
+        LoggingContext.setSessionId(session.getId());
+        LoggingContext.setOperation("overview-scoring");
+
+        log.info("Calculating Scenario A (Overview) score: session={} answers={} user={}",
+                session.getId(), answers.size(), session.getClerkUserId());
+
         // Step 1: Normalize & Aggregate Scores by Competency
         Map<UUID, Double> rawCompetencyScores = new HashMap<>();
         Map<UUID, Integer> counts = new HashMap<>();

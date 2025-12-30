@@ -56,15 +56,35 @@ public interface PassportService {
 
     /**
      * Check if a candidate has valid passport data.
-     * 
+     *
      * @param candidateId The candidate ID
      * @return true if valid passport exists
      */
     boolean hasValidPassport(UUID candidateId);
 
     /**
+     * Get the Competency Passport for a candidate by their Clerk User ID.
+     *
+     * This method bridges the gap between Clerk authentication (string user IDs)
+     * and internal candidate IDs (UUIDs). In a full implementation, this would
+     * look up the candidate ID from a user profile service.
+     *
+     * @param clerkUserId The Clerk user ID (string)
+     * @return The passport data, or empty if not available
+     */
+    Optional<CompetencyPassport> getPassportByClerkUserId(String clerkUserId);
+
+    /**
+     * Check if a candidate has valid passport data by their Clerk User ID.
+     *
+     * @param clerkUserId The Clerk user ID
+     * @return true if valid passport exists
+     */
+    boolean hasValidPassportByClerkUserId(String clerkUserId);
+
+    /**
      * Save or update a candidate's Competency Passport.
-     * 
+     *
      * @param passport The passport data to save
      */
     void savePassport(CompetencyPassport passport);

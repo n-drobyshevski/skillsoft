@@ -1,61 +1,160 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <!-- Include Spring Boot defaults -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <!-- Console appender with pattern -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
+    <!-- ============================================================== -->
+    <!-- PRODUCTION / STAGING: Structured JSON Logging                  -->
+    <!-- Compatible with ELK Stack, Datadog, CloudWatch, etc.           -->
+    <!-- ============================================================== -->
+    <springProfile name="prod,staging">
+        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <!-- Include MDC keys for correlation and tracing -->
+                <includeMdcKeyName>correlationId</includeMdcKeyName>
+                <includeMdcKeyName>sessionId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>templateId</includeMdcKeyName>
+                <includeMdcKeyName>competencyId</includeMdcKeyName>
+                <includeMdcKeyName>operation</includeMdcKeyName>
+                <includeMdcKeyName>requestPath</includeMdcKeyName>
+                <includeMdcKeyName>requestMethod</includeMdcKeyName>
 
-    <!-- Root logger set to WARN to minimize logging -->
-    <root level="WARN">
-        <appender-ref ref="CONSOLE" />
-    </root>
+                <!-- Include caller info for error tracing -->
+                <includeCallerData>false</includeCallerData>
 
-    <!-- Application-specific logging - only errors and critical info -->
-    <logger name="app.skillsoft.assessmentbackend" level="WARN" additivity="false">
-        <appender-ref ref="CONSOLE" />
-    </logger>
+                <!-- Customize timestamp format -->
+                <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
 
-    <!-- Critical services at INFO (only important business logic) -->
-    <logger name="app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl" level="INFO" additivity="false">
-        <appender-ref ref="CONSOLE" />
-    </logger>
+                <!-- Add custom fields -->
+                <customFields>{"application":"skillsoft-assessment","environment":"${spring.profiles.active:-prod}"}</customFields>
+            </encoder>
+        </appender>
 
-    <!-- Controllers at WARN (reduce noise from every request) -->
-    <logger name="app.skillsoft.assessmentbackend.controller" level="WARN" additivity="false">
-        <appender-ref ref="CONSOLE" />
-    </logger>
+        <!-- Root logger for production -->
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
 
-    <!-- Hibernate/JPA logging - WARN only -->
-    <logger name="org.hibernate" level="WARN" />
-    <logger name="org.hibernate.SQL" level="WARN" />
-    <logger name="org.hibernate.type" level="WARN" />
-    <logger name="org.hibernate.type.descriptor.sql" level="WARN" />
-    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN" />
-    <logger name="org.hibernate.orm.jdbc.bind" level="WARN" />
-    <logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="ERROR" />
+        <!-- Application-specific logging -->
+        <logger name="app.skillsoft.assessmentbackend" level="INFO" additivity="false">
+            <appender-ref ref="JSON"/>
+        </logger>
 
-    <!-- Spring Framework logging - WARN only -->
-    <logger name="org.springframework" level="WARN" />
-    <logger name="org.springframework.web" level="WARN" />
-    <logger name="org.springframework.security" level="WARN" />
-    <logger name="org.springframework.jdbc" level="WARN" />
-    <logger name="org.springframework.jdbc.core" level="WARN" />
-    <logger name="org.springframework.jdbc.core.JdbcTemplate" level="WARN" />
-    <logger name="org.springframework.jdbc.datasource" level="WARN" />
+        <!-- Critical services at INFO level -->
+        <logger name="app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl" level="INFO" additivity="false">
+            <appender-ref ref="JSON"/>
+        </logger>
+        <logger name="app.skillsoft.assessmentbackend.services.scoring" level="INFO" additivity="false">
+            <appender-ref ref="JSON"/>
+        </logger>
+        <logger name="app.skillsoft.assessmentbackend.services.assembly" level="INFO" additivity="false">
+            <appender-ref ref="JSON"/>
+        </logger>
 
-    <!-- Database connection pool - ERROR only -->
-    <logger name="com.zaxxer.hikari" level="ERROR" />
-    <logger name="com.zaxxer.hikari.HikariConfig" level="ERROR" />
+        <!-- Controllers at WARN (reduce noise) -->
+        <logger name="app.skillsoft.assessmentbackend.controller" level="WARN" additivity="false">
+            <appender-ref ref="JSON"/>
+        </logger>
 
-    <!-- Jackson JSON processing - ERROR only -->
-    <logger name="com.fasterxml.jackson" level="ERROR" />
+        <!-- Framework logging -->
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="com.zaxxer.hikari" level="ERROR"/>
+    </springProfile>
 
-    <!-- Tomcat - WARN only -->
-    <logger name="org.apache.catalina" level="WARN" />
-    <logger name="org.apache.coyote" level="WARN" />
-    <logger name="org.apache.tomcat" level="WARN" />
+    <!-- ============================================================== -->
+    <!-- DEVELOPMENT: Human-Readable Console Logging with Correlation   -->
+    <!-- ============================================================== -->
+    <springProfile name="default,dev,local">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <!-- Format: timestamp [thread] [correlationId] [sessionId] level logger - message -->
+                <pattern>%d{HH:mm:ss.SSS} [%thread] [%X{correlationId:-N/A}] [%X{sessionId:-}] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
 
+        <!-- Root logger for development -->
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <!-- Application-specific logging - more verbose in dev -->
+        <logger name="app.skillsoft.assessmentbackend" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Critical services at DEBUG for troubleshooting -->
+        <logger name="app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+        <logger name="app.skillsoft.assessmentbackend.services.scoring" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+        <logger name="app.skillsoft.assessmentbackend.services.assembly" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Correlation filter at DEBUG to see request tracking -->
+        <logger name="app.skillsoft.assessmentbackend.config.CorrelationIdFilter" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Controllers at DEBUG in development -->
+        <logger name="app.skillsoft.assessmentbackend.controller" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Hibernate/JPA logging - WARN only to reduce noise -->
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="WARN"/>
+        <logger name="org.hibernate.type" level="WARN"/>
+        <logger name="org.hibernate.type.descriptor.sql" level="WARN"/>
+        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN"/>
+        <logger name="org.hibernate.orm.jdbc.bind" level="WARN"/>
+        <logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="ERROR"/>
+
+        <!-- Spring Framework logging - WARN only -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.springframework.web" level="WARN"/>
+        <logger name="org.springframework.security" level="WARN"/>
+        <logger name="org.springframework.jdbc" level="WARN"/>
+
+        <!-- Database connection pool - ERROR only -->
+        <logger name="com.zaxxer.hikari" level="ERROR"/>
+
+        <!-- Jackson JSON processing - ERROR only -->
+        <logger name="com.fasterxml.jackson" level="ERROR"/>
+
+        <!-- Tomcat - WARN only -->
+        <logger name="org.apache.catalina" level="WARN"/>
+        <logger name="org.apache.coyote" level="WARN"/>
+        <logger name="org.apache.tomcat" level="WARN"/>
+    </springProfile>
+
+    <!-- ============================================================== -->
+    <!-- TEST: Minimal Logging for Test Execution                       -->
+    <!-- ============================================================== -->
+    <springProfile name="test,e2e-test">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} [%X{correlationId:-}] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <!-- Minimal logging during tests -->
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <!-- Only errors from application code during tests -->
+        <logger name="app.skillsoft.assessmentbackend" level="WARN" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Silence noisy framework loggers -->
+        <logger name="org.hibernate" level="ERROR"/>
+        <logger name="org.springframework" level="ERROR"/>
+        <logger name="com.zaxxer.hikari" level="ERROR"/>
+    </springProfile>
 </configuration>

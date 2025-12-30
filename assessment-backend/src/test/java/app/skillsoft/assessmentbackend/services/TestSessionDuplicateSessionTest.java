@@ -2,8 +2,9 @@ package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.StartTestSessionRequest;
 import app.skillsoft.assessmentbackend.domain.dto.TestSessionDto;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
-import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
 import app.skillsoft.assessmentbackend.domain.entities.TestSession;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
@@ -15,6 +16,8 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
+import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
@@ -25,13 +28,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 /**
@@ -73,6 +76,12 @@ class TestSessionDuplicateSessionTest {
     @Mock
     private TestAssemblerFactory assemblerFactory;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private AssemblyProgressTracker assemblyProgressTracker;
+
     private TestSessionService testSessionService;
 
     private UUID templateId;
@@ -95,7 +104,9 @@ class TestSessionDuplicateSessionTest {
                 inventoryHeatmapService,
                 Collections.emptyList(), // scoringStrategies - not needed for this test
                 psychometricAuditJob,
-                assemblerFactory
+                assemblerFactory,
+                eventPublisher,
+                assemblyProgressTracker
         );
 
         // Initialize test data
@@ -112,6 +123,13 @@ class TestSessionDuplicateSessionTest {
         template.setCompetencyIds(List.of(UUID.randomUUID()));
         template.setQuestionsPerIndicator(2);
         template.setShuffleQuestions(false);
+
+        // Create a mock blueprint (required for all templates now)
+        // Use lenient stubbing since not all tests will use all stubs
+        OverviewBlueprint mockBlueprint = mock(OverviewBlueprint.class, withSettings().lenient());
+        when(mockBlueprint.getStrategy()).thenReturn(AssessmentGoal.OVERVIEW);
+        when(mockBlueprint.deepCopy()).thenReturn(mockBlueprint);
+        template.setTypedBlueprint(mockBlueprint);
 
         // Create existing session
         existingSession = new TestSession(template, clerkUserId);
@@ -180,16 +198,12 @@ class TestSessionDuplicateSessionTest {
                 clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                 .thenReturn(Optional.empty());
 
-        // Mock question repository for Scenario A (OVERVIEW) - return mock questions
+        // Mock assembler to return questions
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
-        AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
-        AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
-        when(mockQuestion1.getId()).thenReturn(question1Id);
-        when(mockQuestion2.getId()).thenReturn(question2Id);
-
-        when(questionRepository.findUniversalQuestions(any(UUID.class), anyInt()))
-                .thenReturn(List.of(mockQuestion1, mockQuestion2));
+        TestAssembler mockAssembler = mock(TestAssembler.class);
+        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion
         when(answerRepository.countAnsweredBySessionId(any(UUID.class)))
@@ -210,6 +224,7 @@ class TestSessionDuplicateSessionTest {
         assertThat(result.templateId()).isEqualTo(templateId);
         assertThat(result.totalQuestions()).isEqualTo(2);
         verify(sessionRepository, times(1)).save(any(TestSession.class));
+        verify(assemblerFactory).getAssembler(any(TestBlueprintDto.class));
     }
 
     @Test
@@ -226,16 +241,12 @@ class TestSessionDuplicateSessionTest {
                 clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                 .thenReturn(Optional.empty()); // No IN_PROGRESS session
 
-        // Mock question repository for Scenario A (OVERVIEW) - return mock questions
+        // Mock assembler to return questions
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
-        AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
-        AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
-        when(mockQuestion1.getId()).thenReturn(question1Id);
-        when(mockQuestion2.getId()).thenReturn(question2Id);
-
-        when(questionRepository.findUniversalQuestions(any(UUID.class), anyInt()))
-                .thenReturn(List.of(mockQuestion1, mockQuestion2));
+        TestAssembler mockAssembler = mock(TestAssembler.class);
+        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion
         when(answerRepository.countAnsweredBySessionId(any(UUID.class)))
@@ -254,6 +265,7 @@ class TestSessionDuplicateSessionTest {
         assertThat(result).isNotNull();
         assertThat(result.totalQuestions()).isEqualTo(2);
         verify(sessionRepository, times(1)).save(any(TestSession.class));
+        verify(assemblerFactory).getAssembler(any(TestBlueprintDto.class));
     }
 
     @Test
@@ -271,16 +283,12 @@ class TestSessionDuplicateSessionTest {
                 anotherUserId, templateId, SessionStatus.IN_PROGRESS))
                 .thenReturn(Optional.empty());
 
-        // Mock question repository for Scenario A (OVERVIEW) - return mock questions
+        // Mock assembler to return questions
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
-        AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
-        AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
-        when(mockQuestion1.getId()).thenReturn(question1Id);
-        when(mockQuestion2.getId()).thenReturn(question2Id);
-
-        when(questionRepository.findUniversalQuestions(any(UUID.class), anyInt()))
-                .thenReturn(List.of(mockQuestion1, mockQuestion2));
+        TestAssembler mockAssembler = mock(TestAssembler.class);
+        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion
         when(answerRepository.countAnsweredBySessionId(any(UUID.class)))
@@ -300,5 +308,6 @@ class TestSessionDuplicateSessionTest {
         assertThat(result.clerkUserId()).isEqualTo(anotherUserId);
         assertThat(result.totalQuestions()).isEqualTo(2);
         verify(sessionRepository, times(1)).save(any(TestSession.class));
+        verify(assemblerFactory).getAssembler(any(TestBlueprintDto.class));
     }
 }

@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
+import app.skillsoft.assessmentbackend.events.assembly.AssemblyProgress;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -88,6 +89,15 @@ public interface TestSessionService {
      * @return Readiness response with per-competency status
      */
     TemplateReadinessResponse checkTemplateReadiness(UUID templateId);
+
+    /**
+     * Get assembly progress for a template.
+     * Used during session start to track long-running assembly operations.
+     *
+     * @param templateId The template ID being assembled
+     * @return Current assembly progress if active, empty otherwise
+     */
+    Optional<AssemblyProgress> getAssemblyProgress(UUID templateId);
 
     /**
      * DTO for current question with context.

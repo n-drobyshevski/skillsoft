@@ -1,6 +1,9 @@
 package app.skillsoft.assessmentbackend.domain.dto.blueprint;
 
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
+import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -41,6 +44,28 @@ public class OverviewBlueprint extends TestBlueprintDto {
      */
     private boolean includeBigFive = true;
 
+    /**
+     * Number of questions to select per behavioral indicator.
+     * Default is 3, which provides sufficient data for reliable scoring
+     * while keeping assessment length manageable.
+     */
+    @Min(value = 1, message = "At least 1 question per indicator is required")
+    @Max(value = 10, message = "Maximum 10 questions per indicator allowed")
+    private int questionsPerIndicator = 3;
+
+    /**
+     * Preferred difficulty level for question selection.
+     * Default is INTERMEDIATE for balanced baseline assessment.
+     * Questions of other difficulties are used as fallback when preferred not available.
+     */
+    private DifficultyLevel preferredDifficulty = DifficultyLevel.INTERMEDIATE;
+
+    /**
+     * Whether to shuffle the final question order.
+     * Recommended true to prevent clustering by competency.
+     */
+    private boolean shuffleQuestions = true;
+
     // Constructors
     public OverviewBlueprint() {
         super();
@@ -76,12 +101,39 @@ public class OverviewBlueprint extends TestBlueprintDto {
         this.includeBigFive = includeBigFive;
     }
 
+    public int getQuestionsPerIndicator() {
+        return questionsPerIndicator;
+    }
+
+    public void setQuestionsPerIndicator(int questionsPerIndicator) {
+        this.questionsPerIndicator = questionsPerIndicator;
+    }
+
+    public DifficultyLevel getPreferredDifficulty() {
+        return preferredDifficulty;
+    }
+
+    public void setPreferredDifficulty(DifficultyLevel preferredDifficulty) {
+        this.preferredDifficulty = preferredDifficulty;
+    }
+
+    public boolean isShuffleQuestions() {
+        return shuffleQuestions;
+    }
+
+    public void setShuffleQuestions(boolean shuffleQuestions) {
+        this.shuffleQuestions = shuffleQuestions;
+    }
+
     @Override
     public TestBlueprintDto deepCopy() {
         OverviewBlueprint copy = new OverviewBlueprint();
         copy.setStrategy(this.getStrategy());
         copy.setCompetencyIds(new ArrayList<>(this.competencyIds));
         copy.setIncludeBigFive(this.includeBigFive);
+        copy.setQuestionsPerIndicator(this.questionsPerIndicator);
+        copy.setPreferredDifficulty(this.preferredDifficulty);
+        copy.setShuffleQuestions(this.shuffleQuestions);
         if (this.getAdaptivity() != null) {
             copy.setAdaptivity(this.getAdaptivity().deepCopy());
         }
@@ -94,13 +146,17 @@ public class OverviewBlueprint extends TestBlueprintDto {
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         OverviewBlueprint that = (OverviewBlueprint) o;
-        return includeBigFive == that.includeBigFive && 
+        return includeBigFive == that.includeBigFive &&
+               questionsPerIndicator == that.questionsPerIndicator &&
+               shuffleQuestions == that.shuffleQuestions &&
+               preferredDifficulty == that.preferredDifficulty &&
                Objects.equals(competencyIds, that.competencyIds);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), competencyIds, includeBigFive);
+        return Objects.hash(super.hashCode(), competencyIds, includeBigFive,
+                questionsPerIndicator, preferredDifficulty, shuffleQuestions);
     }
 
     @Override
@@ -109,6 +165,9 @@ public class OverviewBlueprint extends TestBlueprintDto {
                 "strategy=" + getStrategy() +
                 ", competencyIds=" + competencyIds +
                 ", includeBigFive=" + includeBigFive +
+                ", questionsPerIndicator=" + questionsPerIndicator +
+                ", preferredDifficulty=" + preferredDifficulty +
+                ", shuffleQuestions=" + shuffleQuestions +
                 ", adaptivity=" + getAdaptivity() +
                 '}';
     }

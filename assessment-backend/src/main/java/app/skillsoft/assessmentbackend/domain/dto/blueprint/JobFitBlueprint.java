@@ -39,7 +39,7 @@ public class JobFitBlueprint extends TestBlueprintDto {
 
     /**
      * Strictness level for job fit matching (0-100).
-     * 
+     *
      * Lower values (0-30): Lenient matching, accepts broader skill ranges
      * Medium values (31-70): Standard matching, balanced requirements
      * Higher values (71-100): Strict matching, requires close skill alignment
@@ -47,6 +47,22 @@ public class JobFitBlueprint extends TestBlueprintDto {
     @Min(value = 0, message = "Strictness level must be at least 0")
     @Max(value = 100, message = "Strictness level must not exceed 100")
     private int strictnessLevel = 50;
+
+    /**
+     * The Clerk User ID of the candidate taking this assessment.
+     *
+     * Used for Delta Testing: If the candidate has a Competency Passport
+     * from previous assessments, the assembler will calculate gaps between
+     * the job requirements and existing scores, prioritizing questions
+     * for competencies with the largest deficits.
+     *
+     * If null or no passport exists, the system treats all competencies
+     * as having score=0 (full assessment mode).
+     *
+     * This field is typically set at runtime by TestSessionService when
+     * starting a new session, not stored in the template's blueprint.
+     */
+    private String candidateClerkUserId;
 
     // Constructors
     public JobFitBlueprint() {
@@ -83,12 +99,21 @@ public class JobFitBlueprint extends TestBlueprintDto {
         this.strictnessLevel = strictnessLevel;
     }
 
+    public String getCandidateClerkUserId() {
+        return candidateClerkUserId;
+    }
+
+    public void setCandidateClerkUserId(String candidateClerkUserId) {
+        this.candidateClerkUserId = candidateClerkUserId;
+    }
+
     @Override
     public TestBlueprintDto deepCopy() {
         JobFitBlueprint copy = new JobFitBlueprint();
         copy.setStrategy(this.getStrategy());
         copy.setOnetSocCode(this.onetSocCode);
         copy.setStrictnessLevel(this.strictnessLevel);
+        copy.setCandidateClerkUserId(this.candidateClerkUserId);
         if (this.getAdaptivity() != null) {
             copy.setAdaptivity(this.getAdaptivity().deepCopy());
         }
@@ -101,13 +126,14 @@ public class JobFitBlueprint extends TestBlueprintDto {
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         JobFitBlueprint that = (JobFitBlueprint) o;
-        return strictnessLevel == that.strictnessLevel && 
-               Objects.equals(onetSocCode, that.onetSocCode);
+        return strictnessLevel == that.strictnessLevel &&
+               Objects.equals(onetSocCode, that.onetSocCode) &&
+               Objects.equals(candidateClerkUserId, that.candidateClerkUserId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), onetSocCode, strictnessLevel);
+        return Objects.hash(super.hashCode(), onetSocCode, strictnessLevel, candidateClerkUserId);
     }
 
     @Override
@@ -116,6 +142,7 @@ public class JobFitBlueprint extends TestBlueprintDto {
                 "strategy=" + getStrategy() +
                 ", onetSocCode='" + onetSocCode + '\'' +
                 ", strictnessLevel=" + strictnessLevel +
+                ", candidateClerkUserId='" + candidateClerkUserId + '\'' +
                 ", adaptivity=" + getAdaptivity() +
                 '}';
     }

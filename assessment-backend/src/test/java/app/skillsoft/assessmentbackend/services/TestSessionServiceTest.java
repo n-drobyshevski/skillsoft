@@ -1,12 +1,17 @@
 package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.HealthStatus;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryHeatmapDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryHeatmapDto.HeatmapSummary;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.repository.*;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
+import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
@@ -20,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -79,6 +85,12 @@ class TestSessionServiceTest {
     @Mock
     private TestAssemblerFactory assemblerFactory;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private AssemblyProgressTracker assemblyProgressTracker;
+
     private TestSessionServiceImpl testSessionService;
 
     private UUID sessionId;
@@ -102,7 +114,9 @@ class TestSessionServiceTest {
                 inventoryHeatmapService,
                 scoringStrategies,
                 psychometricAuditJob,
-                assemblerFactory
+                assemblerFactory,
+                eventPublisher,
+                assemblyProgressTracker
         );
 
         sessionId = UUID.randomUUID();
@@ -163,8 +177,8 @@ class TestSessionServiceTest {
         @Test
         @DisplayName("Should return session when found")
         void shouldReturnSessionWhenFound() {
-            // Given
-            when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(mockSession));
+            // Given - use new optimized query method
+            when(sessionRepository.findByIdWithTemplate(sessionId)).thenReturn(Optional.of(mockSession));
 
             // When
             Optional<TestSessionDto> result = testSessionService.findById(sessionId);
@@ -175,15 +189,15 @@ class TestSessionServiceTest {
             assertThat(result.get().clerkUserId()).isEqualTo(clerkUserId);
             assertThat(result.get().status()).isEqualTo(SessionStatus.IN_PROGRESS);
 
-            verify(sessionRepository).findById(sessionId);
+            verify(sessionRepository).findByIdWithTemplate(sessionId);
         }
 
         @Test
         @DisplayName("Should return empty when session not found")
         void shouldReturnEmptyWhenNotFound() {
-            // Given
+            // Given - use new optimized query method
             UUID nonExistentId = UUID.randomUUID();
-            when(sessionRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+            when(sessionRepository.findByIdWithTemplate(nonExistentId)).thenReturn(Optional.empty());
 
             // When
             Optional<TestSessionDto> result = testSessionService.findById(nonExistentId);
@@ -191,7 +205,7 @@ class TestSessionServiceTest {
             // Then
             assertThat(result).isEmpty();
 
-            verify(sessionRepository).findById(nonExistentId);
+            verify(sessionRepository).findByIdWithTemplate(nonExistentId);
         }
     }
 
@@ -202,14 +216,18 @@ class TestSessionServiceTest {
         @Test
         @DisplayName("Should return paginated user sessions")
         void shouldReturnPaginatedUserSessions() {
-            // Given
+            // Given - use new optimized query methods
             Pageable pageable = PageRequest.of(0, 10);
             Page<TestSession> sessionPage = new PageImpl<>(
                     List.of(mockSession),
                     pageable,
                     1
             );
-            when(sessionRepository.findByClerkUserId(clerkUserId, pageable)).thenReturn(sessionPage);
+            when(sessionRepository.findByClerkUserIdWithTemplate(clerkUserId, pageable)).thenReturn(sessionPage);
+            // Mock batch answer count query (N+1 prevention)
+            List<Object[]> countResults = new ArrayList<>();
+            countResults.add(new Object[]{sessionId, 0L});
+            when(answerRepository.countAnsweredBySessionIds(List.of(sessionId))).thenReturn(countResults);
 
             // When
             Page<TestSessionSummaryDto> result = testSessionService.findByUser(clerkUserId, pageable);
@@ -219,15 +237,19 @@ class TestSessionServiceTest {
             assertThat(result.getContent()).hasSize(1);
             assertThat(result.getContent().get(0).id()).isEqualTo(sessionId);
 
-            verify(sessionRepository).findByClerkUserId(clerkUserId, pageable);
+            verify(sessionRepository).findByClerkUserIdWithTemplate(clerkUserId, pageable);
         }
 
         @Test
         @DisplayName("Should return user sessions filtered by status")
         void shouldReturnSessionsFilteredByStatus() {
-            // Given
-            when(sessionRepository.findByClerkUserIdAndStatus(clerkUserId, SessionStatus.IN_PROGRESS))
+            // Given - use new optimized query methods
+            when(sessionRepository.findByClerkUserIdAndStatusWithTemplate(clerkUserId, SessionStatus.IN_PROGRESS))
                     .thenReturn(List.of(mockSession));
+            // Mock batch answer count query (N+1 prevention)
+            List<Object[]> countResults = new ArrayList<>();
+            countResults.add(new Object[]{sessionId, 0L});
+            when(answerRepository.countAnsweredBySessionIds(List.of(sessionId))).thenReturn(countResults);
 
             // When
             List<TestSessionSummaryDto> result = testSessionService.findByUserAndStatus(clerkUserId, SessionStatus.IN_PROGRESS);
@@ -236,7 +258,7 @@ class TestSessionServiceTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).status()).isEqualTo(SessionStatus.IN_PROGRESS);
 
-            verify(sessionRepository).findByClerkUserIdAndStatus(clerkUserId, SessionStatus.IN_PROGRESS);
+            verify(sessionRepository).findByClerkUserIdAndStatusWithTemplate(clerkUserId, SessionStatus.IN_PROGRESS);
         }
     }
 
@@ -440,12 +462,13 @@ class TestSessionServiceTest {
     class StartSessionEmptyQuestionValidationTests {
 
         @Test
-        @DisplayName("Should throw TestNotReadyException when no questions available for competencies")
-        void startSession_WithNoQuestions_ShouldThrowTestNotReadyException() {
-            // Given: A template with competencies that have no questions
-            UUID competencyWithNoQuestions = UUID.randomUUID();
-            mockTemplate.setCompetencyIds(List.of(competencyWithNoQuestions));
+        @DisplayName("Should throw IllegalStateException when template has no typed blueprint")
+        void startSession_WithNoBlueprint_ShouldThrowIllegalStateException() {
+            // Given: A template without a typed blueprint
+            UUID competencyId = UUID.randomUUID();
+            mockTemplate.setCompetencyIds(List.of(competencyId));
             mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
+            // Blueprint is null by default
 
             StartTestSessionRequest request = new StartTestSessionRequest(
                     templateId,
@@ -460,53 +483,35 @@ class TestSessionServiceTest {
                     clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                     .thenReturn(Optional.empty());
 
-            // Mock Scenario A question generation - no UNIVERSAL questions
-            when(questionRepository.findUniversalQuestions(eq(competencyWithNoQuestions), anyInt()))
-                    .thenReturn(Collections.emptyList());
-
-            // Mock fallback - no behavioral indicators for competency
-            when(indicatorRepository.findByCompetencyId(competencyWithNoQuestions))
-                    .thenReturn(Collections.emptyList());
-
-            // Mock fallback query
-            when(questionRepository.findAnyActiveQuestionsForCompetency(eq(competencyWithNoQuestions), anyInt()))
-                    .thenReturn(Collections.emptyList());
-
-            // Mock heatmap service to return CRITICAL status
-            when(inventoryHeatmapService.generateHeatmapFor(anyList()))
-                    .thenReturn(createMockHeatmap(Map.of(competencyWithNoQuestions, HealthStatus.CRITICAL)));
-
-            // When & Then: Should throw TestNotReadyException
+            // When & Then: Should throw IllegalStateException
             assertThatThrownBy(() -> testSessionService.startSession(request))
-                    .isInstanceOf(TestNotReadyException.class)
-                    .hasMessageContaining("Cannot start test session")
-                    .hasMessageContaining("missing questions");
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("typed blueprint");
 
             // Verify that session was never saved
             verify(sessionRepository, never()).save(any(TestSession.class));
-
-            // Verify that we attempted to find questions
-            verify(questionRepository).findUniversalQuestions(eq(competencyWithNoQuestions), anyInt());
-            // Note: indicatorRepository.findByCompetencyId may be called multiple times (diagnostics + readiness check)
-            verify(indicatorRepository, atLeastOnce()).findByCompetencyId(competencyWithNoQuestions);
         }
 
         @Test
-        @DisplayName("Should throw TestNotReadyException when indicators exist but have no active questions")
-        void startSession_WithIndicatorsButNoActiveQuestions_ShouldThrowTestNotReadyException() {
-            // Given: A template with competency that has indicators but no active questions
+        @DisplayName("Should throw TestNotReadyException when assembler returns empty question list")
+        void startSession_WithNoQuestions_ShouldThrowTestNotReadyException() {
+            // Given: A template with competencies but assembler returns no questions
             UUID competencyId = UUID.randomUUID();
-            UUID indicatorId = UUID.randomUUID();
             mockTemplate.setCompetencyIds(List.of(competencyId));
             mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
 
+            // Create a mock blueprint
+            OverviewBlueprint mockBlueprint = mock(OverviewBlueprint.class);
+            when(mockBlueprint.getStrategy()).thenReturn(AssessmentGoal.OVERVIEW);
+            when(mockBlueprint.deepCopy()).thenReturn(mockBlueprint);
+
+            // Set blueprint on template
+            mockTemplate.setTypedBlueprint(mockBlueprint);
+
             StartTestSessionRequest request = new StartTestSessionRequest(
                     templateId,
                     clerkUserId
             );
-
-            BehavioralIndicator mockIndicator = new BehavioralIndicator();
-            mockIndicator.setId(indicatorId);
 
             // Mock template repository
             when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
@@ -516,42 +521,56 @@ class TestSessionServiceTest {
                     clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                     .thenReturn(Optional.empty());
 
-            // Mock Scenario A question generation - no UNIVERSAL questions
-            when(questionRepository.findUniversalQuestions(eq(competencyId), anyInt()))
-                    .thenReturn(Collections.emptyList());
+            // Mock assembler factory to return a mock assembler that returns empty list
+            TestAssembler mockAssembler = mock(TestAssembler.class);
+            when(mockAssembler.assemble(any())).thenReturn(Collections.emptyList());
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
-            // Mock fallback - indicator exists but has no active questions
-            when(indicatorRepository.findByCompetencyId(competencyId))
-                    .thenReturn(List.of(mockIndicator));
-            when(questionRepository.findByBehavioralIndicator_Id(indicatorId))
-                    .thenReturn(Collections.emptyList());
-
-            // Mock fallback query
-            when(questionRepository.findAnyActiveQuestionsForCompetency(eq(competencyId), anyInt()))
-                    .thenReturn(Collections.emptyList());
-
-            // Mock heatmap service to return CRITICAL status
+            // Mock heatmap service to return CRITICAL status for readiness check
             when(inventoryHeatmapService.generateHeatmapFor(anyList()))
                     .thenReturn(createMockHeatmap(Map.of(competencyId, HealthStatus.CRITICAL)));
+            when(inventoryHeatmapService.checkSufficiency(anyList(), anyInt()))
+                    .thenReturn(Map.of(competencyId, 3)); // shortage of 3
+
+            // Mock indicator repository for readiness check
+            when(indicatorRepository.findByCompetencyId(competencyId))
+                    .thenReturn(Collections.emptyList());
+
+            // Mock competency repository for readiness check
+            Competency mockCompetency = new Competency();
+            mockCompetency.setId(competencyId);
+            mockCompetency.setName("Test Competency");
+            when(competencyRepository.findById(competencyId)).thenReturn(Optional.of(mockCompetency));
 
             // When & Then: Should throw TestNotReadyException
             assertThatThrownBy(() -> testSessionService.startSession(request))
                     .isInstanceOf(TestNotReadyException.class)
-                    .hasMessageContaining("Cannot start test session")
-                    .hasMessageContaining("missing questions");
+                    .hasMessageContaining("Cannot start test session");
 
             // Verify that session was never saved
             verify(sessionRepository, never()).save(any(TestSession.class));
+
+            // Verify that assembler was called
+            verify(assemblerFactory).getAssembler(any(TestBlueprintDto.class));
+            verify(mockAssembler).assemble(any());
         }
 
         @Test
-        @DisplayName("Should throw TestNotReadyException for JOB_FIT goal with no questions (legacy fallback)")
+        @DisplayName("Should throw TestNotReadyException for JOB_FIT goal with no questions")
         void startSession_JobFitGoalWithNoQuestions_ShouldThrowTestNotReadyException() {
-            // Given: A template with JOB_FIT goal that falls back to legacy logic
+            // Given: A template with JOB_FIT goal
             UUID competencyId = UUID.randomUUID();
             mockTemplate.setCompetencyIds(List.of(competencyId));
             mockTemplate.setGoal(AssessmentGoal.JOB_FIT);
 
+            // Create a mock JobFit blueprint
+            JobFitBlueprint mockBlueprint = mock(JobFitBlueprint.class);
+            when(mockBlueprint.getStrategy()).thenReturn(AssessmentGoal.JOB_FIT);
+            when(mockBlueprint.deepCopy()).thenReturn(mockBlueprint);
+
+            // Set blueprint on template
+            mockTemplate.setTypedBlueprint(mockBlueprint);
+
             StartTestSessionRequest request = new StartTestSessionRequest(
                     templateId,
                     clerkUserId
@@ -565,28 +584,38 @@ class TestSessionServiceTest {
                     clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                     .thenReturn(Optional.empty());
 
-            // Mock legacy fallback - no indicators for competency
-            when(indicatorRepository.findByCompetencyId(competencyId))
-                    .thenReturn(Collections.emptyList());
+            // Mock assembler factory to return a mock assembler that returns empty list
+            TestAssembler mockAssembler = mock(TestAssembler.class);
+            when(mockAssembler.assemble(any())).thenReturn(Collections.emptyList());
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
             // Mock heatmap service to return CRITICAL status
             when(inventoryHeatmapService.generateHeatmapFor(anyList()))
                     .thenReturn(createMockHeatmap(Map.of(competencyId, HealthStatus.CRITICAL)));
+            when(inventoryHeatmapService.checkSufficiency(anyList(), anyInt()))
+                    .thenReturn(Map.of(competencyId, 3));
+
+            // Mock indicator and competency repositories for readiness check
+            when(indicatorRepository.findByCompetencyId(competencyId))
+                    .thenReturn(Collections.emptyList());
+            Competency mockCompetency = new Competency();
+            mockCompetency.setId(competencyId);
+            mockCompetency.setName("Test Competency");
+            when(competencyRepository.findById(competencyId)).thenReturn(Optional.of(mockCompetency));
 
             // When & Then: Should throw TestNotReadyException
             assertThatThrownBy(() -> testSessionService.startSession(request))
                     .isInstanceOf(TestNotReadyException.class)
-                    .hasMessageContaining("Cannot start test session")
-                    .hasMessageContaining("missing questions");
+                    .hasMessageContaining("Cannot start test session");
 
             // Verify that session was never saved
             verify(sessionRepository, never()).save(any(TestSession.class));
         }
 
         @Test
-        @DisplayName("Should successfully start session when questions are available")
+        @DisplayName("Should successfully start session when assembler returns questions")
         void startSession_WithQuestionsAvailable_ShouldSucceed() {
-            // Given: A template with competency that has active questions
+            // Given: A template with competency and assembler returns questions
             UUID competencyId = UUID.randomUUID();
             UUID question1Id = UUID.randomUUID();
             UUID question2Id = UUID.randomUUID();
@@ -596,18 +625,18 @@ class TestSessionServiceTest {
             mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
             mockTemplate.setQuestionsPerIndicator(3);
 
+            // Create a mock blueprint
+            OverviewBlueprint mockBlueprint = mock(OverviewBlueprint.class);
+            when(mockBlueprint.getStrategy()).thenReturn(AssessmentGoal.OVERVIEW);
+            when(mockBlueprint.deepCopy()).thenReturn(mockBlueprint);
+
+            // Set blueprint on template
+            mockTemplate.setTypedBlueprint(mockBlueprint);
+
             StartTestSessionRequest request = new StartTestSessionRequest(
                     templateId,
                     clerkUserId
             );
-
-            // Create mock questions
-            AssessmentQuestion mockQuestion1 = mock(AssessmentQuestion.class);
-            when(mockQuestion1.getId()).thenReturn(question1Id);
-            AssessmentQuestion mockQuestion2 = mock(AssessmentQuestion.class);
-            when(mockQuestion2.getId()).thenReturn(question2Id);
-            AssessmentQuestion mockQuestion3 = mock(AssessmentQuestion.class);
-            when(mockQuestion3.getId()).thenReturn(question3Id);
 
             // Mock template repository
             when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
@@ -617,11 +646,10 @@ class TestSessionServiceTest {
                     clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                     .thenReturn(Optional.empty());
 
-            // Mock Scenario A question generation - return questions
-            when(questionRepository.findUniversalQuestions(eq(competencyId), eq(3)))
-                    .thenReturn(List.of(mockQuestion1, mockQuestion2, mockQuestion3));
-
-            // Note: No heatmap mock needed - heatmap is only checked when questions are not found
+            // Mock assembler factory to return a mock assembler that returns questions
+            TestAssembler mockAssembler = mock(TestAssembler.class);
+            when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id, question3Id));
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
             // Mock session save
             when(sessionRepository.save(any(TestSession.class))).thenAnswer(invocation -> {
@@ -641,6 +669,10 @@ class TestSessionServiceTest {
             assertThat(result.id()).isEqualTo(sessionId);
             assertThat(result.status()).isEqualTo(SessionStatus.IN_PROGRESS);
             assertThat(result.totalQuestions()).isEqualTo(3);
+
+            // Verify assembler was used
+            verify(assemblerFactory).getAssembler(any(TestBlueprintDto.class));
+            verify(mockAssembler).assemble(any());
 
             // Verify session was saved with correct question order
             verify(sessionRepository).save(argThat(session -> {

@@ -116,4 +116,83 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
      * Find recent results (for dashboard)
      */
     List<TestResult> findTop10ByOrderByCompletedAtDesc();
+
+    // ============================================
+    // OPTIMIZED QUERIES (N+1 Prevention)
+    // ============================================
+
+    /**
+     * Find result by ID with session and template eagerly loaded.
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.id = :resultId")
+    Optional<TestResult> findByIdWithSessionAndTemplate(@Param("resultId") UUID resultId);
+
+    /**
+     * Find result by session ID with template eagerly loaded.
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE s.id = :sessionId")
+    Optional<TestResult> findBySessionIdWithTemplate(@Param("sessionId") UUID sessionId);
+
+    /**
+     * Find results for a user with session and template eagerly loaded.
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId ORDER BY r.completedAt DESC")
+    List<TestResult> findByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId);
+
+    /**
+     * Find results for a user with session and template eagerly loaded (paginated).
+     */
+    @Query(value = "SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId",
+           countQuery = "SELECT COUNT(r) FROM TestResult r WHERE r.clerkUserId = :userId")
+    Page<TestResult> findByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId, Pageable pageable);
+
+    /**
+     * Find passed results for a user with session and template eagerly loaded.
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND r.passed = true ORDER BY r.completedAt DESC")
+    List<TestResult> findPassedByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId);
+
+    /**
+     * Find user's results for a specific template with session eagerly loaded.
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND s.template.id = :templateId ORDER BY r.completedAt DESC")
+    List<TestResult> findByUserAndTemplateWithSession(
+            @Param("userId") String clerkUserId,
+            @Param("templateId") UUID templateId);
+
+    /**
+     * Aggregate user test statistics in a single query.
+     * Returns [totalTests, passedTests, avgScore, bestScore].
+     * Avoids multiple COUNT/AVG queries.
+     */
+    @Query("""
+        SELECT COUNT(r),
+               COUNT(CASE WHEN r.passed = true THEN 1 END),
+               COALESCE(AVG(r.overallPercentage), 0.0),
+               COALESCE(MAX(r.overallPercentage), 0.0)
+        FROM TestResult r
+        WHERE r.clerkUserId = :userId
+        """)
+    Object[] getUserStatisticsAggregate(@Param("userId") String clerkUserId);
+
+    /**
+     * Aggregate template test statistics in a single query.
+     * Returns [totalAttempts, passedCount, avgScore, minScore, maxScore].
+     */
+    @Query("""
+        SELECT COUNT(r),
+               COUNT(CASE WHEN r.passed = true THEN 1 END),
+               COALESCE(AVG(r.overallPercentage), 0.0),
+               COALESCE(MIN(r.overallPercentage), 0.0),
+               COALESCE(MAX(r.overallPercentage), 0.0)
+        FROM TestResult r
+        WHERE r.session.template.id = :templateId
+        """)
+    Object[] getTemplateStatisticsAggregate(@Param("templateId") UUID templateId);
+
+    /**
+     * Find recent results with session and template eagerly loaded (for dashboard).
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template ORDER BY r.completedAt DESC LIMIT :limit")
+    List<TestResult> findRecentWithSessionAndTemplate(@Param("limit") int limit);
 }

@@ -40,6 +40,21 @@ public interface TestAnswerRepository extends JpaRepository<TestAnswer, UUID> {
     long countAnsweredBySessionId(@Param("sessionId") UUID sessionId);
 
     /**
+     * Batch count answered questions for multiple sessions.
+     * Returns a list of Object[] where each row is [sessionId, count].
+     * Used to avoid N+1 queries when loading session summaries.
+     */
+    @Query("""
+        SELECT a.session.id, COUNT(a)
+        FROM TestAnswer a
+        WHERE a.session.id IN :sessionIds
+          AND a.isSkipped = false
+          AND a.answeredAt IS NOT NULL
+        GROUP BY a.session.id
+        """)
+    List<Object[]> countAnsweredBySessionIds(@Param("sessionIds") List<UUID> sessionIds);
+
+    /**
      * Count skipped questions in a session
      */
     long countBySession_IdAndIsSkippedTrue(UUID sessionId);

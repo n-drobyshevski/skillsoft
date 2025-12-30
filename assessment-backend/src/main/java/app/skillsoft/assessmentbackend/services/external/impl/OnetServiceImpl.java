@@ -1,7 +1,11 @@
 package app.skillsoft.assessmentbackend.services.external.impl;
 
+import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -10,9 +14,14 @@ import java.util.Optional;
 
 /**
  * Mock implementation of OnetService for development and testing.
- * 
+ *
  * In production, this would integrate with the actual O*NET Web Services API
  * or a locally cached O*NET database.
+ *
+ * Resilience patterns applied:
+ * - Circuit Breaker: Opens after 50% failure rate over 10 calls, stays open 30s
+ * - Retry: Up to 3 attempts with 500ms wait for transient failures
+ * - Caching: L1 cache with Caffeine for frequently accessed profiles
  */
 @Service
 @Slf4j
@@ -110,32 +119,79 @@ public class OnetServiceImpl implements OnetService {
     }
 
     @Override
+    @CircuitBreaker(name = "onetService", fallbackMethod = "getProfileFallback")
+    @Retry(name = "externalServices")
+    @Cacheable(
+        value = CacheConfig.ONET_PROFILES_CACHE,
+        key = "#socCode",
+        unless = "#result == null || !#result.isPresent()"
+    )
     public Optional<OnetProfile> getProfile(String socCode) {
-        log.debug("Fetching O*NET profile for SOC code: {}", socCode);
+        log.debug("Fetching O*NET profile for SOC code: {} (cache miss)", socCode);
         return Optional.ofNullable(MOCK_PROFILES.get(socCode));
     }
 
+    /**
+     * Fallback method for getProfile when circuit breaker is open or external call fails.
+     * Returns empty Optional to signal unavailability.
+     */
+    private Optional<OnetProfile> getProfileFallback(String socCode, Exception e) {
+        log.warn("O*NET service unavailable for SOC code {}: {}", socCode, e.getMessage());
+        return Optional.empty();
+    }
+
     @Override
+    @CircuitBreaker(name = "onetService", fallbackMethod = "getBenchmarkFallback")
+    @Retry(name = "externalServices")
     public Optional<Double> getBenchmark(String socCode, String competencyName) {
-        return getProfile(socCode)
+        return getProfileInternal(socCode)
             .flatMap(profile -> {
                 // Check all categories for the competency
                 Double benchmark = profile.benchmarks().get(competencyName);
                 if (benchmark != null) return Optional.of(benchmark);
-                
+
                 benchmark = profile.skills().get(competencyName);
                 if (benchmark != null) return Optional.of(benchmark);
-                
+
                 benchmark = profile.abilities().get(competencyName);
                 if (benchmark != null) return Optional.of(benchmark);
-                
+
                 benchmark = profile.knowledgeAreas().get(competencyName);
                 return Optional.ofNullable(benchmark);
             });
     }
 
+    /**
+     * Fallback method for getBenchmark when circuit breaker is open or external call fails.
+     * Returns empty Optional to signal unavailability.
+     */
+    private Optional<Double> getBenchmarkFallback(String socCode, String competencyName, Exception e) {
+        log.warn("O*NET benchmark unavailable for SOC code {} / competency {}: {}",
+                 socCode, competencyName, e.getMessage());
+        return Optional.empty();
+    }
+
     @Override
+    @CircuitBreaker(name = "onetService", fallbackMethod = "isValidSocCodeFallback")
+    @Retry(name = "externalServices")
     public boolean isValidSocCode(String socCode) {
         return MOCK_PROFILES.containsKey(socCode);
+    }
+
+    /**
+     * Fallback method for isValidSocCode when circuit breaker is open or external call fails.
+     * Returns false to signal unable to validate.
+     */
+    private boolean isValidSocCodeFallback(String socCode, Exception e) {
+        log.warn("O*NET SOC code validation unavailable for {}: {}", socCode, e.getMessage());
+        return false;
+    }
+
+    /**
+     * Internal profile lookup without circuit breaker (to avoid double-wrapping).
+     * Used by other methods that already have circuit breaker protection.
+     */
+    private Optional<OnetProfile> getProfileInternal(String socCode) {
+        return Optional.ofNullable(MOCK_PROFILES.get(socCode));
     }
 }

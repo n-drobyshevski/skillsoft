@@ -103,8 +103,8 @@ class TestResultServiceTest {
         @Test
         @DisplayName("Should return result when found")
         void shouldReturnResultWhenFound() {
-            // Given
-            when(resultRepository.findById(resultId)).thenReturn(Optional.of(mockResult));
+            // Given - use new optimized query with JOIN FETCH
+            when(resultRepository.findByIdWithSessionAndTemplate(resultId)).thenReturn(Optional.of(mockResult));
 
             // When
             Optional<TestResultDto> result = testResultService.findById(resultId);
@@ -115,15 +115,15 @@ class TestResultServiceTest {
             assertThat(result.get().overallPercentage()).isEqualTo(75.0);
             assertThat(result.get().passed()).isTrue();
 
-            verify(resultRepository).findById(resultId);
+            verify(resultRepository).findByIdWithSessionAndTemplate(resultId);
         }
 
         @Test
         @DisplayName("Should return empty when result not found")
         void shouldReturnEmptyWhenNotFound() {
-            // Given
+            // Given - use new optimized query with JOIN FETCH
             UUID nonExistentId = UUID.randomUUID();
-            when(resultRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+            when(resultRepository.findByIdWithSessionAndTemplate(nonExistentId)).thenReturn(Optional.empty());
 
             // When
             Optional<TestResultDto> result = testResultService.findById(nonExistentId);
@@ -131,7 +131,7 @@ class TestResultServiceTest {
             // Then
             assertThat(result).isEmpty();
 
-            verify(resultRepository).findById(nonExistentId);
+            verify(resultRepository).findByIdWithSessionAndTemplate(nonExistentId);
         }
     }
 
@@ -142,8 +142,8 @@ class TestResultServiceTest {
         @Test
         @DisplayName("Should return result by session id")
         void shouldReturnResultBySessionId() {
-            // Given
-            when(resultRepository.findBySession_Id(sessionId)).thenReturn(Optional.of(mockResult));
+            // Given - use new optimized query with JOIN FETCH
+            when(resultRepository.findBySessionIdWithTemplate(sessionId)).thenReturn(Optional.of(mockResult));
 
             // When
             Optional<TestResultDto> result = testResultService.findBySessionId(sessionId);
@@ -152,21 +152,23 @@ class TestResultServiceTest {
             assertThat(result).isPresent();
             assertThat(result.get().sessionId()).isEqualTo(sessionId);
 
-            verify(resultRepository).findBySession_Id(sessionId);
+            verify(resultRepository).findBySessionIdWithTemplate(sessionId);
         }
 
         @Test
         @DisplayName("Should return empty when no result for session")
         void shouldReturnEmptyWhenNoResultForSession() {
-            // Given
+            // Given - use new optimized query with JOIN FETCH
             UUID nonExistentSessionId = UUID.randomUUID();
-            when(resultRepository.findBySession_Id(nonExistentSessionId)).thenReturn(Optional.empty());
+            when(resultRepository.findBySessionIdWithTemplate(nonExistentSessionId)).thenReturn(Optional.empty());
 
             // When
             Optional<TestResultDto> result = testResultService.findBySessionId(nonExistentSessionId);
 
             // Then
             assertThat(result).isEmpty();
+
+            verify(resultRepository).findBySessionIdWithTemplate(nonExistentSessionId);
         }
     }
 
@@ -177,14 +179,14 @@ class TestResultServiceTest {
         @Test
         @DisplayName("Should return paginated user results")
         void shouldReturnPaginatedUserResults() {
-            // Given
+            // Given - use new optimized query with JOIN FETCH
             Pageable pageable = PageRequest.of(0, 10);
             Page<TestResult> resultPage = new PageImpl<>(
                     List.of(mockResult),
                     pageable,
                     1
             );
-            when(resultRepository.findByClerkUserId(clerkUserId, pageable)).thenReturn(resultPage);
+            when(resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable)).thenReturn(resultPage);
 
             // When
             Page<TestResultSummaryDto> result = testResultService.findByUser(clerkUserId, pageable);
@@ -194,14 +196,14 @@ class TestResultServiceTest {
             assertThat(result.getContent()).hasSize(1);
             assertThat(result.getContent().get(0).id()).isEqualTo(resultId);
 
-            verify(resultRepository).findByClerkUserId(clerkUserId, pageable);
+            verify(resultRepository).findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable);
         }
 
         @Test
         @DisplayName("Should return user results ordered by date")
         void shouldReturnUserResultsOrderedByDate() {
-            // Given
-            when(resultRepository.findByClerkUserIdOrderByCompletedAtDesc(clerkUserId))
+            // Given - use new optimized query with JOIN FETCH
+            when(resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -211,14 +213,14 @@ class TestResultServiceTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).passed()).isTrue();
 
-            verify(resultRepository).findByClerkUserIdOrderByCompletedAtDesc(clerkUserId);
+            verify(resultRepository).findByClerkUserIdWithSessionAndTemplate(clerkUserId);
         }
 
         @Test
         @DisplayName("Should return passed results for user")
         void shouldReturnPassedResults() {
-            // Given
-            when(resultRepository.findByClerkUserIdAndPassedTrue(clerkUserId))
+            // Given - use new optimized query with JOIN FETCH
+            when(resultRepository.findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -228,7 +230,7 @@ class TestResultServiceTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).passed()).isTrue();
 
-            verify(resultRepository).findByClerkUserIdAndPassedTrue(clerkUserId);
+            verify(resultRepository).findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId);
         }
     }
 
@@ -239,8 +241,8 @@ class TestResultServiceTest {
         @Test
         @DisplayName("Should return user results for specific template")
         void shouldReturnResultsForTemplate() {
-            // Given
-            when(resultRepository.findByUserAndTemplate(clerkUserId, templateId))
+            // Given - use new optimized query with JOIN FETCH
+            when(resultRepository.findByUserAndTemplateWithSession(clerkUserId, templateId))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -250,7 +252,7 @@ class TestResultServiceTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).templateId()).isEqualTo(templateId);
 
-            verify(resultRepository).findByUserAndTemplate(clerkUserId, templateId);
+            verify(resultRepository).findByUserAndTemplateWithSession(clerkUserId, templateId);
         }
 
         @Test
@@ -278,9 +280,10 @@ class TestResultServiceTest {
         @Test
         @DisplayName("Should return user statistics")
         void shouldReturnUserStatistics() {
-            // Given
-            when(resultRepository.countByClerkUserId(clerkUserId)).thenReturn(10L);
-            when(resultRepository.countByClerkUserIdAndPassedTrue(clerkUserId)).thenReturn(8L);
+            // Given - use new aggregate query
+            // Returns [totalTests, passedTests, avgScore, bestScore]
+            Object[] statsAggregate = new Object[]{10L, 8L, 75.0, 85.0};
+            when(resultRepository.getUserStatisticsAggregate(clerkUserId)).thenReturn(statsAggregate);
             when(resultRepository.findByClerkUserIdOrderByCompletedAtDesc(clerkUserId))
                     .thenReturn(List.of(mockResult));
 
@@ -294,8 +297,7 @@ class TestResultServiceTest {
             assertThat(stats.passedTests()).isEqualTo(8L);
             assertThat(stats.failedTests()).isEqualTo(2L);
 
-            verify(resultRepository).countByClerkUserId(clerkUserId);
-            verify(resultRepository).countByClerkUserIdAndPassedTrue(clerkUserId);
+            verify(resultRepository).getUserStatisticsAggregate(clerkUserId);
         }
     }
 
