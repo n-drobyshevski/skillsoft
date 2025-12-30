@@ -15,6 +15,7 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
+import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
@@ -69,6 +70,9 @@ class TestSessionDuplicateSessionTest {
     @Mock
     private PsychometricAuditJob psychometricAuditJob;
 
+    @Mock
+    private TestAssemblerFactory assemblerFactory;
+
     private TestSessionService testSessionService;
 
     private UUID templateId;
@@ -90,7 +94,8 @@ class TestSessionDuplicateSessionTest {
                 competencyRepository,
                 inventoryHeatmapService,
                 Collections.emptyList(), // scoringStrategies - not needed for this test
-                psychometricAuditJob
+                psychometricAuditJob,
+                assemblerFactory
         );
 
         // Initialize test data

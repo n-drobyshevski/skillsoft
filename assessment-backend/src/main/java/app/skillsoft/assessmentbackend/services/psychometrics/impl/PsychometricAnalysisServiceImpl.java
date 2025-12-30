@@ -7,7 +7,6 @@ import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAnalysisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,7 +59,6 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
     private final AssessmentQuestionRepository assessmentQuestionRepository;
     private final CompetencyRepository competencyRepository;
 
-    @Autowired
     public PsychometricAnalysisServiceImpl(
             ItemStatisticsRepository itemStatisticsRepository,
             CompetencyReliabilityRepository competencyReliabilityRepository,

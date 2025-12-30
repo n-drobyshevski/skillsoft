@@ -9,6 +9,8 @@ import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
+import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
+import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
@@ -38,6 +40,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final InventoryHeatmapService inventoryHeatmapService;
     private final List<ScoringStrategy> scoringStrategies;
     private final PsychometricAuditJob psychometricAuditJob;
+    private final TestAssemblerFactory assemblerFactory;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -49,7 +52,8 @@ public class TestSessionServiceImpl implements TestSessionService {
             CompetencyRepository competencyRepository,
             InventoryHeatmapService inventoryHeatmapService,
             List<ScoringStrategy> scoringStrategies,
-            PsychometricAuditJob psychometricAuditJob) {
+            PsychometricAuditJob psychometricAuditJob,
+            TestAssemblerFactory assemblerFactory) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -60,6 +64,7 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.inventoryHeatmapService = inventoryHeatmapService;
         this.scoringStrategies = scoringStrategies;
         this.psychometricAuditJob = psychometricAuditJob;
+        this.assemblerFactory = assemblerFactory;
     }
 
     @Override
@@ -379,7 +384,32 @@ public class TestSessionServiceImpl implements TestSessionService {
 
     // Helper methods
     private List<UUID> generateQuestionOrder(TestTemplate template) {
-        // Strategy Pattern: Select questions based on assessment goal
+        // Strategy Pattern: Use assemblers for templates with typed blueprints
+        var typedBlueprint = template.getTypedBlueprint();
+
+        if (typedBlueprint != null) {
+            try {
+                log.info("Using TestAssembler for goal: {} (blueprint type: {})",
+                    typedBlueprint.getStrategy(), typedBlueprint.getClass().getSimpleName());
+
+                TestAssembler assembler = assemblerFactory.getAssembler(typedBlueprint);
+                List<UUID> questions = assembler.assemble(typedBlueprint);
+
+                log.info("TestAssembler produced {} questions for goal: {}",
+                    questions.size(), typedBlueprint.getStrategy());
+
+                return questions;
+            } catch (Exception e) {
+                log.warn("Assembler failed for goal {}: {}. Falling back to legacy logic.",
+                    typedBlueprint.getStrategy(), e.getMessage());
+                // Fall through to legacy logic
+            }
+        } else {
+            log.debug("No typed blueprint found for template {}. Using legacy question selection.",
+                template.getId());
+        }
+
+        // Fallback: Legacy question selection for old templates without typed blueprints
         return switch (template.getGoal()) {
             case OVERVIEW -> generateScenarioAOrder(template);
             case JOB_FIT -> generateScenarioBOrder(template);

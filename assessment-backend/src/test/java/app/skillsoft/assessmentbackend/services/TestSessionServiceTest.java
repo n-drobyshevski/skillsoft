@@ -7,6 +7,7 @@ import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryHeatmapDto
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.repository.*;
+import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
@@ -75,6 +76,9 @@ class TestSessionServiceTest {
     @Mock
     private PsychometricAuditJob psychometricAuditJob;
 
+    @Mock
+    private TestAssemblerFactory assemblerFactory;
+
     private TestSessionServiceImpl testSessionService;
 
     private UUID sessionId;
@@ -97,7 +101,8 @@ class TestSessionServiceTest {
                 competencyRepository,
                 inventoryHeatmapService,
                 scoringStrategies,
-                psychometricAuditJob
+                psychometricAuditJob,
+                assemblerFactory
         );
 
         sessionId = UUID.randomUUID();
