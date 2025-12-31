@@ -1,20 +1,20 @@
 package app.skillsoft.assessmentbackend;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
-import org.springframework.core.env.Environment;
-
-
+/**
+ * Main application entry point for SkillSoft Assessment Backend.
+ *
+ * Enables configuration properties scanning to automatically detect and bind
+ * @ConfigurationProperties classes like ScoringConfiguration.
+ */
 @SpringBootApplication
+@ConfigurationPropertiesScan("app.skillsoft.assessmentbackend.config")
 public class AssessmentBackendApplication {
-    @Autowired
-    private Environment env;
-
 
     public static void main(String[] args) {
         SpringApplication.run(AssessmentBackendApplication.class, args);
     }
-
 }

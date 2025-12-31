@@ -1,10 +1,12 @@
 package app.skillsoft.assessmentbackend.services.scoring.impl;
 
+import app.skillsoft.assessmentbackend.config.ScoringConfiguration;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,7 +16,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -22,7 +23,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -42,9 +43,12 @@ import static org.mockito.Mockito.*;
 class JobFitScoringStrategyTest {
 
     @Mock
-    private CompetencyRepository competencyRepository;
+    private CompetencyBatchLoader competencyBatchLoader;
 
-    @InjectMocks
+    @Mock
+    private ScoreNormalizer scoreNormalizer;
+
+    private ScoringConfiguration scoringConfig;
     private JobFitScoringStrategy scoringStrategy;
 
     private TestSession mockSession;
@@ -56,6 +60,16 @@ class JobFitScoringStrategyTest {
 
     @BeforeEach
     void setUp() {
+        // Initialize ScoringConfiguration with default values
+        scoringConfig = new ScoringConfiguration();
+
+        // Create the strategy with all dependencies
+        scoringStrategy = new JobFitScoringStrategy(
+                competencyBatchLoader,
+                scoringConfig,
+                scoreNormalizer
+        );
+
         // Set up UUIDs
         competencyId1 = UUID.randomUUID();
         competencyId2 = UUID.randomUUID();
@@ -145,6 +159,79 @@ class JobFitScoringStrategyTest {
         mockTemplate.setTypedBlueprint(blueprint);
     }
 
+    /**
+     * Sets up the CompetencyBatchLoader and ScoreNormalizer mocks.
+     */
+    private void setupBatchLoaderMock(Map<UUID, Competency> competencyMap) {
+        when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
+            .thenReturn(competencyMap);
+
+        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null
+                    || answer.getQuestion().getBehavioralIndicator().getCompetency() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getCompetency().getId());
+            });
+
+        when(competencyBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, Competency> cache = invocation.getArgument(0);
+                UUID competencyId = invocation.getArgument(1);
+                return cache != null ? cache.get(competencyId) : null;
+            });
+
+        // Set up score normalizer to delegate to real normalization logic
+        when(scoreNormalizer.normalize(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || Boolean.TRUE.equals(answer.getIsSkipped())) {
+                    return 0.0;
+                }
+                // Likert normalization: (value - 1) / 4
+                if (answer.getLikertValue() != null) {
+                    int likert = Math.max(1, Math.min(5, answer.getLikertValue()));
+                    return (likert - 1.0) / 4.0;
+                }
+                // Score normalization: clamp to 0-1
+                if (answer.getScore() != null) {
+                    return Math.max(0.0, Math.min(1.0, answer.getScore()));
+                }
+                return 0.0;
+            });
+    }
+
+    private void setupBatchLoaderMockWithEmptyCache(UUID competencyId) {
+        when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
+            .thenReturn(Map.of());
+
+        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
+            .thenReturn(Optional.of(competencyId));
+
+        when(competencyBatchLoader.getFromCache(any(), eq(competencyId)))
+            .thenReturn(null);
+
+        // Set up score normalizer
+        when(scoreNormalizer.normalize(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || Boolean.TRUE.equals(answer.getIsSkipped())) {
+                    return 0.0;
+                }
+                if (answer.getLikertValue() != null) {
+                    int likert = Math.max(1, Math.min(5, answer.getLikertValue()));
+                    return (likert - 1.0) / 4.0;
+                }
+                if (answer.getScore() != null) {
+                    return Math.max(0.0, Math.min(1.0, answer.getScore()));
+                }
+                return 0.0;
+            });
+    }
+
     @Nested
     @DisplayName("Supported Goal Tests")
     class SupportedGoalTests {
@@ -221,7 +308,7 @@ class JobFitScoringStrategyTest {
             // Score that's between thresholds (e.g., 70%) - will pass at low strictness, fail at high
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false); // 0.75 = 75%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -244,7 +331,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 5, null, false); // 100%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -263,7 +350,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false); // 75%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -282,7 +369,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 3, null, false); // 50%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -302,7 +389,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false); // 75%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -331,8 +418,7 @@ class JobFitScoringStrategyTest {
             TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false);
             TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
-            when(competencyRepository.findById(competencyId2)).thenReturn(Optional.of(competencyWithoutOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet, competencyId2, competencyWithoutOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
@@ -363,8 +449,7 @@ class JobFitScoringStrategyTest {
             TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false); // 100%
             TestAnswer a2 = createAnswer(mockSession, q2, 3, null, false); // 50%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
-            when(competencyRepository.findById(competencyId2)).thenReturn(Optional.of(competencyWithoutOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet, competencyId2, competencyWithoutOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
@@ -383,7 +468,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false); // 75%
 
-            when(competencyRepository.findById(competencyId2)).thenReturn(Optional.of(competencyWithoutOnet));
+            setupBatchLoaderMock(Map.of(competencyId2, competencyWithoutOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -413,7 +498,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, likertValue, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -431,7 +516,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 0, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -454,7 +539,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
             TestAnswer answer = createAnswer(mockSession, question, null, 0.8, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -472,7 +557,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
             TestAnswer answer = createAnswer(mockSession, question, null, 1.5, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -490,7 +575,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.MULTIPLE_CHOICE);
             TestAnswer answer = createAnswer(mockSession, question, null, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -508,7 +593,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.OPEN_TEXT);
             TestAnswer answer = createAnswer(mockSession, question, null, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -536,7 +621,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 5, null, false); // 100%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -560,7 +645,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 3, null, false); // 50%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -580,7 +665,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false); // 75%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -609,7 +694,7 @@ class JobFitScoringStrategyTest {
             TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false); // 0.75
             TestAnswer a3 = createAnswer(mockSession, q3, 5, null, false); // 1.0
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
@@ -635,7 +720,7 @@ class JobFitScoringStrategyTest {
                 answers.add(createAnswer(mockSession, q, 4, null, false)); // 0.75 each
             }
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, answers);
@@ -659,7 +744,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 5, null, false); // 100%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -682,7 +767,7 @@ class JobFitScoringStrategyTest {
                 answers.add(createAnswer(mockSession, q, 5, null, false));
             }
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, answers);
@@ -704,7 +789,7 @@ class JobFitScoringStrategyTest {
                 answers.add(createAnswer(mockSession, q, 1, null, false));
             }
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, answers);
@@ -728,7 +813,7 @@ class JobFitScoringStrategyTest {
             TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false); // 1.0
             TestAnswer a3 = createAnswer(mockSession, q3, null, null, true); // Skipped
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
@@ -747,7 +832,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.empty());
+            setupBatchLoaderMockWithEmptyCache(competencyId1);
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -771,7 +856,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -790,7 +875,7 @@ class JobFitScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false); // 75%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competencyWithOnet));
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));

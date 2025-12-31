@@ -10,12 +10,12 @@ import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryHeatmapDto
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.repository.*;
+import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
-import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -77,9 +77,6 @@ class TestSessionServiceTest {
     private InventoryHeatmapService inventoryHeatmapService;
 
     @Mock
-    private List<ScoringStrategy> scoringStrategies;
-
-    @Mock
     private PsychometricAuditJob psychometricAuditJob;
 
     @Mock
@@ -90,6 +87,9 @@ class TestSessionServiceTest {
 
     @Mock
     private AssemblyProgressTracker assemblyProgressTracker;
+
+    @Mock
+    private ScoringOrchestrationService scoringOrchestrationService;
 
     private TestSessionServiceImpl testSessionService;
 
@@ -107,16 +107,15 @@ class TestSessionServiceTest {
                 sessionRepository,
                 templateRepository,
                 answerRepository,
-                resultRepository,
                 questionRepository,
                 indicatorRepository,
                 competencyRepository,
                 inventoryHeatmapService,
-                scoringStrategies,
                 psychometricAuditJob,
                 assemblerFactory,
                 eventPublisher,
-                assemblyProgressTracker
+                assemblyProgressTracker,
+                scoringOrchestrationService
         );
 
         sessionId = UUID.randomUUID();

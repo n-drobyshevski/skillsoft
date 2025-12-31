@@ -195,4 +195,19 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
      */
     @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template ORDER BY r.completedAt DESC LIMIT :limit")
     List<TestResult> findRecentWithSessionAndTemplate(@Param("limit") int limit);
+
+    // ============================================
+    // PERCENTILE RECALCULATION QUERIES
+    // ============================================
+
+    /**
+     * Find recent results for a template completed after a cutoff time.
+     * Used for async percentile recalculation to catch concurrent scoring.
+     * Eagerly loads session and template to avoid N+1 queries.
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template t " +
+           "WHERE t.id = :templateId AND r.completedAt > :cutoff")
+    List<TestResult> findByTemplateIdAndCompletedAtAfter(
+            @Param("templateId") UUID templateId,
+            @Param("cutoff") LocalDateTime cutoff);
 }

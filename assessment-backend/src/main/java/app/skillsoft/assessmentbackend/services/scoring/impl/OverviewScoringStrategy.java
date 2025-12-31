@@ -2,13 +2,15 @@ package app.skillsoft.assessmentbackend.services.scoring.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -28,14 +30,17 @@ import java.util.*;
  * Per ROADMAP.md Section 1.2 - Universal Baseline Strategy
  */
 @Service
+@Transactional(readOnly = true)
 public class OverviewScoringStrategy implements ScoringStrategy {
-    
+
     private static final Logger log = LoggerFactory.getLogger(OverviewScoringStrategy.class);
-    
-    private final CompetencyRepository competencyRepository;
-    
-    public OverviewScoringStrategy(CompetencyRepository competencyRepository) {
-        this.competencyRepository = competencyRepository;
+
+    private final CompetencyBatchLoader competencyBatchLoader;
+    private final ScoreNormalizer scoreNormalizer;
+
+    public OverviewScoringStrategy(CompetencyBatchLoader competencyBatchLoader, ScoreNormalizer scoreNormalizer) {
+        this.competencyBatchLoader = competencyBatchLoader;
+        this.scoreNormalizer = scoreNormalizer;
     }
     
     @Override
@@ -47,24 +52,29 @@ public class OverviewScoringStrategy implements ScoringStrategy {
         log.info("Calculating Scenario A (Overview) score: session={} answers={} user={}",
                 session.getId(), answers.size(), session.getClerkUserId());
 
+        // Batch load all competencies upfront to prevent N+1 queries
+        Map<UUID, Competency> competencyCache = competencyBatchLoader.loadCompetenciesForAnswers(answers);
+
         // Step 1: Normalize & Aggregate Scores by Competency
         Map<UUID, Double> rawCompetencyScores = new HashMap<>();
         Map<UUID, Integer> counts = new HashMap<>();
         Map<UUID, Integer> questionsAnswered = new HashMap<>();
-        
+
         for (TestAnswer answer : answers) {
             // Skip unanswered or skipped questions
             if (answer.getIsSkipped() || answer.getAnsweredAt() == null) {
                 continue;
             }
-            
-            UUID compId = answer.getQuestion()
-                .getBehavioralIndicator()
-                .getCompetency()
-                .getId();
-            
-            double normalizedScore = normalize(answer);
-            
+
+            Optional<UUID> compIdOpt = competencyBatchLoader.extractCompetencyIdSafe(answer);
+            if (compIdOpt.isEmpty()) {
+                log.warn("Skipping answer {} - unable to extract competency ID", answer.getId());
+                continue;
+            }
+            UUID compId = compIdOpt.get();
+
+            double normalizedScore = scoreNormalizer.normalize(answer);
+
             rawCompetencyScores.merge(compId, normalizedScore, Double::sum);
             counts.merge(compId, 1, Integer::sum);
             questionsAnswered.merge(compId, 1, Integer::sum);
@@ -85,9 +95,9 @@ public class OverviewScoringStrategy implements ScoringStrategy {
             
             // Convert to percentage (0-100 scale)
             double percentage = average * 100.0;
-            
-            // Get competency details
-            Competency competency = competencyRepository.findById(competencyId).orElse(null);
+
+            // Get competency details from preloaded cache (prevents N+1 queries)
+            Competency competency = competencyBatchLoader.getFromCache(competencyCache, competencyId);
             String competencyName = competency != null ? competency.getName() : "Unknown Competency";
             String onetCode = competency != null ? competency.getOnetCode() : null;
             
@@ -138,77 +148,7 @@ public class OverviewScoringStrategy implements ScoringStrategy {
         
         return result;
     }
-    
-    /**
-     * Normalize raw answer score to 0-1 scale.
-     *
-     * Handles different question types:
-     * - Likert/LIKERT_SCALE (1-5): (value - 1) / 4
-     * - SJT/SITUATIONAL_JUDGMENT: pre-calculated weight (0-1)
-     * - MCQ/MULTIPLE_CHOICE: correct=1, incorrect=0
-     *
-     * @param answer The test answer to normalize
-     * @return Normalized score (0-1)
-     */
-    private double normalize(TestAnswer answer) {
-        QuestionType questionType = answer.getQuestion().getQuestionType();
 
-        // Likert scale normalization (1-5 -> 0-1)
-        // Handle both LIKERT and LIKERT_SCALE enum values
-        if (questionType == QuestionType.LIKERT || questionType == QuestionType.LIKERT_SCALE
-                || questionType == QuestionType.FREQUENCY_SCALE) {
-            if (answer.getLikertValue() != null) {
-                int likert = answer.getLikertValue();
-                // Clamp to valid range
-                likert = Math.max(1, Math.min(5, likert));
-                return (likert - 1.0) / 4.0;
-            }
-        }
-
-        // SJT weight normalization (already 0-1)
-        // Handle both SJT and SITUATIONAL_JUDGMENT enum values
-        if (questionType == QuestionType.SJT || questionType == QuestionType.SITUATIONAL_JUDGMENT) {
-            if (answer.getScore() != null) {
-                double score = answer.getScore();
-                // Ensure in range [0, 1]
-                return Math.max(0.0, Math.min(1.0, score));
-            }
-            // SJT without score - default to 0
-            return 0.0;
-        }
-
-        // Multiple choice: correct=1, incorrect=0
-        // Handle both MCQ and MULTIPLE_CHOICE enum values
-        if (questionType == QuestionType.MCQ || questionType == QuestionType.MULTIPLE_CHOICE) {
-            // Score field should be populated by answer submission logic
-            return answer.getScore() != null ? answer.getScore() : 0.0;
-        }
-
-        // Capability assessment and peer feedback (use Likert-like scoring)
-        if (questionType == QuestionType.CAPABILITY_ASSESSMENT || questionType == QuestionType.PEER_FEEDBACK) {
-            if (answer.getLikertValue() != null) {
-                int likert = answer.getLikertValue();
-                likert = Math.max(1, Math.min(5, likert));
-                return (likert - 1.0) / 4.0;
-            }
-            // Fall back to score if available
-            if (answer.getScore() != null) {
-                return Math.max(0.0, Math.min(1.0, answer.getScore()));
-            }
-        }
-
-        // Text-based types (BEHAVIORAL_EXAMPLE, OPEN_TEXT, SELF_REFLECTION)
-        // These require manual scoring - use score field if available
-        if (answer.getScore() != null) {
-            return Math.max(0.0, Math.min(1.0, answer.getScore()));
-        }
-
-        // Default to 0 if no score available
-        log.warn("No score available for answer {} (question type: {}), defaulting to 0",
-            answer.getId(), questionType);
-        return 0.0;
-    }
-    
     @Override
     public AssessmentGoal getSupportedGoal() {
         return AssessmentGoal.OVERVIEW;

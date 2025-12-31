@@ -215,7 +215,10 @@ public class TestResultServiceImpl implements TestResultService {
                 result.getQuestionsAnswered(),
                 result.getQuestionsSkipped(),
                 session.getQuestionOrder() != null ? session.getQuestionOrder().size() : 0,
-                result.getCompletedAt()
+                result.getCompletedAt(),
+                result.getStatus(),
+                result.getBigFiveProfile(),
+                result.getExtendedMetrics()
         );
     }
 

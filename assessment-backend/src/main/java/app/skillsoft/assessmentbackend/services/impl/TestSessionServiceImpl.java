@@ -14,17 +14,13 @@ import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJ
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.repository.*;
+import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
-import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
-import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyCompletedEvent;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyFailedEvent;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyProgress;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyStartedEvent;
 import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
-import app.skillsoft.assessmentbackend.events.scoring.ScoringCompletedEvent;
-import app.skillsoft.assessmentbackend.events.scoring.ScoringFailedEvent;
-import app.skillsoft.assessmentbackend.events.scoring.ScoringStartedEvent;
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,44 +42,41 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final TestSessionRepository sessionRepository;
     private final TestTemplateRepository templateRepository;
     private final TestAnswerRepository answerRepository;
-    private final TestResultRepository resultRepository;
     private final AssessmentQuestionRepository questionRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
     private final CompetencyRepository competencyRepository;
     private final InventoryHeatmapService inventoryHeatmapService;
-    private final List<ScoringStrategy> scoringStrategies;
     private final PsychometricAuditJob psychometricAuditJob;
     private final TestAssemblerFactory assemblerFactory;
     private final ApplicationEventPublisher eventPublisher;
     private final AssemblyProgressTracker assemblyProgressTracker;
+    private final ScoringOrchestrationService scoringOrchestrationService;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
             TestTemplateRepository templateRepository,
             TestAnswerRepository answerRepository,
-            TestResultRepository resultRepository,
             AssessmentQuestionRepository questionRepository,
             BehavioralIndicatorRepository indicatorRepository,
             CompetencyRepository competencyRepository,
             InventoryHeatmapService inventoryHeatmapService,
-            List<ScoringStrategy> scoringStrategies,
             PsychometricAuditJob psychometricAuditJob,
             TestAssemblerFactory assemblerFactory,
             ApplicationEventPublisher eventPublisher,
-            AssemblyProgressTracker assemblyProgressTracker) {
+            AssemblyProgressTracker assemblyProgressTracker,
+            ScoringOrchestrationService scoringOrchestrationService) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
-        this.resultRepository = resultRepository;
         this.questionRepository = questionRepository;
         this.indicatorRepository = indicatorRepository;
         this.competencyRepository = competencyRepository;
         this.inventoryHeatmapService = inventoryHeatmapService;
-        this.scoringStrategies = scoringStrategies;
         this.psychometricAuditJob = psychometricAuditJob;
         this.assemblerFactory = assemblerFactory;
         this.eventPublisher = eventPublisher;
         this.assemblyProgressTracker = assemblyProgressTracker;
+        this.scoringOrchestrationService = scoringOrchestrationService;
     }
 
     @Override
@@ -396,14 +389,32 @@ public class TestSessionServiceImpl implements TestSessionService {
         // Check if time has run out
         if (timeRemainingSeconds <= 0) {
             session.timeout();
-            // Calculate results even for timed out sessions
-            calculateAndSaveResult(session);
+            sessionRepository.save(session);
+            // Calculate results in a separate transaction for isolation
+            // This ensures the timeout status is committed first
+            scoringOrchestrationService.calculateAndSaveResult(sessionId);
         }
 
         TestSession saved = sessionRepository.save(session);
         return toDto(saved);
     }
 
+    /**
+     * Complete a test session and calculate results.
+     *
+     * TRANSACTION BOUNDARY:
+     * This method runs in its own transaction (TX #1) to mark the session as COMPLETED.
+     * Once the session is saved, scoring is delegated to ScoringOrchestrationService
+     * which runs in a NEW transaction (TX #2 with REQUIRES_NEW propagation).
+     *
+     * This separation ensures:
+     * 1. Session completion is committed independently
+     * 2. If scoring fails, session stays COMPLETED (not rolled back to IN_PROGRESS)
+     * 3. Retry logic applies only to scoring operations
+     *
+     * @param sessionId The ID of the session to complete
+     * @return TestResultDto with scoring results (or PENDING status if scoring failed)
+     */
     @Override
     @Transactional
     public TestResultDto completeSession(UUID sessionId) {
@@ -426,11 +437,15 @@ public class TestSessionServiceImpl implements TestSessionService {
             throw new IllegalStateException("Cannot complete a session that is not in progress");
         }
 
+        // Mark session as COMPLETED and commit (TX #1)
         session.complete();
         sessionRepository.save(session);
 
-        log.info("Session marked as COMPLETED, calculating results sessionId={}", sessionId);
-        return calculateAndSaveResult(session);
+        log.info("Session marked as COMPLETED (TX #1 committed), delegating to scoring orchestration sessionId={}", sessionId);
+
+        // Calculate and save results in a NEW transaction (TX #2)
+        // If scoring fails, session remains COMPLETED and a PENDING result is created
+        return scoringOrchestrationService.calculateAndSaveResult(sessionId);
     }
 
     @Override
@@ -463,7 +478,9 @@ public class TestSessionServiceImpl implements TestSessionService {
         for (TestSession session : staleSessions) {
             session.timeout();
             sessionRepository.save(session);
-            calculateAndSaveResult(session);
+            // Scoring runs in a separate transaction for isolation
+            // If scoring fails, session stays TIMED_OUT and a PENDING result is created
+            scoringOrchestrationService.calculateAndSaveResult(session.getId());
             count++;
         }
 
@@ -788,270 +805,6 @@ public class TestSessionServiceImpl implements TestSessionService {
         return maxScore > 0 ? maxScore : 1.0;
     }
 
-    /**
-     * Calculate and save test results for a completed session.
-     *
-     * Publishes observability events for scoring tracking:
-     * - ScoringStartedEvent before scoring begins
-     * - ScoringCompletedEvent on success with score and duration
-     * - ScoringFailedEvent on failure with error details
-     *
-     * @param session The test session to score
-     * @return TestResultDto with the calculated results
-     */
-    private TestResultDto calculateAndSaveResult(TestSession session) {
-        // Set operation context for scoring
-        LoggingContext.setOperation("scoring");
-        Instant scoringStartTime = Instant.now();
-
-        log.info("Calculating results for session={} goal={} user={}",
-                session.getId(), session.getTemplate().getGoal(), session.getClerkUserId());
-
-        List<TestAnswer> answers = answerRepository.findBySession_Id(session.getId());
-
-        // Get template goal for strategy selection
-        AssessmentGoal goal = session.getTemplate().getGoal();
-
-        // Publish scoring started event
-        eventPublisher.publishEvent(ScoringStartedEvent.beforeResult(
-                session.getId(),
-                goal,
-                answers.size()
-        ));
-
-        try {
-            // Calculate statistics
-            long answered = answers.stream().filter(a -> !a.getIsSkipped() && a.getAnsweredAt() != null).count();
-            long skipped = answers.stream().filter(TestAnswer::getIsSkipped).count();
-            int totalTime = answers.stream()
-                    .mapToInt(a -> a.getTimeSpentSeconds() != null ? a.getTimeSpentSeconds() : 0)
-                    .sum();
-
-            log.debug("Session statistics: answered={} skipped={} totalTimeSeconds={}",
-                    answered, skipped, totalTime);
-
-            // Find appropriate scoring strategy
-            ScoringStrategy strategy = scoringStrategies.stream()
-                    .filter(s -> s.getSupportedGoal() == goal)
-                    .findFirst()
-                    .orElse(null);
-
-            ScoringResult scoringResult;
-            if (strategy != null) {
-                log.info("Using scoring strategy={} for goal={}",
-                        strategy.getClass().getSimpleName(), goal);
-                scoringResult = strategy.calculate(session, answers);
-            } else {
-                log.warn("No scoring strategy found for goal={}, using legacy calculation", goal);
-                // Fallback to legacy scoring
-                scoringResult = calculateLegacyScore(session, answers);
-            }
-
-            // Create result entity
-            TestResult result = new TestResult(session, session.getClerkUserId());
-            result.setOverallScore(scoringResult.getOverallScore());
-            result.setOverallPercentage(scoringResult.getOverallPercentage());
-            result.setCompetencyScores(scoringResult.getCompetencyScores());
-            result.setQuestionsAnswered((int) answered);
-            result.setQuestionsSkipped((int) skipped);
-            result.setTotalTimeSeconds(totalTime);
-            result.setCompletedAt(LocalDateTime.now());
-
-            // Calculate passed/failed
-            result.calculatePassed(session.getTemplate().getPassingScore());
-
-            // Calculate percentile based on historical results for this template
-            Integer percentile = calculatePercentile(session.getTemplate().getId(), result.getOverallPercentage());
-            result.setPercentile(percentile);
-
-            TestResult saved = resultRepository.save(result);
-
-            // Publish scoring completed event
-            eventPublisher.publishEvent(ScoringCompletedEvent.fromStart(
-                    session.getId(),
-                    saved.getId(),
-                    goal,
-                    saved.getOverallScore(),
-                    Boolean.TRUE.equals(saved.getPassed()),
-                    scoringStartTime
-            ));
-
-            return toResultDto(saved, session);
-
-        } catch (Exception e) {
-            // Publish scoring failed event
-            eventPublisher.publishEvent(ScoringFailedEvent.fromException(
-                    session.getId(),
-                    goal,
-                    e,
-                    scoringStartTime
-            ));
-
-            log.error("Scoring failed for session={}: {}", session.getId(), e.getMessage());
-            throw e; // Re-throw to preserve original behavior
-        }
-    }
-    
-    /**
-     * Calculate the percentile rank for a given score based on historical results.
-     * Percentile indicates what percentage of test takers scored below this score.
-     *
-     * @param templateId The template ID to compare against
-     * @param score The current score to calculate percentile for
-     * @return Percentile rank (0-100), or 50 if no historical data exists
-     */
-    private Integer calculatePercentile(UUID templateId, Double score) {
-        if (score == null) {
-            log.debug("Cannot calculate percentile: score is null");
-            return null;
-        }
-
-        try {
-            // Get count of results below this score
-            long belowCount = resultRepository.countResultsBelowScore(templateId, score);
-
-            // Get total count of results for this template
-            long totalCount = resultRepository.countResultsByTemplateId(templateId);
-
-            // Handle edge cases
-            if (totalCount == 0) {
-                // First result for this template - default to 50th percentile
-                log.debug("First result for template {}, defaulting to 50th percentile", templateId);
-                return 50;
-            }
-
-            if (totalCount == 1) {
-                // Only one result (the current one being saved)
-                // Return 50 as baseline
-                log.debug("Only one result for template {}, defaulting to 50th percentile", templateId);
-                return 50;
-            }
-
-            // Calculate percentile: (count below / total) * 100
-            // Using (totalCount - 1) to exclude the current result from denominator
-            double percentile = ((double) belowCount / (totalCount - 1)) * 100;
-
-            // Round and clamp to 0-100 range
-            int result = (int) Math.round(percentile);
-            result = Math.max(0, Math.min(100, result));
-
-            log.debug("Calculated percentile for template {}: {} (below: {}, total: {})",
-                    templateId, result, belowCount, totalCount);
-
-            return result;
-        } catch (Exception e) {
-            log.warn("Error calculating percentile for template {}: {}", templateId, e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Legacy scoring calculation for backward compatibility.
-     * Used when no specific strategy is available for the goal.
-     * Calculates basic competency scores by grouping answers by their question's competency.
-     */
-    private ScoringResult calculateLegacyScore(TestSession session, List<TestAnswer> answers) {
-        Double totalScore = answerRepository.sumScoreBySessionId(session.getId());
-        Double maxScore = answerRepository.sumMaxScoreBySessionId(session.getId());
-
-        double percentage = 0.0;
-        if (maxScore != null && maxScore > 0) {
-            percentage = (totalScore != null ? totalScore / maxScore : 0) * 100;
-        }
-
-        ScoringResult result = new ScoringResult();
-        result.setOverallScore(totalScore != null ? totalScore : 0.0);
-        result.setOverallPercentage(percentage);
-        result.setGoal(session.getTemplate().getGoal());
-
-        // Calculate basic competency scores even in legacy mode
-        List<CompetencyScoreDto> competencyScores = calculateLegacyCompetencyScores(answers);
-        result.setCompetencyScores(competencyScores);
-
-        return result;
-    }
-
-    /**
-     * Calculate competency scores for legacy scoring mode.
-     * Groups answers by their question's behavioral indicator's competency and calculates averages.
-     *
-     * @param answers List of test answers
-     * @return List of competency scores
-     */
-    private List<CompetencyScoreDto> calculateLegacyCompetencyScores(List<TestAnswer> answers) {
-        // Map to track scores per competency: competencyId -> (totalScore, count, maxScore)
-        Map<UUID, double[]> competencyAggregates = new HashMap<>();
-        Map<UUID, String> competencyNames = new HashMap<>();
-        Map<UUID, String> competencyOnetCodes = new HashMap<>();
-
-        for (TestAnswer answer : answers) {
-            // Skip unanswered questions
-            if (answer.getIsSkipped() || answer.getScore() == null) {
-                continue;
-            }
-
-            AssessmentQuestion question = answer.getQuestion();
-            if (question == null) {
-                continue;
-            }
-
-            BehavioralIndicator indicator = question.getBehavioralIndicator();
-            if (indicator == null) {
-                continue;
-            }
-
-            Competency competency = indicator.getCompetency();
-            if (competency == null) {
-                continue;
-            }
-
-            UUID compId = competency.getId();
-
-            // Initialize aggregates if first encounter
-            if (!competencyAggregates.containsKey(compId)) {
-                competencyAggregates.put(compId, new double[]{0.0, 0.0, 0.0}); // totalScore, count, maxScore
-                competencyNames.put(compId, competency.getName());
-                // Get O*NET code if available
-                if (competency.getOnetCode() != null) {
-                    competencyOnetCodes.put(compId, competency.getOnetCode());
-                }
-            }
-
-            // Aggregate scores
-            double[] aggregate = competencyAggregates.get(compId);
-            aggregate[0] += answer.getScore() != null ? answer.getScore() : 0.0;
-            aggregate[1] += 1.0;
-            aggregate[2] += answer.getMaxScore() != null ? answer.getMaxScore() : 1.0;
-        }
-
-        // Convert aggregates to CompetencyScoreDto
-        List<CompetencyScoreDto> competencyScores = new ArrayList<>();
-        for (Map.Entry<UUID, double[]> entry : competencyAggregates.entrySet()) {
-            UUID compId = entry.getKey();
-            double[] aggregate = entry.getValue();
-            double totalScore = aggregate[0];
-            int count = (int) aggregate[1];
-            double maxScore = aggregate[2];
-
-            double compPercentage = maxScore > 0 ? (totalScore / maxScore) * 100 : 0.0;
-
-            CompetencyScoreDto dto = new CompetencyScoreDto(
-                    compId,
-                    competencyNames.get(compId),
-                    totalScore,
-                    maxScore,
-                    compPercentage
-            );
-            dto.setQuestionsAnswered(count);
-            dto.setOnetCode(competencyOnetCodes.get(compId));
-
-            competencyScores.add(dto);
-        }
-
-        log.debug("Calculated {} competency scores in legacy mode", competencyScores.size());
-        return competencyScores;
-    }
-
     // Mapping methods
     private TestSessionDto toDto(TestSession session) {
         long answered = answerRepository.countAnsweredBySessionId(session.getId());
@@ -1223,26 +976,6 @@ public class TestSessionServiceImpl implements TestSessionService {
             }
         }
         return result;
-    }
-
-    private TestResultDto toResultDto(TestResult result, TestSession session) {
-        return new TestResultDto(
-                result.getId(),
-                result.getSessionId(),
-                session.getTemplate().getId(),
-                session.getTemplate().getName(),
-                result.getClerkUserId(),
-                result.getOverallScore(),
-                result.getOverallPercentage(),
-                result.getPercentile(),
-                result.getPassed(),
-                result.getCompetencyScores(),
-                result.getTotalTimeSeconds(),
-                result.getQuestionsAnswered(),
-                result.getQuestionsSkipped(),
-                session.getQuestionOrder() != null ? session.getQuestionOrder().size() : 0,
-                result.getCompletedAt()
-        );
     }
 
     @Override

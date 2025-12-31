@@ -1,13 +1,16 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
+import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -56,12 +59,39 @@ public class TestResult {
     private Boolean passed;
 
     /**
+     * Status of the result calculation.
+     * Used to track pending results awaiting retry after transient failures.
+     * Defaults to COMPLETED for backward compatibility with existing results.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private ResultStatus status = ResultStatus.COMPLETED;
+
+    /**
      * Detailed scores broken down by competency.
      * Stored as JSONB for flexibility.
      */
     @Column(name = "competency_scores", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private List<CompetencyScoreDto> competencyScores = new ArrayList<>();
+
+    /**
+     * Big Five personality profile (only populated for TEAM_FIT goal).
+     * Maps trait names (e.g., "Openness", "Conscientiousness") to percentage scores (0-100).
+     * Stored as JSONB for flexible personality analysis storage.
+     */
+    @Column(name = "big_five_profile", columnDefinition = "jsonb")
+    @Type(JsonType.class)
+    private Map<String, Double> bigFiveProfile;
+
+    /**
+     * Extended metrics for goal-specific analysis.
+     * For TEAM_FIT: Contains TeamFitMetrics (diversityRatio, saturationRatio, etc.)
+     * Stored as JSONB for flexible extension without schema changes.
+     */
+    @Column(name = "extended_metrics", columnDefinition = "jsonb")
+    @Type(JsonType.class)
+    private Map<String, Object> extendedMetrics;
 
     /**
      * Total time spent on the test in seconds.
@@ -171,12 +201,36 @@ public class TestResult {
         this.passed = passed;
     }
 
+    public ResultStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ResultStatus status) {
+        this.status = status;
+    }
+
     public List<CompetencyScoreDto> getCompetencyScores() {
         return competencyScores;
     }
 
     public void setCompetencyScores(List<CompetencyScoreDto> competencyScores) {
         this.competencyScores = competencyScores;
+    }
+
+    public Map<String, Double> getBigFiveProfile() {
+        return bigFiveProfile;
+    }
+
+    public void setBigFiveProfile(Map<String, Double> bigFiveProfile) {
+        this.bigFiveProfile = bigFiveProfile;
+    }
+
+    public Map<String, Object> getExtendedMetrics() {
+        return extendedMetrics;
+    }
+
+    public void setExtendedMetrics(Map<String, Object> extendedMetrics) {
+        this.extendedMetrics = extendedMetrics;
     }
 
     public Integer getTotalTimeSeconds() {
@@ -238,6 +292,7 @@ public class TestResult {
                 ", clerkUserId='" + clerkUserId + '\'' +
                 ", overallPercentage=" + overallPercentage +
                 ", passed=" + passed +
+                ", status=" + status +
                 '}';
     }
 }

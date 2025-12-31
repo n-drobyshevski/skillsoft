@@ -3,7 +3,8 @@ package app.skillsoft.assessmentbackend.services.scoring.impl;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,13 +16,14 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -42,7 +44,10 @@ import static org.mockito.Mockito.*;
 class OverviewScoringStrategyTest {
 
     @Mock
-    private CompetencyRepository competencyRepository;
+    private CompetencyBatchLoader competencyBatchLoader;
+
+    @Spy
+    private ScoreNormalizer scoreNormalizer = new ScoreNormalizer();
 
     @InjectMocks
     private OverviewScoringStrategy scoringStrategy;
@@ -131,6 +136,49 @@ class OverviewScoringStrategyTest {
         answer.setIsSkipped(isSkipped);
         answer.setAnsweredAt(isSkipped ? null : LocalDateTime.now());
         return answer;
+    }
+
+    /**
+     * Sets up the CompetencyBatchLoader mock to return the provided competency map.
+     * Also configures extractCompetencyIdSafe to return the competency IDs from the answers.
+     */
+    private void setupBatchLoaderMock(Map<UUID, Competency> competencyMap) {
+        when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
+            .thenReturn(competencyMap);
+
+        // Mock extractCompetencyIdSafe to return the actual competency ID from the answer chain
+        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null
+                    || answer.getQuestion().getBehavioralIndicator().getCompetency() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getCompetency().getId());
+            });
+
+        // Mock getFromCache to look up in the map
+        when(competencyBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, Competency> cache = invocation.getArgument(0);
+                UUID competencyId = invocation.getArgument(1);
+                return cache != null ? cache.get(competencyId) : null;
+            });
+    }
+
+    /**
+     * Sets up the batch loader mock for tests where the competency is not found in the cache.
+     */
+    private void setupBatchLoaderMockWithEmptyCache(UUID competencyId) {
+        when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
+            .thenReturn(Map.of()); // Empty cache
+
+        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
+            .thenReturn(Optional.of(competencyId));
+
+        when(competencyBatchLoader.getFromCache(any(), eq(competencyId)))
+            .thenReturn(null);
     }
 
     @Nested
@@ -232,7 +280,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, likertValue, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -252,7 +300,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 0, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -270,7 +318,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 10, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -288,7 +336,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT_SCALE);
             TestAnswer answer = createAnswer(mockSession, question, 3, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -306,7 +354,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.FREQUENCY_SCALE);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -329,7 +377,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
             TestAnswer answer = createAnswer(mockSession, question, null, 0.8, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -348,7 +396,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
             TestAnswer answer = createAnswer(mockSession, question, null, 1.5, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -366,7 +414,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
             TestAnswer answer = createAnswer(mockSession, question, null, -0.5, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -384,7 +432,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
             TestAnswer answer = createAnswer(mockSession, question, null, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -402,7 +450,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SITUATIONAL_JUDGMENT);
             TestAnswer answer = createAnswer(mockSession, question, null, 0.6, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -425,7 +473,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.MCQ);
             TestAnswer answer = createAnswer(mockSession, question, null, 1.0, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -443,7 +491,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.MCQ);
             TestAnswer answer = createAnswer(mockSession, question, null, 0.0, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -461,7 +509,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.MCQ);
             TestAnswer answer = createAnswer(mockSession, question, null, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -479,7 +527,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.MULTIPLE_CHOICE);
             TestAnswer answer = createAnswer(mockSession, question, null, 1.0, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -509,7 +557,7 @@ class OverviewScoringStrategyTest {
             TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
             TestAnswer a3 = createAnswer(mockSession, q3, 5, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
@@ -536,8 +584,7 @@ class OverviewScoringStrategyTest {
             TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false); // 1.0 normalized
             TestAnswer a2 = createAnswer(mockSession, q2, 3, null, false); // 0.5 normalized
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
-            when(competencyRepository.findById(competencyId2)).thenReturn(Optional.of(competency2));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1, competencyId2, competency2));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
@@ -557,7 +604,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -575,7 +622,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.empty());
+            setupBatchLoaderMockWithEmptyCache(competencyId1);
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -600,7 +647,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false); // 0.75 normalized
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -623,7 +670,7 @@ class OverviewScoringStrategyTest {
                 answers.add(createAnswer(mockSession, q, 5, null, false));
             }
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, answers);
@@ -647,7 +694,7 @@ class OverviewScoringStrategyTest {
                 answers.add(createAnswer(mockSession, q, 1, null, false));
             }
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, answers);
@@ -671,7 +718,7 @@ class OverviewScoringStrategyTest {
             TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false); // 1.0
             TestAnswer a3 = createAnswer(mockSession, q3, null, null, true); // Skipped
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
@@ -697,7 +744,7 @@ class OverviewScoringStrategyTest {
             TestAnswer sjtA = createAnswer(mockSession, sjtQ, null, 0.8, false); // 0.8
             TestAnswer mcqA = createAnswer(mockSession, mcqQ, null, 1.0, false); // 1.0
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(likertA, sjtA, mcqA));
@@ -721,7 +768,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.CAPABILITY_ASSESSMENT);
             TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -739,7 +786,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.PEER_FEEDBACK);
             TestAnswer answer = createAnswer(mockSession, question, null, 0.9, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -757,7 +804,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.OPEN_TEXT);
             TestAnswer answer = createAnswer(mockSession, question, null, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -791,9 +838,7 @@ class OverviewScoringStrategyTest {
             TestAnswer a2 = createAnswer(mockSession, q2, null, 0.6, false); // 60%
             TestAnswer a3 = createAnswer(mockSession, q3, null, 1.0, false); // 100%
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
-            when(competencyRepository.findById(competencyId2)).thenReturn(Optional.of(competency2));
-            when(competencyRepository.findById(compId3)).thenReturn(Optional.of(competency3));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1, competencyId2, competency2, compId3, competency3));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
@@ -812,7 +857,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 3, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
@@ -829,7 +874,7 @@ class OverviewScoringStrategyTest {
             AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
             TestAnswer answer = createAnswer(mockSession, question, 5, null, false);
 
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
 
             // When
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));

@@ -13,7 +13,6 @@ import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
-import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
@@ -65,9 +64,6 @@ class TestSessionDuplicateSessionTest {
     private CompetencyRepository competencyRepository;
 
     @Mock
-    private TestResultRepository resultRepository;
-
-    @Mock
     private InventoryHeatmapService inventoryHeatmapService;
 
     @Mock
@@ -81,6 +77,9 @@ class TestSessionDuplicateSessionTest {
 
     @Mock
     private AssemblyProgressTracker assemblyProgressTracker;
+
+    @Mock
+    private ScoringOrchestrationService scoringOrchestrationService;
 
     private TestSessionService testSessionService;
 
@@ -97,16 +96,15 @@ class TestSessionDuplicateSessionTest {
                 sessionRepository,
                 templateRepository,
                 answerRepository,
-                resultRepository,
                 questionRepository,
                 indicatorRepository,
                 competencyRepository,
                 inventoryHeatmapService,
-                Collections.emptyList(), // scoringStrategies - not needed for this test
                 psychometricAuditJob,
                 assemblerFactory,
                 eventPublisher,
-                assemblyProgressTracker
+                assemblyProgressTracker,
+                scoringOrchestrationService
         );
 
         // Initialize test data

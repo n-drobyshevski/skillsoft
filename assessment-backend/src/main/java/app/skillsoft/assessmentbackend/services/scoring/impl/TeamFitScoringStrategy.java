@@ -1,15 +1,18 @@
 package app.skillsoft.assessmentbackend.services.scoring.impl;
 
+import app.skillsoft.assessmentbackend.config.ScoringConfiguration;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -29,14 +32,22 @@ import java.util.*;
  * - Implements Role Saturation scoring to identify team gaps and redundancies
  */
 @Service
+@Transactional(readOnly = true)
 public class TeamFitScoringStrategy implements ScoringStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(TeamFitScoringStrategy.class);
 
-    private final CompetencyRepository competencyRepository;
+    private final CompetencyBatchLoader competencyBatchLoader;
+    private final ScoringConfiguration scoringConfig;
+    private final ScoreNormalizer scoreNormalizer;
 
-    public TeamFitScoringStrategy(CompetencyRepository competencyRepository) {
-        this.competencyRepository = competencyRepository;
+    public TeamFitScoringStrategy(
+            CompetencyBatchLoader competencyBatchLoader,
+            ScoringConfiguration scoringConfig,
+            ScoreNormalizer scoreNormalizer) {
+        this.competencyBatchLoader = competencyBatchLoader;
+        this.scoringConfig = scoringConfig;
+        this.scoreNormalizer = scoreNormalizer;
     }
 
     @Override
@@ -47,9 +58,20 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         TeamFitBlueprint blueprint = extractTeamFitBlueprint(template);
 
         UUID teamId = blueprint != null ? blueprint.getTeamId() : null;
-        double saturationThreshold = blueprint != null ? blueprint.getSaturationThreshold() : 0.75;
+
+        // Get Team Fit configuration
+        ScoringConfiguration.Thresholds.TeamFit teamFitConfig = scoringConfig.getThresholds().getTeamFit();
+        ScoringConfiguration.Weights weights = scoringConfig.getWeights();
+
+        // Saturation threshold can be overridden by blueprint, otherwise use config default
+        double saturationThreshold = blueprint != null
+                ? blueprint.getSaturationThreshold()
+                : teamFitConfig.getSaturationThreshold();
 
         log.debug("Team Fit parameters - Team ID: {}, Saturation Threshold: {}", teamId, saturationThreshold);
+
+        // Batch load all competencies upfront to prevent N+1 queries
+        Map<UUID, Competency> competencyCache = competencyBatchLoader.loadCompetenciesForAnswers(answers);
 
         // Step 1: Normalize & Aggregate Scores by Competency
         Map<UUID, Double> rawCompetencyScores = new HashMap<>();
@@ -68,26 +90,30 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                 continue;
             }
 
-            Competency competency = answer.getQuestion()
-                .getBehavioralIndicator()
-                .getCompetency();
+            Optional<UUID> compIdOpt = competencyBatchLoader.extractCompetencyIdSafe(answer);
+            if (compIdOpt.isEmpty()) {
+                log.warn("Skipping answer {} - unable to extract competency ID", answer.getId());
+                continue;
+            }
+            UUID compId = compIdOpt.get();
 
-            UUID compId = competency.getId();
-            double normalizedScore = normalize(answer);
+            // Get competency from cache for Big Five and ESCO data
+            Competency competency = competencyBatchLoader.getFromCache(competencyCache, compId);
+            double normalizedScore = scoreNormalizer.normalize(answer);
 
             rawCompetencyScores.merge(compId, normalizedScore, Double::sum);
             counts.merge(compId, 1, Integer::sum);
             questionsAnswered.merge(compId, 1, Integer::sum);
 
             // Aggregate Big Five scores for personality compatibility
-            String bigFiveCategory = competency.getBigFiveCategory();
+            String bigFiveCategory = competency != null ? competency.getBigFiveCategory() : null;
             if (bigFiveCategory != null) {
                 bigFiveScores.merge(bigFiveCategory, normalizedScore, Double::sum);
                 bigFiveCounts.merge(bigFiveCategory, 1, Integer::sum);
             }
 
             // Aggregate ESCO scores for skill normalization
-            String escoUri = competency.getEscoUri();
+            String escoUri = competency != null ? competency.getEscoUri() : null;
             if (escoUri != null) {
                 escoScores.merge(escoUri, normalizedScore, Double::sum);
                 escoCounts.merge(escoUri, 1, Integer::sum);
@@ -115,8 +141,8 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             // Convert to percentage (0-100 scale)
             double percentage = average * 100.0;
 
-            // Get competency details
-            Competency competency = competencyRepository.findById(competencyId).orElse(null);
+            // Get competency details from preloaded cache (prevents N+1 queries)
+            Competency competency = competencyBatchLoader.getFromCache(competencyCache, competencyId);
             String competencyName = competency != null ? competency.getName() : "Unknown Competency";
             String onetCode = competency != null ? competency.getOnetCode() : null;
             String escoUri = competency != null ? competency.getEscoUri() : null;
@@ -143,19 +169,20 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             // Determine if this competency contributes to team diversity or saturation
             // High scores (above threshold) in less common competencies add diversity
             // High scores in already-saturated areas may indicate redundancy
+            double diversityThreshold = teamFitConfig.getDiversityThreshold();
             if (average >= saturationThreshold) {
                 saturationContributors++;
-            } else if (average >= 0.5) {
+            } else if (average >= diversityThreshold) {
                 diversityContributors++;
             }
 
             // Weight based on ESCO mapping (standardized skills are more valuable for team analysis)
-            double weight = (escoUri != null && !escoUri.isEmpty()) ? 1.15 : 1.0;
+            double weight = (escoUri != null && !escoUri.isEmpty()) ? weights.getEscoBoost() : 1.0;
 
             // Additional weight for competencies with Big Five mapping (personality compatibility)
             String bigFive = competency != null ? competency.getBigFiveCategory() : null;
             if (bigFive != null) {
-                weight *= 1.1;
+                weight *= weights.getBigFiveBoost();
             }
 
             totalWeightedScore += (percentage * weight);
@@ -178,17 +205,21 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
 
         log.debug("Big Five profile: {}", bigFiveAverages);
 
+        // Track gap count (competencies where candidate scores below diversity threshold)
+        int gapContributors = competencyCount - diversityContributors - saturationContributors;
+
         // Step 4: Calculate Overall Team Fit Score
         // Team Fit score considers:
         // 1. Overall competency performance
         // 2. Diversity vs saturation balance
         // 3. Personality profile completeness
 
+        double escoBoostForWeighting = weights.getEscoBoost();
         double totalWeight = competencyCount > 0
             ? finalScores.stream()
                 .mapToDouble(s -> {
                     double w = 1.0;
-                    if (s.getOnetCode() != null && !s.getOnetCode().isEmpty()) w *= 1.15;
+                    if (s.getOnetCode() != null && !s.getOnetCode().isEmpty()) w *= escoBoostForWeighting;
                     return w;
                 })
                 .sum()
@@ -217,10 +248,15 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         // Adjust score based on diversity/saturation balance
         // Ideal: High diversity, moderate saturation
         double teamFitMultiplier = 1.0;
-        if (diversityRatio > 0.4 && saturationRatio < 0.6) {
-            teamFitMultiplier = 1.1; // Bonus for good balance
-        } else if (saturationRatio > 0.8) {
-            teamFitMultiplier = 0.9; // Penalty for too much overlap
+        double diversityBonusThreshold = teamFitConfig.getDiversityBonusThreshold();
+        double saturationPenaltyThreshold = teamFitConfig.getSaturationPenaltyThreshold();
+        double diversityBonus = teamFitConfig.getDiversityBonus();
+        double saturationPenalty = teamFitConfig.getSaturationPenalty();
+
+        if (diversityRatio > diversityBonusThreshold && saturationRatio < (1.0 - diversityBonusThreshold)) {
+            teamFitMultiplier = diversityBonus; // Bonus for good balance
+        } else if (saturationRatio > saturationPenaltyThreshold) {
+            teamFitMultiplier = saturationPenalty; // Penalty for too much overlap
         }
 
         double adjustedPercentage = overallPercentage * teamFitMultiplier;
@@ -238,15 +274,32 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         result.setCompetencyScores(finalScores);
         result.setGoal(AssessmentGoal.TEAM_FIT);
 
+        // Set Big Five personality profile (only populated for TEAM_FIT)
+        result.setBigFiveProfile(bigFiveAverages.isEmpty() ? null : bigFiveAverages);
+
+        // Set Team Fit metrics for detailed analysis
+        ScoringResult.TeamFitMetrics teamFitMetrics = ScoringResult.TeamFitMetrics.builder()
+                .diversityRatio(diversityRatio)
+                .saturationRatio(saturationRatio)
+                .teamFitMultiplier(teamFitMultiplier)
+                .diversityCount(diversityContributors)
+                .saturationCount(saturationContributors)
+                .gapCount(gapContributors)
+                .build();
+        result.setTeamFitMetrics(teamFitMetrics);
+
         // For Team Fit, "pass" means the candidate would add value to the team
         // This is determined by having good scores with reasonable diversity contribution
-        boolean addsTeamValue = adjustedPercentage >= 60.0 && diversityRatio >= 0.3;
+        double passThreshold = teamFitConfig.getPassThreshold() * 100.0; // Convert to percentage
+        double minDiversityRatio = teamFitConfig.getMinDiversityRatio();
+        boolean addsTeamValue = adjustedPercentage >= passThreshold && diversityRatio >= minDiversityRatio;
         result.setPassed(addsTeamValue);
 
-        log.info("Team Fit assessment: {} (score: {}%, diversity: {}%)",
+        log.info("Team Fit assessment: {} (score: {}%, diversity: {}%, Big Five traits: {})",
             addsTeamValue ? "ADDS VALUE" : "LIMITED FIT",
             String.format("%.2f", adjustedPercentage),
-            String.format("%.2f", diversityRatio * 100));
+            String.format("%.2f", diversityRatio * 100),
+            bigFiveAverages.size());
 
         return result;
     }
@@ -290,43 +343,6 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         }
 
         return null;
-    }
-
-    /**
-     * Normalize raw answer score to 0-1 scale.
-     *
-     * Handles different question types:
-     * - Likert (1-5): (value - 1) / 4
-     * - SJT: pre-calculated weight (0-1)
-     * - Multiple Choice: correct=1, incorrect=0
-     *
-     * @param answer The test answer to normalize
-     * @return Normalized score (0-1)
-     */
-    private double normalize(TestAnswer answer) {
-        // Likert scale normalization (1-5 -> 0-1)
-        if (answer.getLikertValue() != null) {
-            int likert = answer.getLikertValue();
-            // Clamp to valid range
-            likert = Math.max(1, Math.min(5, likert));
-            return (likert - 1.0) / 4.0;
-        }
-
-        // SJT weight normalization (already 0-1, but check score field)
-        if (answer.getScore() != null) {
-            double score = answer.getScore();
-            // Ensure in range [0, 1]
-            return Math.max(0.0, Math.min(1.0, score));
-        }
-
-        // Multiple choice: correct=1, incorrect=0
-        if (answer.getQuestion().getQuestionType() == QuestionType.MULTIPLE_CHOICE) {
-            return answer.getScore() != null ? answer.getScore() : 0.0;
-        }
-
-        // Default to 0 if no score available
-        log.warn("No score available for answer {}, defaulting to 0", answer.getId());
-        return 0.0;
     }
 
     @Override
