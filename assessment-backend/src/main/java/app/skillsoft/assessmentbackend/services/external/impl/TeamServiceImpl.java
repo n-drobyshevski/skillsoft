@@ -1,7 +1,10 @@
 package app.skillsoft.assessmentbackend.services.external.impl;
 
 import app.skillsoft.assessmentbackend.config.CacheConfig;
+import app.skillsoft.assessmentbackend.domain.entities.TeamStatus;
+import app.skillsoft.assessmentbackend.repository.TeamRepository;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
+import app.skillsoft.assessmentbackend.services.team.TeamProfileAggregationService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
@@ -9,15 +12,17 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Mock implementation of TeamService for development and testing.
+ * Database-backed implementation of TeamService.
  *
- * In production, this would integrate with team management systems,
- * HR databases, or organizational APIs.
+ * Provides team profile data from the database for TEAM_FIT assessments.
+ * Uses TeamProfileAggregationService to compute profiles from TestResult data.
  *
  * Resilience patterns applied:
  * - Circuit Breaker: Opens after 50% failure rate over 10 calls, stays open 60s
@@ -28,8 +33,15 @@ import java.util.stream.Collectors;
 @Slf4j
 public class TeamServiceImpl implements TeamService {
 
-    // In-memory storage for mock team profiles
-    private final Map<UUID, TeamProfile> teamStore = new ConcurrentHashMap<>();
+    private final TeamRepository teamRepository;
+    private final TeamProfileAggregationService aggregationService;
+
+    public TeamServiceImpl(
+            TeamRepository teamRepository,
+            TeamProfileAggregationService aggregationService) {
+        this.teamRepository = teamRepository;
+        this.aggregationService = aggregationService;
+    }
 
     @Override
     @CircuitBreaker(name = "teamService", fallbackMethod = "getTeamProfileFallback")
@@ -40,8 +52,8 @@ public class TeamServiceImpl implements TeamService {
         unless = "#result == null || !#result.isPresent()"
     )
     public Optional<TeamProfile> getTeamProfile(UUID teamId) {
-        log.debug("Fetching team profile for team: {} (cache miss)", teamId);
-        return Optional.ofNullable(teamStore.get(teamId));
+        log.debug("Computing team profile for team: {} (cache miss)", teamId);
+        return aggregationService.computeTeamProfile(teamId);
     }
 
     /**
@@ -152,7 +164,7 @@ public class TeamServiceImpl implements TeamService {
     @CircuitBreaker(name = "teamService", fallbackMethod = "isValidTeamFallback")
     @Retry(name = "externalServices")
     public boolean isValidTeam(UUID teamId) {
-        return teamStore.containsKey(teamId);
+        return teamRepository.existsByIdAndStatus(teamId, TeamStatus.ACTIVE);
     }
 
     /**
@@ -169,83 +181,7 @@ public class TeamServiceImpl implements TeamService {
      * Used by other methods that already have circuit breaker protection.
      */
     private Optional<TeamProfile> getTeamProfileInternal(UUID teamId) {
-        return Optional.ofNullable(teamStore.get(teamId));
+        return aggregationService.computeTeamProfile(teamId);
     }
 
-    /**
-     * Create a demo team profile for testing purposes.
-     * Evicts any cached data for this team to ensure consistency.
-     *
-     * @param teamId The team ID
-     * @param teamName The team name
-     * @param members List of team member profiles
-     * @return The created team profile
-     */
-    @CacheEvict(value = CacheConfig.TEAM_PROFILES_CACHE, key = "#teamId")
-    public TeamProfile createDemoTeamProfile(UUID teamId, String teamName, List<TeamMemberProfile> members) {
-        // Calculate saturation from member competencies
-        Map<UUID, List<Double>> competencyScoresMap = new HashMap<>();
-        Map<String, List<Double>> personalityScoresMap = new HashMap<>();
-
-        for (TeamMemberProfile member : members) {
-            // Aggregate competency scores
-            member.competencyScores().forEach((compId, score) ->
-                competencyScoresMap.computeIfAbsent(compId, k -> new ArrayList<>()).add(score)
-            );
-
-            // Aggregate personality traits
-            if (member.personalityTraits() != null) {
-                member.personalityTraits().forEach((trait, score) ->
-                    personalityScoresMap.computeIfAbsent(trait, k -> new ArrayList<>()).add(score)
-                );
-            }
-        }
-
-        // Calculate saturation (normalize to 0-1 based on team size and scores)
-        Map<UUID, Double> saturation = new HashMap<>();
-        int teamSize = members.size();
-        competencyScoresMap.forEach((compId, scores) -> {
-            double avgScore = scores.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-            double coverage = (double) scores.size() / teamSize;
-            // Saturation = coverage * normalized score
-            saturation.put(compId, coverage * (avgScore / 5.0));
-        });
-
-        // Calculate average personality
-        Map<String, Double> avgPersonality = new HashMap<>();
-        personalityScoresMap.forEach((trait, scores) ->
-            avgPersonality.put(trait, scores.stream().mapToDouble(Double::doubleValue).average().orElse(0))
-        );
-
-        // Identify skill gaps (saturation < 0.3)
-        List<UUID> skillGaps = saturation.entrySet().stream()
-            .filter(entry -> entry.getValue() < 0.3)
-            .map(Map.Entry::getKey)
-            .collect(Collectors.toList());
-
-        TeamProfile profile = new TeamProfile(
-            teamId,
-            teamName,
-            members,
-            saturation,
-            avgPersonality,
-            skillGaps
-        );
-
-        teamStore.put(teamId, profile);
-        log.debug("Created demo team profile for team: {} with {} members", teamName, members.size());
-        return profile;
-    }
-
-    /**
-     * Helper to create a team member profile.
-     */
-    public TeamMemberProfile createMemberProfile(
-            UUID userId,
-            String name,
-            String role,
-            Map<UUID, Double> competencyScores,
-            Map<String, Double> personalityTraits) {
-        return new TeamMemberProfile(userId, name, role, competencyScores, personalityTraits);
-    }
 }
