@@ -11,6 +11,7 @@ import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
+import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
 import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
@@ -91,6 +92,9 @@ class TestSessionServiceTest {
     @Mock
     private ScoringOrchestrationService scoringOrchestrationService;
 
+    @Mock
+    private ActivityTrackingService activityTrackingService;
+
     private TestSessionServiceImpl testSessionService;
 
     private UUID sessionId;
@@ -115,7 +119,8 @@ class TestSessionServiceTest {
                 assemblerFactory,
                 eventPublisher,
                 assemblyProgressTracker,
-                scoringOrchestrationService
+                scoringOrchestrationService,
+                activityTrackingService
         );
 
         sessionId = UUID.randomUUID();

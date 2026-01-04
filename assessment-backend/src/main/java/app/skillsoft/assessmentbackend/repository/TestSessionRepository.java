@@ -147,4 +147,87 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
      */
     @Query("SELECT s FROM TestSession s JOIN FETCH s.template WHERE s.id = :sessionId")
     Optional<TestSession> findByIdWithTemplate(@Param("sessionId") UUID sessionId);
+
+    // ============================================
+    // ACTIVITY TRACKING QUERIES
+    // ============================================
+
+    /**
+     * Find recent completed/abandoned/timed-out sessions with template for activity feed.
+     * Returns sessions ordered by completion time (most recent first).
+     */
+    @Query("SELECT s FROM TestSession s JOIN FETCH s.template " +
+           "WHERE s.status IN :statuses AND s.completedAt IS NOT NULL " +
+           "ORDER BY s.completedAt DESC LIMIT :limit")
+    List<TestSession> findRecentCompletedSessions(
+            @Param("statuses") List<SessionStatus> statuses,
+            @Param("limit") int limit);
+
+    /**
+     * Find activity for a specific template with pagination.
+     */
+    @Query(value = "SELECT s FROM TestSession s JOIN FETCH s.template " +
+                   "WHERE s.template.id = :templateId " +
+                   "AND s.status IN :statuses " +
+                   "ORDER BY s.completedAt DESC",
+           countQuery = "SELECT COUNT(s) FROM TestSession s " +
+                        "WHERE s.template.id = :templateId AND s.status IN :statuses")
+    Page<TestSession> findActivityByTemplateId(
+            @Param("templateId") UUID templateId,
+            @Param("statuses") List<SessionStatus> statuses,
+            Pageable pageable);
+
+    /**
+     * Find activity for a specific template with status filter.
+     */
+    @Query(value = "SELECT s FROM TestSession s JOIN FETCH s.template " +
+                   "WHERE s.template.id = :templateId " +
+                   "AND s.status = :status " +
+                   "ORDER BY s.completedAt DESC",
+           countQuery = "SELECT COUNT(s) FROM TestSession s " +
+                        "WHERE s.template.id = :templateId AND s.status = :status")
+    Page<TestSession> findActivityByTemplateIdAndStatus(
+            @Param("templateId") UUID templateId,
+            @Param("status") SessionStatus status,
+            Pageable pageable);
+
+    /**
+     * Aggregate activity stats for a template.
+     * Returns [totalSessions, completedCount, abandonedCount, timedOutCount, lastActivity].
+     */
+    @Query("""
+        SELECT COUNT(s),
+               COUNT(CASE WHEN s.status = 'COMPLETED' THEN 1 END),
+               COUNT(CASE WHEN s.status = 'ABANDONED' THEN 1 END),
+               COUNT(CASE WHEN s.status = 'TIMED_OUT' THEN 1 END),
+               MAX(s.completedAt)
+        FROM TestSession s
+        WHERE s.template.id = :templateId
+        AND s.status IN ('COMPLETED', 'ABANDONED', 'TIMED_OUT')
+        """)
+    Object[] getTemplateActivityStats(@Param("templateId") UUID templateId);
+
+    /**
+     * Count passed sessions for a template (join with TestResult).
+     */
+    @Query("""
+        SELECT COUNT(r)
+        FROM TestResult r
+        WHERE r.session.template.id = :templateId
+        AND r.passed = true
+        """)
+    long countPassedSessionsByTemplateId(@Param("templateId") UUID templateId);
+
+    /**
+     * Get sum of scores and time for average calculation.
+     * Returns [totalScore, totalTimeSeconds, count].
+     */
+    @Query("""
+        SELECT COALESCE(SUM(r.overallPercentage), 0.0),
+               COALESCE(SUM(r.totalTimeSeconds), 0),
+               COUNT(r)
+        FROM TestResult r
+        WHERE r.session.template.id = :templateId
+        """)
+    Object[] getTemplateScoreAndTimeAggregates(@Param("templateId") UUID templateId);
 }

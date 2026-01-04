@@ -14,6 +14,7 @@ import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJ
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.repository.*;
+import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyCompletedEvent;
@@ -51,6 +52,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final ApplicationEventPublisher eventPublisher;
     private final AssemblyProgressTracker assemblyProgressTracker;
     private final ScoringOrchestrationService scoringOrchestrationService;
+    private final ActivityTrackingService activityTrackingService;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -64,7 +66,8 @@ public class TestSessionServiceImpl implements TestSessionService {
             TestAssemblerFactory assemblerFactory,
             ApplicationEventPublisher eventPublisher,
             AssemblyProgressTracker assemblyProgressTracker,
-            ScoringOrchestrationService scoringOrchestrationService) {
+            ScoringOrchestrationService scoringOrchestrationService,
+            ActivityTrackingService activityTrackingService) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -77,6 +80,7 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.eventPublisher = eventPublisher;
         this.assemblyProgressTracker = assemblyProgressTracker;
         this.scoringOrchestrationService = scoringOrchestrationService;
+        this.activityTrackingService = activityTrackingService;
     }
 
     @Override
@@ -161,6 +165,10 @@ public class TestSessionServiceImpl implements TestSessionService {
         session.start();
 
         TestSession saved = sessionRepository.save(session);
+
+        // Record activity event for audit trail
+        activityTrackingService.recordSessionStarted(saved);
+
         return toDto(saved);
     }
 
@@ -390,6 +398,10 @@ public class TestSessionServiceImpl implements TestSessionService {
         if (timeRemainingSeconds <= 0) {
             session.timeout();
             sessionRepository.save(session);
+
+            // Record activity event for audit trail
+            activityTrackingService.recordSessionTimedOut(session);
+
             // Calculate results in a separate transaction for isolation
             // This ensures the timeout status is committed first
             scoringOrchestrationService.calculateAndSaveResult(sessionId);
@@ -445,7 +457,12 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         // Calculate and save results in a NEW transaction (TX #2)
         // If scoring fails, session remains COMPLETED and a PENDING result is created
-        return scoringOrchestrationService.calculateAndSaveResult(sessionId);
+        TestResultDto result = scoringOrchestrationService.calculateAndSaveResult(sessionId);
+
+        // Record activity event for audit trail
+        activityTrackingService.recordSessionCompleted(session, result.overallPercentage(), result.passed());
+
+        return result;
     }
 
     @Override
@@ -456,6 +473,10 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         session.abandon();
         TestSession saved = sessionRepository.save(session);
+
+        // Record activity event for audit trail
+        activityTrackingService.recordSessionAbandoned(saved);
+
         return toDto(saved);
     }
 
@@ -478,6 +499,10 @@ public class TestSessionServiceImpl implements TestSessionService {
         for (TestSession session : staleSessions) {
             session.timeout();
             sessionRepository.save(session);
+
+            // Record activity event for audit trail
+            activityTrackingService.recordSessionTimedOut(session);
+
             // Scoring runs in a separate transaction for isolation
             // If scoring fails, session stays TIMED_OUT and a PENDING result is created
             scoringOrchestrationService.calculateAndSaveResult(session.getId());

@@ -98,4 +98,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
            "LOWER(u.firstName) LIKE LOWER(CONCAT('%', :name, '%')) OR " +
            "LOWER(u.lastName) LIKE LOWER(CONCAT('%', :name, '%'))")
     List<User> findByNameContaining(@Param("name") String name);
+
+    /**
+     * Find multiple users by their Clerk IDs.
+     * Used for batch user enrichment in activity feeds (avoiding N+1 queries).
+     */
+    @Query("SELECT u FROM User u WHERE u.clerkId IN :clerkIds")
+    List<User> findByClerkIdIn(@Param("clerkIds") Iterable<String> clerkIds);
 }
