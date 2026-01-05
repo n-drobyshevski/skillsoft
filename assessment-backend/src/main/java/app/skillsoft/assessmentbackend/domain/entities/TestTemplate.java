@@ -175,6 +175,38 @@ public class TestTemplate {
     @Column(name = "show_results_immediately")
     private Boolean showResultsImmediately = true;
 
+    // ============================================
+    // VISIBILITY & OWNERSHIP FIELDS
+    // Per visibility system implementation
+    // ============================================
+
+    /**
+     * Owner of this template (creator by default).
+     * Required for visibility and sharing features.
+     * The owner always has full access to the template.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
+
+    /**
+     * Visibility mode for this template.
+     * Controls who can access the template:
+     * - PUBLIC: All authenticated users can access
+     * - PRIVATE: Only owner and explicitly shared users/teams (default)
+     * - LINK: Anyone with a valid share link (supports anonymous access)
+     */
+    @Column(name = "visibility", nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    private TemplateVisibility visibility = TemplateVisibility.PRIVATE;
+
+    /**
+     * Timestamp when visibility was last changed.
+     * Used for audit trails and link invalidation.
+     */
+    @Column(name = "visibility_changed_at")
+    private LocalDateTime visibilityChangedAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -369,7 +401,11 @@ public class TestTemplate {
         
         // New version starts inactive (DRAFT status controls this now)
         nextVersion.setIsActive(false);
-        
+
+        // Copy ownership and set default visibility for new version
+        nextVersion.setOwner(this.owner);
+        nextVersion.setVisibility(TemplateVisibility.PRIVATE); // New versions start as PRIVATE
+
         return nextVersion;
     }
 
@@ -401,7 +437,8 @@ public class TestTemplate {
     /**
      * Archive this template, making it unavailable for new test sessions.
      * Archived templates are preserved for historical reference.
-     * 
+     * Visibility is automatically set to PRIVATE when archiving.
+     *
      * @throws IllegalStateException if the template is not PUBLISHED
      */
     public void archive() {
@@ -410,6 +447,11 @@ public class TestTemplate {
         }
         this.status = TemplateStatus.ARCHIVED;
         this.isActive = false;
+        // Force PRIVATE visibility when archiving
+        if (this.visibility != TemplateVisibility.PRIVATE) {
+            this.visibility = TemplateVisibility.PRIVATE;
+            this.visibilityChangedAt = LocalDateTime.now();
+        }
     }
 
     // ============================================
@@ -578,6 +620,85 @@ public class TestTemplate {
         this.updatedAt = updatedAt;
     }
 
+    // ============================================
+    // VISIBILITY & OWNERSHIP GETTERS/SETTERS
+    // ============================================
+
+    public User getOwner() {
+        return owner;
+    }
+
+    public void setOwner(User owner) {
+        this.owner = owner;
+    }
+
+    public TemplateVisibility getVisibility() {
+        return visibility;
+    }
+
+    /**
+     * Set the visibility mode for this template.
+     * Automatically updates the visibilityChangedAt timestamp.
+     *
+     * @param visibility The new visibility mode
+     */
+    public void setVisibility(TemplateVisibility visibility) {
+        if (this.visibility != visibility) {
+            this.visibility = visibility;
+            this.visibilityChangedAt = LocalDateTime.now();
+        }
+    }
+
+    public LocalDateTime getVisibilityChangedAt() {
+        return visibilityChangedAt;
+    }
+
+    public void setVisibilityChangedAt(LocalDateTime visibilityChangedAt) {
+        this.visibilityChangedAt = visibilityChangedAt;
+    }
+
+    /**
+     * Check if the template is publicly accessible.
+     * @return true if visibility is PUBLIC
+     */
+    @Transient
+    public boolean isPubliclyAccessible() {
+        return visibility == TemplateVisibility.PUBLIC;
+    }
+
+    /**
+     * Check if the template allows anonymous access via links.
+     * @return true if visibility is LINK
+     */
+    @Transient
+    public boolean allowsLinkAccess() {
+        return visibility == TemplateVisibility.LINK;
+    }
+
+    /**
+     * Check if the given user is the owner of this template.
+     * @param user The user to check
+     * @return true if the user is the owner
+     */
+    public boolean isOwnedBy(User user) {
+        if (user == null || owner == null) {
+            return false;
+        }
+        return owner.getId().equals(user.getId());
+    }
+
+    /**
+     * Check if the given user (by clerkId) is the owner of this template.
+     * @param clerkId The clerkId to check
+     * @return true if the user is the owner
+     */
+    public boolean isOwnedByClerkId(String clerkId) {
+        if (clerkId == null || owner == null) {
+            return false;
+        }
+        return clerkId.equals(owner.getClerkId());
+    }
+
     // equals and hashCode
     @Override
     public boolean equals(Object o) {
@@ -604,6 +725,8 @@ public class TestTemplate {
                 ", typedBlueprint=" + typedBlueprint +
                 ", blueprint=" + blueprint +
                 ", isActive=" + isActive +
+                ", visibility=" + visibility +
+                ", ownerId=" + (owner != null ? owner.getId() : null) +
                 '}';
     }
 }

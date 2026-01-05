@@ -1,7 +1,15 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.dto.sharing.ChangeVisibilityRequest;
+import app.skillsoft.assessmentbackend.domain.dto.sharing.SharedTemplatesResponseDto;
+import app.skillsoft.assessmentbackend.domain.dto.sharing.SharedWithMeCountDto;
+import app.skillsoft.assessmentbackend.domain.dto.sharing.VisibilityInfoDto;
+import app.skillsoft.assessmentbackend.domain.entities.TemplateVisibility;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
+import app.skillsoft.assessmentbackend.services.security.TemplateSecurityService;
+import app.skillsoft.assessmentbackend.services.sharing.TemplateShareService;
+import app.skillsoft.assessmentbackend.services.sharing.TemplateVisibilityService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,9 +44,18 @@ public class TestTemplateController {
     private static final Logger logger = LoggerFactory.getLogger(TestTemplateController.class);
 
     private final TestTemplateService testTemplateService;
+    private final TemplateVisibilityService visibilityService;
+    private final TemplateSecurityService securityService;
+    private final TemplateShareService templateShareService;
 
-    public TestTemplateController(TestTemplateService testTemplateService) {
+    public TestTemplateController(TestTemplateService testTemplateService,
+                                  TemplateVisibilityService visibilityService,
+                                  TemplateSecurityService securityService,
+                                  TemplateShareService templateShareService) {
         this.testTemplateService = testTemplateService;
+        this.visibilityService = visibilityService;
+        this.securityService = securityService;
+        this.templateShareService = templateShareService;
     }
 
     // ==================== READ OPERATIONS ====================
@@ -249,7 +266,7 @@ public class TestTemplateController {
 
     /**
      * Deactivate a test template (hide from test-takers).
-     * 
+     *
      * @param id Template UUID to deactivate
      * @return Updated template or 404 if not found
      */
@@ -257,7 +274,7 @@ public class TestTemplateController {
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<TestTemplateDto> deactivateTemplate(@PathVariable UUID id) {
         logger.info("POST /api/v1/tests/templates/{}/deactivate", id);
-        
+
         try {
             TestTemplateDto deactivated = testTemplateService.deactivateTemplate(id);
             logger.info("Deactivated template: {}", deactivated.name());
@@ -269,5 +286,143 @@ public class TestTemplateController {
             }
             throw e;
         }
+    }
+
+    // ==================== VISIBILITY OPERATIONS ====================
+
+    /**
+     * Get visibility information for a template.
+     *
+     * Returns current visibility setting, owner info, and share/link counts.
+     *
+     * @param id Template UUID
+     * @return Visibility info or 404 if not found
+     */
+    @GetMapping("/{id}/visibility")
+    @PreAuthorize("@templateSecurity.canAccess(#id, T(app.skillsoft.assessmentbackend.domain.entities.SharePermission).VIEW)")
+    public ResponseEntity<VisibilityInfoDto> getVisibility(@PathVariable UUID id) {
+        logger.info("GET /api/v1/tests/templates/{}/visibility", id);
+
+        try {
+            VisibilityInfoDto info = visibilityService.getVisibilityInfo(id);
+            logger.info("Visibility for template {}: {}", id, info.visibility());
+            return ResponseEntity.ok(info);
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().contains("not found")) {
+                logger.warn("Template not found: {}", id);
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Change the visibility setting for a template.
+     *
+     * Business rules:
+     * - DRAFT templates can only be PRIVATE
+     * - ARCHIVED templates cannot change visibility
+     * - Changing from LINK revokes all share links
+     *
+     * @param id Template UUID
+     * @param request The new visibility setting
+     * @return Updated visibility info or error
+     */
+    @PatchMapping("/{id}/visibility")
+    @PreAuthorize("@templateSecurity.canChangeVisibility(#id)")
+    public ResponseEntity<VisibilityInfoDto> changeVisibility(
+            @PathVariable UUID id,
+            @Valid @RequestBody ChangeVisibilityRequest request) {
+        logger.info("PATCH /api/v1/tests/templates/{}/visibility - Changing to {}",
+                id, request.visibility());
+
+        String clerkId = securityService.getAuthenticatedClerkId();
+        if (clerkId == null) {
+            logger.warn("No authenticated user for visibility change");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        try {
+            VisibilityInfoDto info = visibilityService.changeVisibility(id, request.visibility(), clerkId);
+            logger.info("Changed visibility for template {} to {}", id, info.visibility());
+            return ResponseEntity.ok(info);
+        } catch (IllegalStateException e) {
+            logger.warn("Visibility change failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().contains("not found")) {
+                logger.warn("Template not found: {}", id);
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Check if visibility can be changed to a specific value.
+     *
+     * Useful for frontend to disable invalid options.
+     *
+     * @param id Template UUID
+     * @param visibility Target visibility to check
+     * @return Boolean indicating if change is allowed
+     */
+    @GetMapping("/{id}/visibility/can-change")
+    @PreAuthorize("@templateSecurity.canAccess(#id, T(app.skillsoft.assessmentbackend.domain.entities.SharePermission).VIEW)")
+    public ResponseEntity<Boolean> canChangeToVisibility(
+            @PathVariable UUID id,
+            @RequestParam TemplateVisibility visibility) {
+        logger.info("GET /api/v1/tests/templates/{}/visibility/can-change?visibility={}",
+                id, visibility);
+
+        boolean canChange = visibilityService.canChangeToVisibility(id, visibility);
+        return ResponseEntity.ok(canChange);
+    }
+
+    // ==================== SHARED WITH ME OPERATIONS ====================
+
+    /**
+     * Get templates shared with the current user.
+     * Includes both direct user shares and team membership shares.
+     * Excludes templates the user owns.
+     *
+     * @return List of shared templates with sharing metadata
+     */
+    @GetMapping("/shared-with-me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<SharedTemplatesResponseDto> getSharedWithMe() {
+        logger.info("GET /api/v1/tests/templates/shared-with-me");
+
+        String clerkId = securityService.getAuthenticatedClerkId();
+        if (clerkId == null) {
+            logger.warn("No authenticated user for shared-with-me request");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        SharedTemplatesResponseDto response = templateShareService.getTemplatesSharedWithMe(clerkId);
+        logger.info("Found {} templates shared with user", response.total());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get count of templates shared with the current user.
+     * For badge/counter display in navigation.
+     *
+     * @return Count object
+     */
+    @GetMapping("/shared-with-me/count")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<SharedWithMeCountDto> getSharedWithMeCount() {
+        logger.info("GET /api/v1/tests/templates/shared-with-me/count");
+
+        String clerkId = securityService.getAuthenticatedClerkId();
+        if (clerkId == null) {
+            logger.warn("No authenticated user for shared-with-me count request");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        long count = templateShareService.countTemplatesSharedWithMe(clerkId);
+        logger.debug("Shared templates count for user: {}", count);
+        return ResponseEntity.ok(SharedWithMeCountDto.of(count));
     }
 }

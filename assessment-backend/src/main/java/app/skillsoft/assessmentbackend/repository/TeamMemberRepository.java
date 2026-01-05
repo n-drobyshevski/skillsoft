@@ -93,4 +93,11 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, UUID> {
      */
     @Query("SELECT COUNT(DISTINCT tm.team.id) FROM TeamMember tm WHERE tm.user.id = :userId AND tm.isActive = true")
     long countTeamsByUserId(@Param("userId") UUID userId);
+
+    /**
+     * Find team IDs where user is an active member (by user UUID).
+     * Used for template visibility access checks.
+     */
+    @Query("SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId AND tm.isActive = true")
+    List<UUID> findActiveTeamIdsByUserId(@Param("userId") UUID userId);
 }
