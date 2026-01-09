@@ -2,6 +2,8 @@ package app.skillsoft.assessmentbackend.repository;
 
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
 import app.skillsoft.assessmentbackend.domain.entities.TestSession;
+import app.skillsoft.assessmentbackend.domain.projections.TemplateActivityStatsProjection;
+import app.skillsoft.assessmentbackend.domain.projections.TemplateScoreTimeProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -193,19 +195,24 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
 
     /**
      * Aggregate activity stats for a template.
-     * Returns [totalSessions, completedCount, abandonedCount, timedOutCount, lastActivity].
+     * Returns a type-safe projection with totalSessions, completedCount, abandonedCount,
+     * timedOutCount, and lastActivity.
+     * Prevents ClassCastException from raw Object[].
+     *
+     * @param templateId the template UUID
+     * @return TemplateActivityStatsProjection with aggregate statistics
      */
     @Query("""
-        SELECT COUNT(s),
-               COUNT(CASE WHEN s.status = 'COMPLETED' THEN 1 END),
-               COUNT(CASE WHEN s.status = 'ABANDONED' THEN 1 END),
-               COUNT(CASE WHEN s.status = 'TIMED_OUT' THEN 1 END),
-               MAX(s.completedAt)
+        SELECT COUNT(s) AS totalSessions,
+               COUNT(CASE WHEN s.status = 'COMPLETED' THEN 1 END) AS completedCount,
+               COUNT(CASE WHEN s.status = 'ABANDONED' THEN 1 END) AS abandonedCount,
+               COUNT(CASE WHEN s.status = 'TIMED_OUT' THEN 1 END) AS timedOutCount,
+               MAX(s.completedAt) AS lastActivity
         FROM TestSession s
         WHERE s.template.id = :templateId
         AND s.status IN ('COMPLETED', 'ABANDONED', 'TIMED_OUT')
         """)
-    Object[] getTemplateActivityStats(@Param("templateId") UUID templateId);
+    TemplateActivityStatsProjection getTemplateActivityStats(@Param("templateId") UUID templateId);
 
     /**
      * Count passed sessions for a template (join with TestResult).
@@ -220,14 +227,18 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
 
     /**
      * Get sum of scores and time for average calculation.
-     * Returns [totalScore, totalTimeSeconds, count].
+     * Returns a type-safe projection with totalScore, totalTimeSeconds, and resultCount.
+     * Prevents ClassCastException from raw Object[].
+     *
+     * @param templateId the template UUID
+     * @return TemplateScoreTimeProjection with aggregate statistics
      */
     @Query("""
-        SELECT COALESCE(SUM(r.overallPercentage), 0.0),
-               COALESCE(SUM(r.totalTimeSeconds), 0),
-               COUNT(r)
+        SELECT SUM(r.overallPercentage) AS totalScore,
+               SUM(r.totalTimeSeconds) AS totalTimeSeconds,
+               COUNT(r) AS resultCount
         FROM TestResult r
         WHERE r.session.template.id = :templateId
         """)
-    Object[] getTemplateScoreAndTimeAggregates(@Param("templateId") UUID templateId);
+    TemplateScoreTimeProjection getTemplateScoreAndTimeAggregates(@Param("templateId") UUID templateId);
 }

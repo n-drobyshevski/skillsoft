@@ -4,6 +4,8 @@ import app.skillsoft.assessmentbackend.domain.dto.activity.ActivityFilterParams;
 import app.skillsoft.assessmentbackend.domain.dto.activity.TemplateActivityStatsDto;
 import app.skillsoft.assessmentbackend.domain.dto.activity.TestActivityDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.domain.projections.TemplateActivityStatsProjection;
+import app.skillsoft.assessmentbackend.domain.projections.TemplateScoreTimeProjection;
 import app.skillsoft.assessmentbackend.repository.TestActivityEventRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
@@ -166,34 +168,19 @@ public class ActivityTrackingServiceImpl implements ActivityTrackingService {
             return null;
         }
 
-        // Get aggregate stats from sessions - defensive null handling
-        Object[] sessionStats = sessionRepository.getTemplateActivityStats(templateId);
-        long totalSessions = 0L;
-        long completedCount = 0L;
-        long abandonedCount = 0L;
-        long timedOutCount = 0L;
-        LocalDateTime lastActivity = null;
+        // Get aggregate stats from sessions using type-safe projection
+        TemplateActivityStatsProjection sessionStats = sessionRepository.getTemplateActivityStats(templateId);
+        long totalSessions = sessionStats.getTotalSessions() != null ? sessionStats.getTotalSessions() : 0L;
+        long completedCount = sessionStats.getCompletedCount() != null ? sessionStats.getCompletedCount() : 0L;
+        long abandonedCount = sessionStats.getAbandonedCount() != null ? sessionStats.getAbandonedCount() : 0L;
+        long timedOutCount = sessionStats.getTimedOutCount() != null ? sessionStats.getTimedOutCount() : 0L;
+        LocalDateTime lastActivity = sessionStats.getLastActivity();
 
-        if (sessionStats != null && sessionStats.length >= 5) {
-            totalSessions = sessionStats[0] != null ? ((Number) sessionStats[0]).longValue() : 0L;
-            completedCount = sessionStats[1] != null ? ((Number) sessionStats[1]).longValue() : 0L;
-            abandonedCount = sessionStats[2] != null ? ((Number) sessionStats[2]).longValue() : 0L;
-            timedOutCount = sessionStats[3] != null ? ((Number) sessionStats[3]).longValue() : 0L;
-            lastActivity = sessionStats[4] != null ? (LocalDateTime) sessionStats[4] : null;
-        } else {
-            logger.debug("No activity stats found for template {}, returning zeros", templateId);
-        }
-
-        // Get passed count and score aggregates from results - defensive null handling
+        // Get passed count and score aggregates from results using type-safe projection
         long passedCount = sessionRepository.countPassedSessionsByTemplateId(templateId);
-        Object[] scoreAggregates = sessionRepository.getTemplateScoreAndTimeAggregates(templateId);
-        Double totalScore = 0.0;
-        double totalTime = 0.0;
-
-        if (scoreAggregates != null && scoreAggregates.length >= 3) {
-            totalScore = scoreAggregates[0] != null ? ((Number) scoreAggregates[0]).doubleValue() : 0.0;
-            totalTime = scoreAggregates[1] != null ? ((Number) scoreAggregates[1]).doubleValue() : 0.0;
-        }
+        TemplateScoreTimeProjection scoreAggregates = sessionRepository.getTemplateScoreAndTimeAggregates(templateId);
+        Double totalScore = scoreAggregates.getTotalScore() != null ? scoreAggregates.getTotalScore() : 0.0;
+        double totalTime = scoreAggregates.getTotalTimeSeconds() != null ? scoreAggregates.getTotalTimeSeconds() : 0.0;
 
         return TemplateActivityStatsDto.fromCounts(
                 templateId,

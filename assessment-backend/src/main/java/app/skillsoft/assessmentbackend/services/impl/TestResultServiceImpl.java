@@ -4,6 +4,8 @@ import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultSummaryDto;
 import app.skillsoft.assessmentbackend.domain.entities.TestResult;
 import app.skillsoft.assessmentbackend.domain.entities.TestSession;
+import app.skillsoft.assessmentbackend.domain.projections.TemplateStatisticsProjection;
+import app.skillsoft.assessmentbackend.domain.projections.UserStatisticsProjection;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.services.TestResultService;
 import org.springframework.data.domain.Page;
@@ -86,13 +88,14 @@ public class TestResultServiceImpl implements TestResultService {
     @Override
     @Transactional(readOnly = true)
     public UserTestStatistics getUserStatistics(String clerkUserId) {
-        // Use single aggregate query to avoid multiple COUNT/AVG queries
-        Object[] stats = resultRepository.getUserStatisticsAggregate(clerkUserId);
+        // Use type-safe projection to avoid ClassCastException from raw Object[]
+        UserStatisticsProjection stats = resultRepository.getUserStatisticsAggregate(clerkUserId);
 
-        long total = stats[0] != null ? ((Number) stats[0]).longValue() : 0L;
-        long passed = stats[1] != null ? ((Number) stats[1]).longValue() : 0L;
-        Double averageScore = stats[2] != null ? ((Number) stats[2]).doubleValue() : null;
-        Double bestScore = stats[3] != null ? ((Number) stats[3]).doubleValue() : null;
+        // Projection getters handle null-safety; COUNT always returns non-null
+        long total = stats.getTotalTests() != null ? stats.getTotalTests() : 0L;
+        long passed = stats.getPassedTests() != null ? stats.getPassedTests() : 0L;
+        Double averageScore = stats.getAverageScore();
+        Double bestScore = stats.getBestScore();
 
         // Still need one query for last test date (aggregate doesn't return this)
         LocalDateTime lastTestDate = null;
@@ -124,13 +127,14 @@ public class TestResultServiceImpl implements TestResultService {
     @Override
     @Transactional(readOnly = true)
     public TemplateTestStatistics getTemplateStatistics(UUID templateId) {
-        // Use single aggregate query to avoid loading all results
-        Object[] stats = resultRepository.getTemplateStatisticsAggregate(templateId);
+        // Use type-safe projection to avoid ClassCastException from raw Object[]
+        TemplateStatisticsProjection stats = resultRepository.getTemplateStatisticsAggregate(templateId);
 
-        long total = stats[0] != null ? ((Number) stats[0]).longValue() : 0L;
-        long passed = stats[1] != null ? ((Number) stats[1]).longValue() : 0L;
-        Double averageScore = stats[2] != null ? ((Number) stats[2]).doubleValue() : 0.0;
-        // minScore = stats[3], maxScore = stats[4] - available if needed
+        // Projection getters handle null-safety; COUNT always returns non-null
+        long total = stats.getTotalAttempts() != null ? stats.getTotalAttempts() : 0L;
+        long passed = stats.getPassedCount() != null ? stats.getPassedCount() : 0L;
+        Double averageScore = stats.getAverageScore() != null ? stats.getAverageScore() : 0.0;
+        // minScore = stats.getMinScore(), maxScore = stats.getMaxScore() - available if needed
 
         if (total == 0) {
             return new TemplateTestStatistics(

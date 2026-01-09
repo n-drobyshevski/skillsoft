@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.domain.projections.UserStatisticsProjection;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.services.impl.TestResultServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -280,10 +281,14 @@ class TestResultServiceTest {
         @Test
         @DisplayName("Should return user statistics")
         void shouldReturnUserStatistics() {
-            // Given - use new aggregate query
-            // Returns [totalTests, passedTests, avgScore, bestScore]
-            Object[] statsAggregate = new Object[]{10L, 8L, 75.0, 85.0};
-            when(resultRepository.getUserStatisticsAggregate(clerkUserId)).thenReturn(statsAggregate);
+            // Given - use type-safe projection mock
+            UserStatisticsProjection mockProjection = mock(UserStatisticsProjection.class);
+            when(mockProjection.getTotalTests()).thenReturn(10L);
+            when(mockProjection.getPassedTests()).thenReturn(8L);
+            when(mockProjection.getAverageScore()).thenReturn(75.0);
+            when(mockProjection.getBestScore()).thenReturn(85.0);
+
+            when(resultRepository.getUserStatisticsAggregate(clerkUserId)).thenReturn(mockProjection);
             when(resultRepository.findByClerkUserIdOrderByCompletedAtDesc(clerkUserId))
                     .thenReturn(List.of(mockResult));
 

@@ -1,6 +1,8 @@
 package app.skillsoft.assessmentbackend.repository;
 
 import app.skillsoft.assessmentbackend.domain.entities.TestResult;
+import app.skillsoft.assessmentbackend.domain.projections.TemplateStatisticsProjection;
+import app.skillsoft.assessmentbackend.domain.projections.UserStatisticsProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -162,33 +164,40 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
 
     /**
      * Aggregate user test statistics in a single query.
-     * Returns [totalTests, passedTests, avgScore, bestScore].
-     * Avoids multiple COUNT/AVG queries.
+     * Returns a type-safe projection with totalTests, passedTests, averageScore, bestScore.
+     * Avoids multiple COUNT/AVG queries and prevents ClassCastException from raw Object[].
+     *
+     * @param clerkUserId the user's Clerk ID
+     * @return UserStatisticsProjection with aggregate statistics
      */
     @Query("""
-        SELECT COUNT(r),
-               COUNT(CASE WHEN r.passed = true THEN 1 END),
-               COALESCE(AVG(r.overallPercentage), 0.0),
-               COALESCE(MAX(r.overallPercentage), 0.0)
+        SELECT COUNT(r) AS totalTests,
+               COUNT(CASE WHEN r.passed = true THEN 1 END) AS passedTests,
+               AVG(r.overallPercentage) AS averageScore,
+               MAX(r.overallPercentage) AS bestScore
         FROM TestResult r
         WHERE r.clerkUserId = :userId
         """)
-    Object[] getUserStatisticsAggregate(@Param("userId") String clerkUserId);
+    UserStatisticsProjection getUserStatisticsAggregate(@Param("userId") String clerkUserId);
 
     /**
      * Aggregate template test statistics in a single query.
-     * Returns [totalAttempts, passedCount, avgScore, minScore, maxScore].
+     * Returns a type-safe projection with totalAttempts, passedCount, averageScore, minScore, maxScore.
+     * Avoids multiple COUNT/AVG queries and prevents ClassCastException from raw Object[].
+     *
+     * @param templateId the template UUID
+     * @return TemplateStatisticsProjection with aggregate statistics
      */
     @Query("""
-        SELECT COUNT(r),
-               COUNT(CASE WHEN r.passed = true THEN 1 END),
-               COALESCE(AVG(r.overallPercentage), 0.0),
-               COALESCE(MIN(r.overallPercentage), 0.0),
-               COALESCE(MAX(r.overallPercentage), 0.0)
+        SELECT COUNT(r) AS totalAttempts,
+               COUNT(CASE WHEN r.passed = true THEN 1 END) AS passedCount,
+               AVG(r.overallPercentage) AS averageScore,
+               MIN(r.overallPercentage) AS minScore,
+               MAX(r.overallPercentage) AS maxScore
         FROM TestResult r
         WHERE r.session.template.id = :templateId
         """)
-    Object[] getTemplateStatisticsAggregate(@Param("templateId") UUID templateId);
+    TemplateStatisticsProjection getTemplateStatisticsAggregate(@Param("templateId") UUID templateId);
 
     /**
      * Find recent results with session and template eagerly loaded (for dashboard).
