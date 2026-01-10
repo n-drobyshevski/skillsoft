@@ -464,6 +464,11 @@ public class TemplateShareServiceImpl implements TemplateShareService {
             return;
         }
 
+        // ADMIN users can share any template with any permission
+        if (grantor.isAdmin()) {
+            return;
+        }
+
         // Get grantor's highest permission
         SharePermission grantorPermission = getHighestPermission(template.getId(), grantor.getId());
 
@@ -489,6 +494,10 @@ public class TemplateShareServiceImpl implements TemplateShareService {
      */
     private SharePermission getGrantorPermission(TestTemplate template, User grantor) {
         if (template.isOwnedBy(grantor)) {
+            return SharePermission.MANAGE;
+        }
+        // ADMIN users have full MANAGE permission on all templates
+        if (grantor.isAdmin()) {
             return SharePermission.MANAGE;
         }
         return getHighestPermission(template.getId(), grantor.getId());

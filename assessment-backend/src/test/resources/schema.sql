@@ -1,6 +1,62 @@
 -- Schema for test database with H2 and JSONB support
 -- H2 doesn't need custom JSONB type, JSON works directly
 
+-- Create users table (needed for template sharing and ownership)
+CREATE TABLE IF NOT EXISTS users (
+    id UUID NOT NULL,
+    clerk_id VARCHAR(100) NOT NULL UNIQUE,
+    email VARCHAR(255),
+    username VARCHAR(100),
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    image_url VARCHAR(500),
+    has_image BOOLEAN DEFAULT false,
+    role VARCHAR(50) NOT NULL DEFAULT 'USER',
+    is_active BOOLEAN DEFAULT true,
+    banned BOOLEAN DEFAULT false,
+    locked BOOLEAN DEFAULT false,
+    preferences JSON DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    clerk_created_at TIMESTAMP,
+    last_login TIMESTAMP,
+    last_sign_in_at TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+-- Create teams table (needed for team sharing)
+CREATE TABLE IF NOT EXISTS teams (
+    id UUID NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    leader_id UUID,
+    created_by_id UUID NOT NULL,
+    metadata JSON DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    activated_at TIMESTAMP,
+    archived_at TIMESTAMP,
+    PRIMARY KEY (id),
+    FOREIGN KEY (leader_id) REFERENCES users(id),
+    FOREIGN KEY (created_by_id) REFERENCES users(id)
+);
+
+-- Create team_members table (many-to-many relationship between teams and users)
+CREATE TABLE IF NOT EXISTS team_members (
+    id UUID NOT NULL,
+    team_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    left_at TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    PRIMARY KEY (id),
+    FOREIGN KEY (team_id) REFERENCES teams(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE (team_id, user_id)
+);
+
 -- Create competencies table
 CREATE TABLE IF NOT EXISTS competencies (
     id UUID NOT NULL,
@@ -72,11 +128,55 @@ CREATE TABLE IF NOT EXISTS test_templates (
     show_results_immediately BOOLEAN DEFAULT true,
     is_active BOOLEAN DEFAULT true,
     status VARCHAR(50),
+    visibility VARCHAR(20) DEFAULT 'PRIVATE',
+    visibility_changed_at TIMESTAMP,
     version INTEGER DEFAULT 1,
     parent_id UUID,
+    owner_id UUID,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    FOREIGN KEY (owner_id) REFERENCES users(id)
+);
+
+-- Create template_shares table for sharing templates with users/teams
+CREATE TABLE IF NOT EXISTS template_shares (
+    id UUID NOT NULL,
+    template_id UUID NOT NULL,
+    grantee_type VARCHAR(10) NOT NULL,
+    user_id UUID,
+    team_id UUID,
+    permission VARCHAR(10) NOT NULL DEFAULT 'VIEW',
+    granted_by_id UUID NOT NULL,
+    granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP,
+    revoked_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT true,
+    version BIGINT DEFAULT 0,
+    PRIMARY KEY (id),
+    FOREIGN KEY (template_id) REFERENCES test_templates(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (team_id) REFERENCES teams(id),
+    FOREIGN KEY (granted_by_id) REFERENCES users(id),
+    UNIQUE (template_id, user_id),
+    UNIQUE (template_id, team_id)
+);
+
+-- Create template_share_links table for shareable links
+CREATE TABLE IF NOT EXISTS template_share_links (
+    id UUID NOT NULL,
+    template_id UUID NOT NULL,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    permission VARCHAR(10) NOT NULL DEFAULT 'VIEW',
+    created_by_id UUID NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT true,
+    max_uses INTEGER,
+    current_uses INTEGER DEFAULT 0,
+    PRIMARY KEY (id),
+    FOREIGN KEY (template_id) REFERENCES test_templates(id),
+    FOREIGN KEY (created_by_id) REFERENCES users(id)
 );
 
 -- Create test_sessions table for integration tests
