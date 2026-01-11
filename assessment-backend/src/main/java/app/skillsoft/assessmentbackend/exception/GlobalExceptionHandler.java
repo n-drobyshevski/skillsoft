@@ -613,6 +613,115 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // ===============================
+    // ANONYMOUS SESSION EXCEPTIONS
+    // ===============================
+
+    /**
+     * Handle InvalidSessionTokenException when anonymous session token is missing or invalid.
+     * Returns HTTP 401 UNAUTHORIZED.
+     */
+    @ExceptionHandler(InvalidSessionTokenException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleInvalidSessionTokenException(
+            InvalidSessionTokenException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Invalid session token [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.UNAUTHORIZED,
+            ex.getMessage(),
+            "Please provide a valid session access token in the X-Session-Token header",
+            request
+        );
+
+        errorResponse.setCode("INVALID_SESSION_TOKEN");
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
+    }
+
+    /**
+     * Handle RateLimitExceededException when rate limit is exceeded.
+     * Returns HTTP 429 TOO MANY REQUESTS with Retry-After header.
+     */
+    @ExceptionHandler(RateLimitExceededException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ResponseEntity<ErrorResponse> handleRateLimitExceededException(
+            RateLimitExceededException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Rate limit exceeded [{}]: {} - retry after {} seconds",
+                correlationId, ex.getMessage(), ex.getRetryAfterSeconds());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.TOO_MANY_REQUESTS,
+            ex.getMessage(),
+            "Please wait before making more requests",
+            request
+        );
+
+        errorResponse.setCode("RATE_LIMIT_EXCEEDED");
+        errorResponse.addContext("retryAfterSeconds", ex.getRetryAfterSeconds());
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(errorResponse);
+    }
+
+    /**
+     * Handle ShareLinkException when a share link is invalid, expired, or revoked.
+     * Returns HTTP 400 BAD REQUEST with specific error code.
+     */
+    @ExceptionHandler(ShareLinkException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleShareLinkException(
+            ShareLinkException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Share link error [{}]: {} - code: {}",
+                correlationId, ex.getMessage(), ex.getErrorCode());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage(),
+            "The share link cannot be used",
+            request
+        );
+
+        errorResponse.setCode(ex.getErrorCode().name());
+
+        return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Handle SessionExpiredException when an anonymous session has expired.
+     * Returns HTTP 410 GONE.
+     */
+    @ExceptionHandler(SessionExpiredException.class)
+    @ResponseStatus(HttpStatus.GONE)
+    public ResponseEntity<ErrorResponse> handleSessionExpiredException(
+            SessionExpiredException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Session expired [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.GONE,
+            ex.getMessage(),
+            "The session has expired. Please start a new session.",
+            request
+        );
+
+        errorResponse.setCode("SESSION_EXPIRED");
+
+        return ResponseEntity.status(HttpStatus.GONE).body(errorResponse);
+    }
+
+    // ===============================
     // DATABASE & SECURITY EXCEPTIONS
     // ===============================
 
