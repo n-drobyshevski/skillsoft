@@ -422,8 +422,10 @@ public class TemplateShareServiceImpl implements TemplateShareService {
      */
     private void validateShareRequest(TestTemplate template, User grantor, User grantee,
                                       SharePermission requestedPermission) {
-        // Cannot share DRAFT templates
-        if (template.getStatus() == TemplateStatus.DRAFT) {
+        // Cannot share DRAFT templates (unless owner or admin)
+        if (template.getStatus() == TemplateStatus.DRAFT
+                && !template.isOwnedBy(grantor)
+                && !grantor.isAdmin()) {
             throw new IllegalStateException("Cannot share DRAFT templates. Only the owner can access DRAFT templates.");
         }
 
@@ -445,8 +447,10 @@ public class TemplateShareServiceImpl implements TemplateShareService {
      * Validate a team share request.
      */
     private void validateTeamShareRequest(TestTemplate template, User grantor, SharePermission requestedPermission) {
-        // Cannot share DRAFT templates
-        if (template.getStatus() == TemplateStatus.DRAFT) {
+        // Cannot share DRAFT templates (unless owner or admin)
+        if (template.getStatus() == TemplateStatus.DRAFT
+                && !template.isOwnedBy(grantor)
+                && !grantor.isAdmin()) {
             throw new IllegalStateException("Cannot share DRAFT templates. Only the owner can access DRAFT templates.");
         }
 

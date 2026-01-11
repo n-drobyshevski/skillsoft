@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.controller;
 
+import app.skillsoft.assessmentbackend.domain.dto.ErrorResponse;
 import app.skillsoft.assessmentbackend.domain.dto.sharing.*;
 import app.skillsoft.assessmentbackend.domain.entities.SharePermission;
 import app.skillsoft.assessmentbackend.services.security.TemplateSecurityService;
@@ -140,7 +141,7 @@ public class TemplateShareController {
      */
     @PostMapping("/users")
     @PreAuthorize("@templateSecurity.canManageSharing(#templateId)")
-    public ResponseEntity<TemplateShareDto> shareWithUser(
+    public ResponseEntity<?> shareWithUser(
             @PathVariable UUID templateId,
             @Valid @RequestBody ShareUserRequest request) {
         logger.info("POST /api/v1/tests/templates/{}/shares/users - Sharing with user {}",
@@ -149,7 +150,10 @@ public class TemplateShareController {
         String clerkId = securityService.getAuthenticatedClerkId();
         if (clerkId == null) {
             logger.warn("No authenticated user for share operation");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse(HttpStatus.UNAUTHORIZED.value(),
+                            "Authentication required",
+                            "No authenticated user for share operation"));
         }
 
         try {
@@ -166,11 +170,17 @@ public class TemplateShareController {
 
         } catch (IllegalStateException e) {
             logger.warn("Share validation failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(),
+                            "Share validation failed",
+                            e.getMessage()));
         } catch (RuntimeException e) {
             if (e.getMessage() != null && e.getMessage().contains("not found")) {
                 logger.warn("Resource not found: {}", e.getMessage());
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(),
+                                "Resource not found",
+                                e.getMessage()));
             }
             throw e;
         }
@@ -185,7 +195,7 @@ public class TemplateShareController {
      */
     @PostMapping("/teams")
     @PreAuthorize("@templateSecurity.canManageSharing(#templateId)")
-    public ResponseEntity<TemplateShareDto> shareWithTeam(
+    public ResponseEntity<?> shareWithTeam(
             @PathVariable UUID templateId,
             @Valid @RequestBody ShareTeamRequest request) {
         logger.info("POST /api/v1/tests/templates/{}/shares/teams - Sharing with team {}",
@@ -194,7 +204,10 @@ public class TemplateShareController {
         String clerkId = securityService.getAuthenticatedClerkId();
         if (clerkId == null) {
             logger.warn("No authenticated user for share operation");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse(HttpStatus.UNAUTHORIZED.value(),
+                            "Authentication required",
+                            "No authenticated user for share operation"));
         }
 
         try {
@@ -211,11 +224,17 @@ public class TemplateShareController {
 
         } catch (IllegalStateException e) {
             logger.warn("Share validation failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(),
+                            "Share validation failed",
+                            e.getMessage()));
         } catch (RuntimeException e) {
             if (e.getMessage() != null && e.getMessage().contains("not found")) {
                 logger.warn("Resource not found: {}", e.getMessage());
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(),
+                                "Resource not found",
+                                e.getMessage()));
             }
             throw e;
         }
