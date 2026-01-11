@@ -180,10 +180,11 @@ CREATE TABLE IF NOT EXISTS template_share_links (
 );
 
 -- Create test_sessions table for integration tests
+-- V22: clerk_user_id nullable for anonymous sessions
 CREATE TABLE IF NOT EXISTS test_sessions (
     id UUID NOT NULL,
     template_id UUID,
-    clerk_user_id VARCHAR(255) NOT NULL,
+    clerk_user_id VARCHAR(255),  -- Nullable for anonymous sessions
     status VARCHAR(50) NOT NULL,
     started_at TIMESTAMP,
     completed_at TIMESTAMP,
@@ -192,8 +193,15 @@ CREATE TABLE IF NOT EXISTS test_sessions (
     question_order JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Anonymous session support (V22)
+    share_link_id UUID,
+    session_access_token_hash VARCHAR(64),
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(500),
+    anonymous_taker_info JSON,
     PRIMARY KEY (id),
-    FOREIGN KEY (template_id) REFERENCES test_templates(id)
+    FOREIGN KEY (template_id) REFERENCES test_templates(id),
+    FOREIGN KEY (share_link_id) REFERENCES template_share_links(id)
 );
 
 -- Create test_answers table for integration tests

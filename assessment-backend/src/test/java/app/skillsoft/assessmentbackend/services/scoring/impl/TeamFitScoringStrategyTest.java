@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,9 @@ class TeamFitScoringStrategyTest {
     private CompetencyBatchLoader competencyBatchLoader;
 
     @Mock
+    private IndicatorBatchLoader indicatorBatchLoader;
+
+    @Mock
     private ScoreNormalizer scoreNormalizer;
 
     private ScoringConfiguration scoringConfig;
@@ -69,6 +73,7 @@ class TeamFitScoringStrategyTest {
         // Create the strategy with all dependencies
         scoringStrategy = new TeamFitScoringStrategy(
                 competencyBatchLoader,
+                indicatorBatchLoader,
                 scoringConfig,
                 scoreNormalizer
         );

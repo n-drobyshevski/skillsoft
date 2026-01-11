@@ -1,13 +1,16 @@
 package app.skillsoft.assessmentbackend.domain.dto;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
  * DTO for storing individual competency scores within a test result.
  * Used as an element in the JSONB competency_scores array.
+ *
+ * Now includes nested indicator-level breakdown for richer insights.
  */
 public class CompetencyScoreDto {
-    
+
     private UUID competencyId;
     private String competencyName;
     private Double score;
@@ -16,6 +19,7 @@ public class CompetencyScoreDto {
     private Integer questionsAnswered;
     private Integer questionsCorrect;
     private String onetCode; // O*NET code for Big Five projection
+    private List<IndicatorScoreDto> indicatorScores; // Nested indicator breakdown
 
     // Constructors
     public CompetencyScoreDto() {
@@ -93,6 +97,14 @@ public class CompetencyScoreDto {
 
     public void setOnetCode(String onetCode) {
         this.onetCode = onetCode;
+    }
+
+    public List<IndicatorScoreDto> getIndicatorScores() {
+        return indicatorScores;
+    }
+
+    public void setIndicatorScores(List<IndicatorScoreDto> indicatorScores) {
+        this.indicatorScores = indicatorScores;
     }
 
     @Override

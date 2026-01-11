@@ -1,8 +1,10 @@
 package app.skillsoft.assessmentbackend.controller;
 
+import app.skillsoft.assessmentbackend.domain.dto.QuestionScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultSummaryDto;
 import app.skillsoft.assessmentbackend.services.TestResultService;
+import app.skillsoft.assessmentbackend.services.scoring.QuestionScoreService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -33,9 +35,12 @@ public class TestResultController {
     private static final Logger logger = LoggerFactory.getLogger(TestResultController.class);
 
     private final TestResultService testResultService;
+    private final QuestionScoreService questionScoreService;
 
-    public TestResultController(TestResultService testResultService) {
+    public TestResultController(TestResultService testResultService,
+                                QuestionScoreService questionScoreService) {
         this.testResultService = testResultService;
+        this.questionScoreService = questionScoreService;
     }
 
     // ==================== RESULT RETRIEVAL ====================
@@ -97,7 +102,7 @@ public class TestResultController {
     @PreAuthorize("@sessionSecurity.isResultOwner(#resultId)")
     public ResponseEntity<Integer> getPercentile(@PathVariable UUID resultId) {
         logger.info("GET /api/v1/tests/results/{}/percentile", resultId);
-        
+
         try {
             int percentile = testResultService.calculatePercentile(resultId);
             logger.info("Percentile for result {}: {}", resultId, percentile);
@@ -108,6 +113,36 @@ public class TestResultController {
                 return ResponseEntity.notFound().build();
             }
             throw e;
+        }
+    }
+
+    /**
+     * Get question-level scores for a specific indicator within a result.
+     *
+     * This is a lazy-loaded endpoint for detailed question breakdown.
+     * Called when a user expands an indicator row in the results view.
+     * Includes correct answers for learning/review purposes.
+     *
+     * @param resultId Result UUID
+     * @param indicatorId Behavioral indicator UUID
+     * @return List of question scores with correct answers
+     */
+    @GetMapping("/{resultId}/indicators/{indicatorId}/questions")
+    @PreAuthorize("@sessionSecurity.isResultOwner(#resultId)")
+    public ResponseEntity<List<QuestionScoreDto>> getIndicatorQuestionScores(
+            @PathVariable UUID resultId,
+            @PathVariable UUID indicatorId) {
+        logger.info("GET /api/v1/tests/results/{}/indicators/{}/questions", resultId, indicatorId);
+
+        try {
+            List<QuestionScoreDto> questionScores = questionScoreService.getQuestionScoresForIndicator(
+                    resultId, indicatorId);
+            logger.info("Returning {} question scores for indicator {} in result {}",
+                    questionScores.size(), indicatorId, resultId);
+            return ResponseEntity.ok(questionScores);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Failed to get question scores: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
         }
     }
 
