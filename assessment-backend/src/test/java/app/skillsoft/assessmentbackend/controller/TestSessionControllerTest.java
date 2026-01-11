@@ -437,7 +437,7 @@ class TestSessionControllerTest {
         void shouldReturnCurrentQuestion() throws Exception {
             // Given
             CurrentQuestionDto currentQuestion = new CurrentQuestionDto(
-                    assessmentQuestionDto, 0, 3, 3600, null
+                    assessmentQuestionDto, 0, 3, 3600, null, true, true
             );
             when(testSessionService.getCurrentQuestion(sessionId)).thenReturn(currentQuestion);
 
