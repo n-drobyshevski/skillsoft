@@ -6,9 +6,11 @@ import app.skillsoft.assessmentbackend.domain.dto.CreateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateSummaryDto;
 import app.skillsoft.assessmentbackend.domain.dto.UpdateTestTemplateRequest;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
+import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,20 +30,26 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     private static final Logger log = LoggerFactory.getLogger(TestTemplateServiceImpl.class);
 
     private final TestTemplateRepository templateRepository;
+    private final BlueprintConversionService blueprintConversionService;
 
-    public TestTemplateServiceImpl(TestTemplateRepository templateRepository) {
+    public TestTemplateServiceImpl(
+            TestTemplateRepository templateRepository,
+            BlueprintConversionService blueprintConversionService) {
         this.templateRepository = templateRepository;
+        this.blueprintConversionService = blueprintConversionService;
     }
 
     @Override
     public Page<TestTemplateSummaryDto> listTemplates(Pageable pageable) {
-        return templateRepository.findAll(pageable)
+        // Exclude soft-deleted templates from listing
+        return templateRepository.findByDeletedAtIsNull(pageable)
                 .map(this::toSummaryDto);
     }
 
     @Override
     public List<TestTemplateSummaryDto> listActiveTemplates() {
-        return templateRepository.findByIsActiveTrue().stream()
+        // Return only active, non-deleted templates
+        return templateRepository.findByIsActiveTrueAndDeletedAtIsNull().stream()
                 .map(this::toSummaryDto)
                 .toList();
     }
@@ -55,8 +63,8 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     @Override
     @Transactional
     public TestTemplateDto createTemplate(CreateTestTemplateRequest request) {
-        // Validate that template name is unique
-        if (templateRepository.existsByNameIgnoreCase(request.name())) {
+        // Validate that template name is unique among non-deleted templates
+        if (templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(request.name())) {
             throw new IllegalArgumentException("Template with name '" + request.name() + "' already exists");
         }
 
@@ -83,6 +91,9 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         template.setShowResultsImmediately(request.showResultsImmediately());
         template.setIsActive(true);
 
+        // Auto-convert legacy blueprint to typed blueprint for test assembly
+        blueprintConversionService.ensureTypedBlueprint(template);
+
         TestTemplate saved = templateRepository.save(template);
         return toDto(saved);
     }
@@ -95,9 +106,9 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
         // Update only provided fields
         if (request.name() != null) {
-            // Check uniqueness if name is being changed
-            if (!template.getName().equalsIgnoreCase(request.name()) 
-                    && templateRepository.existsByNameIgnoreCase(request.name())) {
+            // Check uniqueness if name is being changed (among non-deleted templates)
+            if (!template.getName().equalsIgnoreCase(request.name())
+                    && templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(request.name())) {
                 throw new IllegalArgumentException("Template with name '" + request.name() + "' already exists");
             }
             template.setName(request.name());
@@ -148,6 +159,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
             template.setShowResultsImmediately(request.showResultsImmediately());
         }
 
+        // Auto-convert legacy blueprint to typed blueprint for test assembly
+        // This ensures templates are upgraded when updated
+        blueprintConversionService.ensureTypedBlueprint(template);
+
         TestTemplate saved = templateRepository.save(template);
         return toDto(saved);
     }
@@ -182,7 +197,8 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     public List<TestTemplateSummaryDto> searchByName(String name) {
-        return templateRepository.findByNameContainingIgnoreCaseAndIsActiveTrue(name).stream()
+        // Search only among active, non-deleted templates
+        return templateRepository.findByNameContainingIgnoreCaseAndIsActiveTrueAndDeletedAtIsNull(name).stream()
                 .map(this::toSummaryDto)
                 .toList();
     }
@@ -198,8 +214,9 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     public TemplateStatistics getStatistics() {
-        long total = templateRepository.count();
-        long active = templateRepository.countByIsActiveTrue();
+        // Count only non-deleted templates
+        long total = templateRepository.countByDeletedAtIsNull();
+        long active = templateRepository.countByIsActiveTrueAndDeletedAtIsNull();
         return new TemplateStatistics(total, active, total - active);
     }
 
@@ -247,6 +264,9 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     /**
      * Validates that a template has all required configuration to be published.
      *
+     * <p>This validation ensures templates are ready for test assembly by requiring
+     * a typed blueprint. Legacy blueprint data will be auto-converted before validation.</p>
+     *
      * @param template The template to validate
      * @return List of validation error messages (empty if valid)
      */
@@ -258,13 +278,13 @@ public class TestTemplateServiceImpl implements TestTemplateService {
             errors.add("Template must have a name");
         }
 
-        // Check template has blueprint configuration (either typed or legacy)
-        boolean hasTypedBlueprint = template.getTypedBlueprint() != null;
-        boolean hasLegacyBlueprint = template.getBlueprint() != null && !template.getBlueprint().isEmpty();
-        boolean hasLegacyCompetencies = template.getCompetencyIds() != null && !template.getCompetencyIds().isEmpty();
+        // Attempt to auto-convert legacy blueprint to typed blueprint
+        blueprintConversionService.ensureTypedBlueprint(template);
 
-        if (!hasTypedBlueprint && !hasLegacyBlueprint && !hasLegacyCompetencies) {
-            errors.add("Template must have a blueprint configuration or competencies defined");
+        // Now strictly require typed blueprint for test assembly
+        if (template.getTypedBlueprint() == null) {
+            errors.add("Template must have a valid blueprint configured. " +
+                    "Please go to the Blueprint tab and add at least one competency.");
         }
 
         // Check assessment goal is set
@@ -304,7 +324,8 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getAllowBackNavigation(),
                 template.getShowResultsImmediately(),
                 template.getCreatedAt(),
-                template.getUpdatedAt()
+                template.getUpdatedAt(),
+                blueprintConversionService.hasValidBlueprint(template)
         );
     }
 

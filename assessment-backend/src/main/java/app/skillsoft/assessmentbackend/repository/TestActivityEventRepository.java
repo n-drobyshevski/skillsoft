@@ -5,6 +5,7 @@ import app.skillsoft.assessmentbackend.domain.entities.TestActivityEvent;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -92,4 +93,19 @@ public interface TestActivityEventRepository extends JpaRepository<TestActivityE
      */
     @Query("SELECT e FROM TestActivityEvent e WHERE e.templateId = :templateId ORDER BY e.eventTimestamp DESC LIMIT 1")
     TestActivityEvent findLatestByTemplateId(@Param("templateId") UUID templateId);
+
+    // ============================================
+    // BULK DELETE FOR TEMPLATE DELETION
+    // ============================================
+
+    /**
+     * Delete all activity events for a template.
+     * Used during force delete of templates.
+     *
+     * @param templateId The template UUID
+     * @return Count of deleted events
+     */
+    @Modifying
+    @Query("DELETE FROM TestActivityEvent e WHERE e.templateId = :templateId")
+    int deleteByTemplateId(@Param("templateId") UUID templateId);
 }

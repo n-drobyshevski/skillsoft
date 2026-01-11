@@ -129,7 +129,7 @@ class TestTemplateServiceTest {
                     pageable,
                     1
             );
-            when(templateRepository.findAll(pageable)).thenReturn(templatePage);
+            when(templateRepository.findByDeletedAtIsNull(pageable)).thenReturn(templatePage);
 
             // When
             Page<TestTemplateSummaryDto> result = testTemplateService.listTemplates(pageable);
@@ -139,7 +139,7 @@ class TestTemplateServiceTest {
             assertThat(result.getContent()).hasSize(1);
             assertThat(result.getContent().get(0).name()).isEqualTo("Leadership Assessment Test");
 
-            verify(templateRepository).findAll(pageable);
+            verify(templateRepository).findByDeletedAtIsNull(pageable);
         }
 
         @Test
@@ -148,7 +148,7 @@ class TestTemplateServiceTest {
             // Given
             Pageable pageable = PageRequest.of(0, 10);
             Page<TestTemplate> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
-            when(templateRepository.findAll(pageable)).thenReturn(emptyPage);
+            when(templateRepository.findByDeletedAtIsNull(pageable)).thenReturn(emptyPage);
 
             // When
             Page<TestTemplateSummaryDto> result = testTemplateService.listTemplates(pageable);
@@ -160,10 +160,10 @@ class TestTemplateServiceTest {
         }
 
         @Test
-        @DisplayName("Should return only active templates")
+        @DisplayName("Should return only active non-deleted templates")
         void shouldReturnOnlyActiveTemplates() {
             // Given
-            when(templateRepository.findByIsActiveTrue()).thenReturn(List.of(mockTemplate));
+            when(templateRepository.findByIsActiveTrueAndDeletedAtIsNull()).thenReturn(List.of(mockTemplate));
 
             // When
             List<TestTemplateSummaryDto> result = testTemplateService.listActiveTemplates();
@@ -172,7 +172,7 @@ class TestTemplateServiceTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).isActive()).isTrue();
 
-            verify(templateRepository).findByIsActiveTrue();
+            verify(templateRepository).findByIsActiveTrueAndDeletedAtIsNull();
         }
     }
 
@@ -224,7 +224,7 @@ class TestTemplateServiceTest {
         @DisplayName("Should create new template successfully")
         void shouldCreateNewTemplate() {
             // Given
-            when(templateRepository.existsByNameIgnoreCase(createRequest.name())).thenReturn(false);
+            when(templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(createRequest.name())).thenReturn(false);
             when(templateRepository.save(any(TestTemplate.class))).thenReturn(mockTemplate);
 
             // When
@@ -236,7 +236,7 @@ class TestTemplateServiceTest {
             assertThat(result.description()).isEqualTo("Comprehensive test for leadership competencies");
             assertThat(result.isActive()).isTrue();
 
-            verify(templateRepository).existsByNameIgnoreCase(createRequest.name());
+            verify(templateRepository).existsByNameIgnoreCaseAndDeletedAtIsNull(createRequest.name());
             verify(templateRepository).save(any(TestTemplate.class));
         }
 
@@ -244,14 +244,14 @@ class TestTemplateServiceTest {
         @DisplayName("Should throw exception when template name already exists")
         void shouldThrowExceptionWhenNameExists() {
             // Given
-            when(templateRepository.existsByNameIgnoreCase(createRequest.name())).thenReturn(true);
+            when(templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(createRequest.name())).thenReturn(true);
 
             // When & Then
             assertThatThrownBy(() -> testTemplateService.createTemplate(createRequest))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("already exists");
 
-            verify(templateRepository).existsByNameIgnoreCase(createRequest.name());
+            verify(templateRepository).existsByNameIgnoreCaseAndDeletedAtIsNull(createRequest.name());
             verify(templateRepository, never()).save(any());
         }
 
@@ -259,7 +259,7 @@ class TestTemplateServiceTest {
         @DisplayName("Should create template with all configuration options")
         void shouldCreateTemplateWithAllOptions() {
             // Given
-            when(templateRepository.existsByNameIgnoreCase(anyString())).thenReturn(false);
+            when(templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(anyString())).thenReturn(false);
             when(templateRepository.save(any(TestTemplate.class))).thenAnswer(invocation -> {
                 TestTemplate saved = invocation.getArgument(0);
                 saved.setId(templateId);
@@ -271,7 +271,7 @@ class TestTemplateServiceTest {
 
             // Then
             assertThat(result).isNotNull();
-            verify(templateRepository).save(argThat(template -> 
+            verify(templateRepository).save(argThat(template ->
                 template.getShuffleQuestions().equals(true) &&
                 template.getAllowBackNavigation().equals(true) &&
                 template.getShowResultsImmediately().equals(true)
@@ -288,7 +288,7 @@ class TestTemplateServiceTest {
         void shouldUpdateExistingTemplate() {
             // Given
             when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
-            when(templateRepository.existsByNameIgnoreCase(updateRequest.name())).thenReturn(false);
+            when(templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(updateRequest.name())).thenReturn(false);
             when(templateRepository.save(any(TestTemplate.class))).thenReturn(mockTemplate);
 
             // When
@@ -452,7 +452,7 @@ class TestTemplateServiceTest {
         @DisplayName("Should search templates by name")
         void shouldSearchTemplatesByName() {
             // Given
-            when(templateRepository.findByNameContainingIgnoreCaseAndIsActiveTrue("Leadership"))
+            when(templateRepository.findByNameContainingIgnoreCaseAndIsActiveTrueAndDeletedAtIsNull("Leadership"))
                     .thenReturn(List.of(mockTemplate));
 
             // When
@@ -462,14 +462,14 @@ class TestTemplateServiceTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).name()).contains("Leadership");
 
-            verify(templateRepository).findByNameContainingIgnoreCaseAndIsActiveTrue("Leadership");
+            verify(templateRepository).findByNameContainingIgnoreCaseAndIsActiveTrueAndDeletedAtIsNull("Leadership");
         }
 
         @Test
         @DisplayName("Should return empty list when no matches")
         void shouldReturnEmptyWhenNoMatches() {
             // Given
-            when(templateRepository.findByNameContainingIgnoreCaseAndIsActiveTrue("NonExistent"))
+            when(templateRepository.findByNameContainingIgnoreCaseAndIsActiveTrueAndDeletedAtIsNull("NonExistent"))
                     .thenReturn(Collections.emptyList());
 
             // When
@@ -478,7 +478,7 @@ class TestTemplateServiceTest {
             // Then
             assertThat(result).isEmpty();
 
-            verify(templateRepository).findByNameContainingIgnoreCaseAndIsActiveTrue("NonExistent");
+            verify(templateRepository).findByNameContainingIgnoreCaseAndIsActiveTrueAndDeletedAtIsNull("NonExistent");
         }
     }
 
@@ -508,11 +508,11 @@ class TestTemplateServiceTest {
     class StatisticsTests {
 
         @Test
-        @DisplayName("Should return template statistics")
+        @DisplayName("Should return template statistics for non-deleted templates")
         void shouldReturnStatistics() {
             // Given
-            when(templateRepository.count()).thenReturn(10L);
-            when(templateRepository.countByIsActiveTrue()).thenReturn(7L);
+            when(templateRepository.countByDeletedAtIsNull()).thenReturn(10L);
+            when(templateRepository.countByIsActiveTrueAndDeletedAtIsNull()).thenReturn(7L);
 
             // When
             TestTemplateService.TemplateStatistics stats = testTemplateService.getStatistics();
@@ -523,8 +523,8 @@ class TestTemplateServiceTest {
             assertThat(stats.activeTemplates()).isEqualTo(7L);
             assertThat(stats.inactiveTemplates()).isEqualTo(3L);
 
-            verify(templateRepository).count();
-            verify(templateRepository).countByIsActiveTrue();
+            verify(templateRepository).countByDeletedAtIsNull();
+            verify(templateRepository).countByIsActiveTrueAndDeletedAtIsNull();
         }
     }
 }

@@ -4,6 +4,7 @@ import app.skillsoft.assessmentbackend.domain.entities.GranteeType;
 import app.skillsoft.assessmentbackend.domain.entities.SharePermission;
 import app.skillsoft.assessmentbackend.domain.entities.TemplateShare;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -239,4 +240,19 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
     long countTemplatesSharedWithUser(
             @Param("userId") UUID userId,
             @Param("teamIds") List<UUID> teamIds);
+
+    // ============================================
+    // BULK DELETE FOR TEMPLATE DELETION
+    // ============================================
+
+    /**
+     * Delete all shares for a template.
+     * Used during force delete of templates.
+     *
+     * @param templateId The template UUID
+     * @return Count of deleted shares
+     */
+    @Modifying
+    @Query("DELETE FROM TemplateShare s WHERE s.template.id = :templateId")
+    int deleteByTemplateId(@Param("templateId") UUID templateId);
 }

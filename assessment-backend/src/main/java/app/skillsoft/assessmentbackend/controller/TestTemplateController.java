@@ -5,7 +5,9 @@ import app.skillsoft.assessmentbackend.domain.dto.sharing.ChangeVisibilityReques
 import app.skillsoft.assessmentbackend.domain.dto.sharing.SharedTemplatesResponseDto;
 import app.skillsoft.assessmentbackend.domain.dto.sharing.SharedWithMeCountDto;
 import app.skillsoft.assessmentbackend.domain.dto.sharing.VisibilityInfoDto;
+import app.skillsoft.assessmentbackend.domain.entities.DeletionMode;
 import app.skillsoft.assessmentbackend.domain.entities.TemplateVisibility;
+import app.skillsoft.assessmentbackend.services.TemplateDeletionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import app.skillsoft.assessmentbackend.services.security.TemplateSecurityService;
 import app.skillsoft.assessmentbackend.services.sharing.TemplateShareService;
@@ -47,15 +49,18 @@ public class TestTemplateController {
     private final TemplateVisibilityService visibilityService;
     private final TemplateSecurityService securityService;
     private final TemplateShareService templateShareService;
+    private final TemplateDeletionService deletionService;
 
     public TestTemplateController(TestTemplateService testTemplateService,
                                   TemplateVisibilityService visibilityService,
                                   TemplateSecurityService securityService,
-                                  TemplateShareService templateShareService) {
+                                  TemplateShareService templateShareService,
+                                  TemplateDeletionService deletionService) {
         this.testTemplateService = testTemplateService;
         this.visibilityService = visibilityService;
         this.securityService = securityService;
         this.templateShareService = templateShareService;
+        this.deletionService = deletionService;
     }
 
     // ==================== READ OPERATIONS ====================
@@ -218,22 +223,109 @@ public class TestTemplateController {
     }
 
     /**
-     * Delete a test template.
-     * 
+     * Delete a test template using soft delete.
+     * This endpoint uses SOFT_DELETE mode by default, which marks the template
+     * as deleted but preserves all data. Use the /safe endpoint for other modes.
+     *
      * @param id Template UUID to delete
      * @return 204 No Content or 404 if not found
      */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteTemplate(@PathVariable UUID id) {
-        logger.info("DELETE /api/v1/tests/templates/{}", id);
-        
-        boolean deleted = testTemplateService.deleteTemplate(id);
-        if (deleted) {
-            logger.info("Deleted template: {}", id);
-            return ResponseEntity.noContent().build();
+        logger.info("DELETE /api/v1/tests/templates/{} - Using soft delete", id);
+
+        try {
+            DeletionResultDto result = deletionService.deleteTemplate(id, DeletionMode.SOFT_DELETE, true);
+            if (result.success()) {
+                logger.info("Soft-deleted template: {}", id);
+                return ResponseEntity.noContent().build();
+            } else {
+                logger.warn("Failed to delete template {}: {}", id, result.message());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().contains("not found")) {
+                logger.warn("Template not found for deletion: {}", id);
+                return ResponseEntity.notFound().build();
+            }
+            logger.error("Error deleting template {}: {}", id, e.getMessage());
+            throw e;
+        }
+    }
+
+    // ==================== SAFE DELETION OPERATIONS ====================
+
+    /**
+     * Preview deletion impact before confirming.
+     * Shows what will be affected (sessions, results, shares, etc.)
+     * and provides a recommended deletion mode.
+     *
+     * @param id Template UUID to preview deletion for
+     * @return Deletion preview with counts and recommendations
+     */
+    @GetMapping("/{id}/deletion-preview")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DeletionPreviewDto> previewDeletion(@PathVariable UUID id) {
+        logger.info("GET /api/v1/tests/templates/{}/deletion-preview", id);
+
+        DeletionPreviewDto preview = deletionService.previewDeletion(id);
+        logger.info("Deletion preview for {}: {} sessions, {} results, recommended: {}",
+                id, preview.totalSessions(), preview.totalResults(), preview.recommendedMode());
+
+        return ResponseEntity.ok(preview);
+    }
+
+    /**
+     * Safely delete a template with specified mode.
+     *
+     * Modes:
+     * - SOFT_DELETE: Mark as deleted, preserve all data (can be restored)
+     * - ARCHIVE_AND_CLEANUP: Archive template, delete incomplete sessions
+     * - FORCE_DELETE: Permanently delete template and ALL related data
+     *
+     * @param id Template UUID to delete
+     * @param mode Deletion mode (default: SOFT_DELETE)
+     * @param confirmed Required for operations that affect existing data
+     * @return Deletion result with counts of affected entities
+     */
+    @DeleteMapping("/{id}/safe")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DeletionResultDto> safeDeleteTemplate(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "SOFT_DELETE") DeletionMode mode,
+            @RequestParam(defaultValue = "false") boolean confirmed) {
+        logger.info("DELETE /api/v1/tests/templates/{}/safe?mode={}&confirmed={}",
+                id, mode, confirmed);
+
+        try {
+            DeletionResultDto result = deletionService.deleteTemplate(id, mode, confirmed);
+            logger.info("Template {} deleted with mode {}: success={}", id, mode, result.success());
+            return ResponseEntity.ok(result);
+        } catch (IllegalStateException e) {
+            logger.warn("Deletion requires confirmation: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(DeletionResultDto.failed(id, mode, e.getMessage()));
+        }
+    }
+
+    /**
+     * Restore a soft-deleted template.
+     *
+     * @param id Template UUID to restore
+     * @return 200 if restored, 404 if not found or not soft-deleted
+     */
+    @PostMapping("/{id}/restore")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> restoreTemplate(@PathVariable UUID id) {
+        logger.info("POST /api/v1/tests/templates/{}/restore", id);
+
+        boolean restored = deletionService.restoreTemplate(id);
+        if (restored) {
+            logger.info("Restored template: {}", id);
+            return ResponseEntity.ok().build();
         } else {
-            logger.warn("Template not found for deletion: {}", id);
+            logger.warn("Template not found or not soft-deleted: {}", id);
             return ResponseEntity.notFound().build();
         }
     }

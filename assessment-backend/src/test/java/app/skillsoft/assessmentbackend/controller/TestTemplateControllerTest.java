@@ -2,8 +2,13 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
+import app.skillsoft.assessmentbackend.domain.entities.DeletionMode;
+import app.skillsoft.assessmentbackend.services.TemplateDeletionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService.TemplateStatistics;
+import app.skillsoft.assessmentbackend.services.security.TemplateSecurityService;
+import app.skillsoft.assessmentbackend.services.sharing.TemplateShareService;
+import app.skillsoft.assessmentbackend.services.sharing.TemplateVisibilityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -53,6 +58,18 @@ class TestTemplateControllerTest {
     @MockBean
     private TestTemplateService testTemplateService;
 
+    @MockBean
+    private TemplateVisibilityService visibilityService;
+
+    @MockBean
+    private TemplateSecurityService securityService;
+
+    @MockBean
+    private TemplateShareService templateShareService;
+
+    @MockBean
+    private TemplateDeletionService deletionService;
+
     private UUID templateId;
     private UUID competencyId;
     private TestTemplateDto testTemplateDto;
@@ -69,7 +86,7 @@ class TestTemplateControllerTest {
 
         // TestTemplateDto: id, name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,
         //                  passingScore, isActive, shuffleQuestions, shuffleOptions, allowSkip,
-        //                  allowBackNavigation, showResultsImmediately, createdAt, updatedAt
+        //                  allowBackNavigation, showResultsImmediately, createdAt, updatedAt, hasValidBlueprint
         testTemplateDto = new TestTemplateDto(
                 templateId,
                 "Leadership Assessment Test",
@@ -87,7 +104,8 @@ class TestTemplateControllerTest {
                 true,        // allowBackNavigation
                 true,        // showResultsImmediately
                 now,         // createdAt
-                now          // updatedAt
+                now,         // updatedAt
+                true         // hasValidBlueprint
         );
 
         // TestTemplateSummaryDto: id, name, description, goal, competencyCount, timeLimitMinutes, passingScore, isActive, createdAt
@@ -373,7 +391,8 @@ class TestTemplateControllerTest {
                     Map.of("onetSocCode", "15-1252.00"),  // blueprint
                     List.of(competencyId),
                     5, 90, 80.0, true, false, false, true, true, true,
-                    now, LocalDateTime.now()
+                    now, LocalDateTime.now(),
+                    true  // hasValidBlueprint
             );
             when(testTemplateService.updateTemplate(eq(templateId), any(UpdateTestTemplateRequest.class)))
                     .thenReturn(updatedDto);
@@ -470,7 +489,8 @@ class TestTemplateControllerTest {
                     testTemplateDto.allowBackNavigation(),
                     testTemplateDto.showResultsImmediately(),
                     testTemplateDto.createdAt(),
-                    LocalDateTime.now()
+                    LocalDateTime.now(),
+                    true  // hasValidBlueprint
             );
             when(testTemplateService.deactivateTemplate(templateId)).thenReturn(deactivatedDto);
 
@@ -490,17 +510,19 @@ class TestTemplateControllerTest {
 
         @Test
         @WithMockUser(roles = "ADMIN")
-        @DisplayName("Should delete template")
+        @DisplayName("Should delete template using soft delete")
         void shouldDeleteTemplate() throws Exception {
-            // Given
-            when(testTemplateService.deleteTemplate(templateId)).thenReturn(true);
+            // Given - mock successful soft delete
+            DeletionResultDto successResult = DeletionResultDto.softDeleted(templateId, LocalDateTime.now());
+            when(deletionService.deleteTemplate(eq(templateId), eq(DeletionMode.SOFT_DELETE), eq(true)))
+                    .thenReturn(successResult);
 
             // When & Then
             mockMvc.perform(delete("/api/v1/tests/templates/{id}", templateId)
                             .with(csrf()))
                     .andExpect(status().isNoContent());
 
-            verify(testTemplateService).deleteTemplate(templateId);
+            verify(deletionService).deleteTemplate(templateId, DeletionMode.SOFT_DELETE, true);
         }
 
         @Test
@@ -509,7 +531,8 @@ class TestTemplateControllerTest {
         void shouldReturn404WhenDeletingNonExistent() throws Exception {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            when(testTemplateService.deleteTemplate(nonExistentId)).thenReturn(false);
+            when(deletionService.deleteTemplate(eq(nonExistentId), eq(DeletionMode.SOFT_DELETE), eq(true)))
+                    .thenThrow(new RuntimeException("TestTemplate not found with id: " + nonExistentId));
 
             // When & Then
             mockMvc.perform(delete("/api/v1/tests/templates/{id}", nonExistentId)

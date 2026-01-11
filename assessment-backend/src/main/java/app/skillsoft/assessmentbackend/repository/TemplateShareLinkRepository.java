@@ -171,4 +171,19 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
     @Query("DELETE FROM TemplateShareLink l WHERE l.expiresAt < :cutoffDate " +
            "AND l.isActive = false")
     int deleteExpiredLinksBefore(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+    // ============================================
+    // BULK DELETE FOR TEMPLATE DELETION
+    // ============================================
+
+    /**
+     * Delete all share links for a template.
+     * Used during force delete of templates.
+     *
+     * @param templateId The template UUID
+     * @return Count of deleted links
+     */
+    @Modifying
+    @Query("DELETE FROM TemplateShareLink l WHERE l.template.id = :templateId")
+    int deleteByTemplateId(@Param("templateId") UUID templateId);
 }

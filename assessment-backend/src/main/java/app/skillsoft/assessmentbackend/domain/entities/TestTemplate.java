@@ -213,6 +213,26 @@ public class TestTemplate {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // ============================================
+    // SOFT DELETE FIELDS
+    // ============================================
+
+    /**
+     * Soft delete timestamp.
+     * When set, the template is considered deleted but data is preserved.
+     * Null means the template is active (not deleted).
+     */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    /**
+     * User who deleted this template.
+     * Tracks who performed the soft delete for audit purposes.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deleted_by_id")
+    private User deletedBy;
+
     // Constructors
     public TestTemplate() {
         // Default constructor required by JPA
@@ -697,6 +717,57 @@ public class TestTemplate {
             return false;
         }
         return clerkId.equals(owner.getClerkId());
+    }
+
+    // ============================================
+    // SOFT DELETE GETTERS/SETTERS AND METHODS
+    // ============================================
+
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    public User getDeletedBy() {
+        return deletedBy;
+    }
+
+    public void setDeletedBy(User deletedBy) {
+        this.deletedBy = deletedBy;
+    }
+
+    /**
+     * Check if this template has been soft-deleted.
+     * @return true if deletedAt is set
+     */
+    @Transient
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    /**
+     * Soft delete this template.
+     * Sets the deletedAt timestamp and marks the template as inactive.
+     *
+     * @param deletedBy The user who performed the deletion (can be null)
+     */
+    public void softDelete(User deletedBy) {
+        this.deletedAt = LocalDateTime.now();
+        this.deletedBy = deletedBy;
+        this.isActive = false;
+    }
+
+    /**
+     * Restore a soft-deleted template.
+     * Clears the deletedAt timestamp but does NOT automatically reactivate the template.
+     * The caller should decide on the appropriate status.
+     */
+    public void restore() {
+        this.deletedAt = null;
+        this.deletedBy = null;
     }
 
     // equals and hashCode

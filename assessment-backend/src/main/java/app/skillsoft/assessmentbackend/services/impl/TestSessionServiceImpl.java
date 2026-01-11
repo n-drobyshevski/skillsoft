@@ -15,6 +15,7 @@ import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
+import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyCompletedEvent;
@@ -53,6 +54,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final AssemblyProgressTracker assemblyProgressTracker;
     private final ScoringOrchestrationService scoringOrchestrationService;
     private final ActivityTrackingService activityTrackingService;
+    private final BlueprintConversionService blueprintConversionService;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -67,7 +69,8 @@ public class TestSessionServiceImpl implements TestSessionService {
             ApplicationEventPublisher eventPublisher,
             AssemblyProgressTracker assemblyProgressTracker,
             ScoringOrchestrationService scoringOrchestrationService,
-            ActivityTrackingService activityTrackingService) {
+            ActivityTrackingService activityTrackingService,
+            BlueprintConversionService blueprintConversionService) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -81,6 +84,7 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.assemblyProgressTracker = assemblyProgressTracker;
         this.scoringOrchestrationService = scoringOrchestrationService;
         this.activityTrackingService = activityTrackingService;
+        this.blueprintConversionService = blueprintConversionService;
     }
 
     @Override
@@ -345,12 +349,17 @@ public class TestSessionServiceImpl implements TestSessionService {
                 .map(this::toAnswerDto)
                 .orElse(null);
 
+        // Get template settings for navigation controls
+        TestTemplate template = session.getTemplate();
+
         return new CurrentQuestionDto(
                 toQuestionDto(question),
                 currentIndex,
                 session.getQuestionOrder().size(),
                 session.getTimeRemainingSeconds(),
-                previousAnswer
+                previousAnswer,
+                template.getAllowBackNavigation(),
+                template.getAllowSkip()
         );
     }
 
@@ -535,12 +544,28 @@ public class TestSessionServiceImpl implements TestSessionService {
         var typedBlueprint = template.getTypedBlueprint();
         Instant assemblyStartTime = Instant.now();
 
+        // Attempt auto-conversion if typedBlueprint is missing
         if (typedBlueprint == null) {
-            log.error("Template {} has no typed blueprint configured. " +
-                    "All templates must have a typed blueprint for test assembly.", template.getId());
-            throw new IllegalStateException(
-                    "Template must have a typed blueprint for test assembly. " +
-                    "Please configure the blueprint in the template settings.");
+            log.info("Template {} has no typed blueprint, attempting auto-conversion from legacy data",
+                    template.getId());
+
+            if (blueprintConversionService.ensureTypedBlueprint(template)) {
+                typedBlueprint = template.getTypedBlueprint();
+                log.info("Successfully auto-converted legacy blueprint for template {}", template.getId());
+            } else {
+                log.error("Template {} has no typed blueprint configured and auto-conversion failed. " +
+                        "Template goal: {}, Legacy blueprint: {}, Legacy competencyIds: {}",
+                        template.getId(),
+                        template.getGoal(),
+                        template.getBlueprint() != null ? "present" : "null",
+                        template.getCompetencyIds() != null && !template.getCompetencyIds().isEmpty()
+                                ? template.getCompetencyIds().size() + " items" : "empty");
+
+                throw new IllegalStateException(
+                        "Template must have a valid blueprint for test assembly. " +
+                        "Please go to the template's Blueprint tab and add at least one competency. " +
+                        "Template ID: " + template.getId());
+            }
         }
 
         // Inject candidate context into the blueprint for Delta Testing

@@ -10,7 +10,7 @@ import java.util.UUID;
 /**
  * DTO for TestTemplate entity response.
  * Per ROADMAP.md Section 1.C: Includes goal and blueprint fields.
- * 
+ *
  * <p><b>Note:</b> The {@code competencyIds} field is deprecated and will be removed
  * in a future version. Use {@code blueprint} configuration instead.
  */
@@ -34,6 +34,11 @@ public record TestTemplateDto(
         Boolean allowBackNavigation,
         Boolean showResultsImmediately,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        /**
+         * Indicates whether the template has a valid typed blueprint for test assembly.
+         * Frontend should disable "Start Test" button when this is false.
+         */
+        Boolean hasValidBlueprint
 ) {
 }

@@ -85,6 +85,9 @@ class TestSessionDuplicateSessionTest {
     @Mock
     private ActivityTrackingService activityTrackingService;
 
+    @Mock
+    private BlueprintConversionService blueprintConversionService;
+
     private TestSessionService testSessionService;
 
     private UUID templateId;
@@ -109,7 +112,8 @@ class TestSessionDuplicateSessionTest {
                 eventPublisher,
                 assemblyProgressTracker,
                 scoringOrchestrationService,
-                activityTrackingService
+                activityTrackingService,
+                blueprintConversionService
         );
 
         // Initialize test data

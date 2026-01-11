@@ -107,6 +107,8 @@ public interface TestSessionService {
             int questionIndex,
             int totalQuestions,
             Integer timeRemainingSeconds,
-            TestAnswerDto previousAnswer
+            TestAnswerDto previousAnswer,
+            Boolean allowBackNavigation,
+            Boolean allowSkip
     ) {}
 }

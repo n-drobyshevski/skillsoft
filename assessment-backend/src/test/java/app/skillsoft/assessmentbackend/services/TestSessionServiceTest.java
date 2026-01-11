@@ -95,6 +95,9 @@ class TestSessionServiceTest {
     @Mock
     private ActivityTrackingService activityTrackingService;
 
+    @Mock
+    private BlueprintConversionService blueprintConversionService;
+
     private TestSessionServiceImpl testSessionService;
 
     private UUID sessionId;
@@ -120,7 +123,8 @@ class TestSessionServiceTest {
                 eventPublisher,
                 assemblyProgressTracker,
                 scoringOrchestrationService,
-                activityTrackingService
+                activityTrackingService,
+                blueprintConversionService
         );
 
         sessionId = UUID.randomUUID();
@@ -466,11 +470,11 @@ class TestSessionServiceTest {
     class StartSessionEmptyQuestionValidationTests {
 
         @Test
-        @DisplayName("Should throw IllegalStateException when template has no typed blueprint")
+        @DisplayName("Should throw IllegalStateException when template has no typed blueprint and conversion fails")
         void startSession_WithNoBlueprint_ShouldThrowIllegalStateException() {
-            // Given: A template without a typed blueprint
-            UUID competencyId = UUID.randomUUID();
-            mockTemplate.setCompetencyIds(List.of(competencyId));
+            // Given: A template without a typed blueprint (and conversion fails)
+            mockTemplate.setCompetencyIds(null);  // No competencies = conversion will fail
+            mockTemplate.setBlueprint(null);      // No legacy blueprint
             mockTemplate.setGoal(AssessmentGoal.OVERVIEW);
             // Blueprint is null by default
 
@@ -487,10 +491,13 @@ class TestSessionServiceTest {
                     clerkUserId, templateId, SessionStatus.IN_PROGRESS))
                     .thenReturn(Optional.empty());
 
+            // Mock blueprint conversion to fail (no data to convert)
+            when(blueprintConversionService.ensureTypedBlueprint(mockTemplate)).thenReturn(false);
+
             // When & Then: Should throw IllegalStateException
             assertThatThrownBy(() -> testSessionService.startSession(request))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("typed blueprint");
+                    .hasMessageContaining("blueprint");
 
             // Verify that session was never saved
             verify(sessionRepository, never()).save(any(TestSession.class));
