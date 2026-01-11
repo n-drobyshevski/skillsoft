@@ -241,4 +241,37 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
         WHERE r.session.template.id = :templateId
         """)
     TemplateScoreTimeProjection getTemplateScoreAndTimeAggregates(@Param("templateId") UUID templateId);
+    // ============================================
+    // ANONYMOUS SESSION QUERIES
+    // ============================================
+
+    Optional<TestSession> findBySessionAccessTokenHash(String tokenHash);
+
+    @Query(value = "SELECT s FROM TestSession s JOIN FETCH s.template " +
+                   "WHERE s.template.id = :templateId AND s.clerkUserId IS NULL ORDER BY s.createdAt DESC",
+           countQuery = "SELECT COUNT(s) FROM TestSession s WHERE s.template.id = :templateId AND s.clerkUserId IS NULL")
+    Page<TestSession> findAnonymousByTemplateId(@Param("templateId") UUID templateId, Pageable pageable);
+
+    List<TestSession> findByShareLink_Id(UUID shareLinkId);
+
+    @Query("SELECT COUNT(s) FROM TestSession s WHERE s.ipAddress = :ip AND s.createdAt > :after AND s.clerkUserId IS NULL")
+    long countAnonymousByIpAddressAfter(@Param("ip") String ipAddress, @Param("after") LocalDateTime after);
+
+    @Query("SELECT s FROM TestSession s JOIN FETCH s.template LEFT JOIN FETCH s.shareLink WHERE s.id = :sessionId AND s.clerkUserId IS NULL")
+    Optional<TestSession> findAnonymousByIdWithShareLink(@Param("sessionId") UUID sessionId);
+
+    @Query("SELECT s FROM TestSession s JOIN FETCH s.template LEFT JOIN FETCH s.shareLink WHERE s.id = :sessionId")
+    Optional<TestSession> findByIdWithTemplateAndShareLink(@Param("sessionId") UUID sessionId);
+
+    @Query("SELECT COUNT(s) FROM TestSession s WHERE s.template.id = :templateId AND s.clerkUserId IS NULL")
+    long countAnonymousByTemplateId(@Param("templateId") UUID templateId);
+
+    @Query("SELECT s FROM TestSession s WHERE s.clerkUserId IS NULL AND s.status IN ('NOT_STARTED', 'IN_PROGRESS') AND s.lastActivityAt < :cutoff")
+    List<TestSession> findStaleAnonymousSessions(@Param("cutoff") LocalDateTime cutoffTime);
+
+    @Query("SELECT COUNT(s) FROM TestSession s WHERE s.template.id = :templateId AND s.clerkUserId IS NULL AND s.status = 'IN_PROGRESS'")
+    long countAnonymousInProgressByTemplateId(@Param("templateId") UUID templateId);
+
+    @Query("SELECT COUNT(s) FROM TestSession s WHERE s.shareLink.id = :shareLinkId")
+    long countByShareLinkId(@Param("shareLinkId") UUID shareLinkId);
 }

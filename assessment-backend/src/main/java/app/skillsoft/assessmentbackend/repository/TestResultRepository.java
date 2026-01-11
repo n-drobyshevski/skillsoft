@@ -219,4 +219,132 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
     List<TestResult> findByTemplateIdAndCompletedAtAfter(
             @Param("templateId") UUID templateId,
             @Param("cutoff") LocalDateTime cutoff);
+
+    // ============================================
+    // ANONYMOUS RESULT QUERIES
+    // ============================================
+
+    /**
+     * Find anonymous results for a template (owner view).
+     * Joins through session to filter by null clerkUserId.
+     * Eagerly loads session, template, and share link for efficient DTO mapping.
+     *
+     * @param templateId The template UUID
+     * @param pageable   Pagination parameters
+     * @return Page of anonymous results
+     */
+    @Query(value = "SELECT r FROM TestResult r " +
+                   "JOIN FETCH r.session s " +
+                   "JOIN FETCH s.template t " +
+                   "LEFT JOIN FETCH s.shareLink " +
+                   "WHERE t.id = :templateId AND s.clerkUserId IS NULL " +
+                   "ORDER BY r.completedAt DESC",
+           countQuery = "SELECT COUNT(r) FROM TestResult r " +
+                        "WHERE r.session.template.id = :templateId " +
+                        "AND r.session.clerkUserId IS NULL")
+    Page<TestResult> findAnonymousByTemplateId(
+            @Param("templateId") UUID templateId,
+            Pageable pageable);
+
+    /**
+     * Find results for sessions created via a specific share link.
+     * Eagerly loads session and template for analytics.
+     *
+     * @param shareLinkId The share link UUID
+     * @return List of results from sessions using this link
+     */
+    @Query("SELECT r FROM TestResult r " +
+           "JOIN FETCH r.session s " +
+           "JOIN FETCH s.template " +
+           "WHERE s.shareLink.id = :shareLinkId " +
+           "ORDER BY r.completedAt DESC")
+    List<TestResult> findByShareLinkId(@Param("shareLinkId") UUID shareLinkId);
+
+    /**
+     * Find results by share link with pagination.
+     *
+     * @param shareLinkId The share link UUID
+     * @param pageable    Pagination parameters
+     * @return Page of results
+     */
+    @Query(value = "SELECT r FROM TestResult r " +
+                   "JOIN FETCH r.session s " +
+                   "JOIN FETCH s.template " +
+                   "WHERE s.shareLink.id = :shareLinkId " +
+                   "ORDER BY r.completedAt DESC",
+           countQuery = "SELECT COUNT(r) FROM TestResult r " +
+                        "WHERE r.session.shareLink.id = :shareLinkId")
+    Page<TestResult> findByShareLinkIdWithPagination(
+            @Param("shareLinkId") UUID shareLinkId,
+            Pageable pageable);
+
+    /**
+     * Count anonymous results for a template.
+     *
+     * @param templateId The template UUID
+     * @return Number of anonymous results
+     */
+    @Query("SELECT COUNT(r) FROM TestResult r " +
+           "WHERE r.session.template.id = :templateId " +
+           "AND r.session.clerkUserId IS NULL")
+    long countAnonymousByTemplateId(@Param("templateId") UUID templateId);
+
+    /**
+     * Count results from a specific share link.
+     *
+     * @param shareLinkId The share link UUID
+     * @return Number of results
+     */
+    @Query("SELECT COUNT(r) FROM TestResult r " +
+           "WHERE r.session.shareLink.id = :shareLinkId")
+    long countByShareLinkId(@Param("shareLinkId") UUID shareLinkId);
+
+    /**
+     * Calculate average score for anonymous results on a template.
+     *
+     * @param templateId The template UUID
+     * @return Average percentage score or null if no results
+     */
+    @Query("SELECT AVG(r.overallPercentage) FROM TestResult r " +
+           "WHERE r.session.template.id = :templateId " +
+           "AND r.session.clerkUserId IS NULL")
+    Double calculateAverageAnonymousScoreByTemplateId(@Param("templateId") UUID templateId);
+
+    /**
+     * Calculate pass rate for anonymous results on a template.
+     *
+     * @param templateId The template UUID
+     * @return Pass rate percentage or null if no results
+     */
+    @Query("SELECT (COUNT(CASE WHEN r.passed = true THEN 1 END) * 100.0 / COUNT(*)) " +
+           "FROM TestResult r " +
+           "WHERE r.session.template.id = :templateId " +
+           "AND r.session.clerkUserId IS NULL")
+    Double calculateAnonymousPassRateByTemplateId(@Param("templateId") UUID templateId);
+
+    /**
+     * Find anonymous result by ID with full eager loading.
+     * Used for detailed result view by template owner.
+     *
+     * @param resultId The result UUID
+     * @return Optional containing the result if found and anonymous
+     */
+    @Query("SELECT r FROM TestResult r " +
+           "JOIN FETCH r.session s " +
+           "JOIN FETCH s.template " +
+           "LEFT JOIN FETCH s.shareLink " +
+           "WHERE r.id = :resultId AND s.clerkUserId IS NULL")
+    Optional<TestResult> findAnonymousByIdWithSessionAndTemplate(@Param("resultId") UUID resultId);
+
+    /**
+     * Calculate average score for results from a specific share link.
+     */
+    @Query("SELECT AVG(r.overallPercentage) FROM TestResult r WHERE r.session.shareLink.id = :shareLinkId")
+    Double calculateAverageScoreByShareLinkId(@Param("shareLinkId") UUID shareLinkId);
+
+    /**
+     * Calculate pass rate for results from a specific share link.
+     */
+    @Query("SELECT (COUNT(CASE WHEN r.passed = true THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0)) FROM TestResult r WHERE r.session.shareLink.id = :shareLinkId")
+    Double calculatePassRateByShareLinkId(@Param("shareLinkId") UUID shareLinkId);
 }

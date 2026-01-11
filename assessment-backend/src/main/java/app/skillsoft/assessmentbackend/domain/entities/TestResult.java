@@ -30,7 +30,11 @@ public class TestResult {
     @JoinColumn(name = "session_id", nullable = false, unique = true)
     private TestSession session;
 
-    @Column(name = "clerk_user_id", nullable = false)
+    /**
+     * Clerk user ID for authenticated sessions.
+     * NULL for anonymous sessions - use session.anonymousTakerInfo instead.
+     */
+    @Column(name = "clerk_user_id")
     private String clerkUserId;
 
     /**
@@ -269,6 +273,43 @@ public class TestResult {
     @Transient
     public UUID getSessionId() {
         return session != null ? session.getId() : null;
+    }
+
+    /**
+     * Check if this result is from an anonymous session.
+     *
+     * @return true if the associated session is anonymous
+     */
+    @Transient
+    public boolean isAnonymous() {
+        return session != null && session.isAnonymous();
+    }
+
+    /**
+     * Get the anonymous taker info from the associated session.
+     * Returns null for authenticated sessions.
+     *
+     * @return AnonymousTakerInfo or null
+     */
+    @Transient
+    public AnonymousTakerInfo getAnonymousTakerInfo() {
+        return session != null ? session.getAnonymousTakerInfo() : null;
+    }
+
+    /**
+     * Get the display name for the result owner.
+     * For authenticated users, returns the clerkUserId.
+     * For anonymous users, returns the taker's display name.
+     *
+     * @return Display name or null if not available
+     */
+    @Transient
+    public String getDisplayName() {
+        if (clerkUserId != null) {
+            return clerkUserId; // Could be enhanced to fetch user name
+        }
+        AnonymousTakerInfo takerInfo = getAnonymousTakerInfo();
+        return takerInfo != null ? takerInfo.getDisplayName() : null;
     }
 
     // equals and hashCode

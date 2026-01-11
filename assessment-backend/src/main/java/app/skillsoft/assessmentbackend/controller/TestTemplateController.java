@@ -7,6 +7,7 @@ import app.skillsoft.assessmentbackend.domain.dto.sharing.SharedWithMeCountDto;
 import app.skillsoft.assessmentbackend.domain.dto.sharing.VisibilityInfoDto;
 import app.skillsoft.assessmentbackend.domain.entities.DeletionMode;
 import app.skillsoft.assessmentbackend.domain.entities.TemplateVisibility;
+import app.skillsoft.assessmentbackend.services.AnonymousTestService;
 import app.skillsoft.assessmentbackend.services.TemplateDeletionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import app.skillsoft.assessmentbackend.services.security.TemplateSecurityService;
@@ -50,17 +51,20 @@ public class TestTemplateController {
     private final TemplateSecurityService securityService;
     private final TemplateShareService templateShareService;
     private final TemplateDeletionService deletionService;
+    private final AnonymousTestService anonymousTestService;
 
     public TestTemplateController(TestTemplateService testTemplateService,
                                   TemplateVisibilityService visibilityService,
                                   TemplateSecurityService securityService,
                                   TemplateShareService templateShareService,
-                                  TemplateDeletionService deletionService) {
+                                  TemplateDeletionService deletionService,
+                                  AnonymousTestService anonymousTestService) {
         this.testTemplateService = testTemplateService;
         this.visibilityService = visibilityService;
         this.securityService = securityService;
         this.templateShareService = templateShareService;
         this.deletionService = deletionService;
+        this.anonymousTestService = anonymousTestService;
     }
 
     // ==================== READ OPERATIONS ====================
@@ -516,5 +520,63 @@ public class TestTemplateController {
         long count = templateShareService.countTemplatesSharedWithMe(clerkId);
         logger.debug("Shared templates count for user: {}", count);
         return ResponseEntity.ok(SharedWithMeCountDto.of(count));
+    }
+
+    // ==================== ANONYMOUS RESULTS (For Template Owners) ====================
+
+    /**
+     * Get anonymous session statistics for a template.
+     *
+     * @param templateId Template UUID
+     * @return Anonymous session statistics
+     */
+    @GetMapping("/{templateId}/anonymous-stats")
+    @PreAuthorize("@templateSecurity.canViewAnonymousResults(#templateId)")
+    public ResponseEntity<AnonymousTestService.AnonymousSessionStats> getAnonymousStats(
+            @PathVariable UUID templateId) {
+        logger.info("GET /api/v1/tests/templates/{}/anonymous-stats", templateId);
+
+        AnonymousTestService.AnonymousSessionStats stats =
+                anonymousTestService.getSessionStats(templateId);
+        return ResponseEntity.ok(stats);
+    }
+
+    /**
+     * List anonymous results for a template.
+     *
+     * @param templateId Template UUID
+     * @param pageable Pagination parameters
+     * @return Page of anonymous result summaries
+     */
+    @GetMapping("/{templateId}/anonymous-results")
+    @PreAuthorize("@templateSecurity.canViewAnonymousResults(#templateId)")
+    public ResponseEntity<Page<AnonymousResultSummaryDto>> listAnonymousResults(
+            @PathVariable UUID templateId,
+            @PageableDefault(size = 20, sort = "completedAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+        logger.info("GET /api/v1/tests/templates/{}/anonymous-results", templateId);
+
+        Page<AnonymousResultSummaryDto> results =
+                anonymousTestService.listAnonymousResults(templateId, pageable);
+        return ResponseEntity.ok(results);
+    }
+
+    /**
+     * Get detailed anonymous result.
+     *
+     * @param templateId Template UUID (for authorization check)
+     * @param resultId Result UUID
+     * @return Detailed anonymous result
+     */
+    @GetMapping("/{templateId}/anonymous-results/{resultId}")
+    @PreAuthorize("@templateSecurity.canViewAnonymousResults(#templateId)")
+    public ResponseEntity<AnonymousResultDetailDto> getAnonymousResultDetail(
+            @PathVariable UUID templateId,
+            @PathVariable UUID resultId) {
+        logger.info("GET /api/v1/tests/templates/{}/anonymous-results/{}", templateId, resultId);
+
+        AnonymousResultDetailDto result =
+                anonymousTestService.getAnonymousResultDetail(resultId);
+        return ResponseEntity.ok(result);
     }
 }

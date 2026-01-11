@@ -139,4 +139,13 @@ public interface TemplateSecurityService {
      * @return true if authenticated
      */
     boolean isAuthenticated();
+
+    /**
+     * Check if the current user can view anonymous test results for a template.
+     * Requires ownership, ADMIN role, or MANAGE permission.
+     *
+     * @param templateId The template to check
+     * @return true if the user can view anonymous results
+     */
+    boolean canViewAnonymousResults(UUID templateId);
 }

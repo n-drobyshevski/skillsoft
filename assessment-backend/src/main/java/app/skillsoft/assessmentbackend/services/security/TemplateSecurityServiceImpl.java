@@ -304,4 +304,25 @@ public class TemplateSecurityServiceImpl implements TemplateSecurityService {
                 && authentication.isAuthenticated()
                 && !"anonymousUser".equals(authentication.getPrincipal());
     }
+
+    @Override
+    public boolean canViewAnonymousResults(UUID templateId) {
+        // Must be authenticated to view anonymous results
+        if (!isAuthenticated()) {
+            return false;
+        }
+
+        // Admin can view all anonymous results
+        if (isAdmin()) {
+            return true;
+        }
+
+        // Owner can view their template's anonymous results
+        if (isOwner(templateId)) {
+            return true;
+        }
+
+        // Users with MANAGE permission can view anonymous results
+        return canAccess(templateId, SharePermission.MANAGE);
+    }
 }

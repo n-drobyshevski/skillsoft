@@ -108,6 +108,10 @@ public class SecurityConfig {
                 // Allow public access for share link validation (anonymous access support)
                 .requestMatchers(HttpMethod.GET, "/api/v1/tests/templates/validate-link").permitAll()
 
+                // Allow public access for anonymous test-taking via share links
+                // These endpoints use session access tokens instead of Clerk JWT
+                .requestMatchers("/api/v1/anonymous/**").permitAll()
+
                 // All other requests require authentication
                 // Role-based access is handled by @PreAuthorize annotations
                 .anyRequest().authenticated()
