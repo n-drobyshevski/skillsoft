@@ -8,7 +8,9 @@ import jakarta.validation.constraints.Min;
 import java.util.UUID;
 
 @Entity
-@Table(name = "behavioral_indicators")
+@Table(name = "behavioral_indicators", indexes = {
+    @Index(name = "idx_behavioral_indicator_competency", columnList = "competency_id")
+})
 public class BehavioralIndicator {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)

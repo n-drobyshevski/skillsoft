@@ -19,7 +19,10 @@ import java.util.UUID;
  * Contains overall scores, per-competency breakdown, and summary statistics.
  */
 @Entity
-@Table(name = "test_results")
+@Table(name = "test_results", indexes = {
+    @Index(name = "idx_test_result_clerk_user_id", columnList = "clerk_user_id"),
+    @Index(name = "idx_test_result_session_id", columnList = "session_id")
+})
 public class TestResult {
 
     @Id
