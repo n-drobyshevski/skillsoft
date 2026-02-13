@@ -1,11 +1,14 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
+import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,12 +30,14 @@ public class CompetencyServiceImpl implements CompetencyService {
     }
 
     @Override
+    @Cacheable(CacheConfig.COMPETENCIES_CACHE)
     public List<Competency> listCompetencies() {
         return competencyRepository.findAll();
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.COMPETENCIES_CACHE, allEntries = true)
     public Competency createCompetency(Competency competency) {
         if( null != competency.getId() ) {
             throw new IllegalArgumentException("New competency cannot already have an ID");
@@ -72,6 +77,7 @@ public class CompetencyServiceImpl implements CompetencyService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.COMPETENCIES_CACHE, allEntries = true)
     public Competency updateCompetency(UUID id, Competency competencyDetails) {
         return competencyRepository.findById(id)
                 .map(existingCompetency -> {
@@ -106,6 +112,7 @@ public class CompetencyServiceImpl implements CompetencyService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.COMPETENCIES_CACHE, allEntries = true)
     public boolean deleteCompetency(UUID id) {
         if (competencyRepository.existsById(id)) {
             competencyRepository.deleteById(id);

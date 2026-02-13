@@ -33,7 +33,9 @@ import java.util.UUID;
  * - TeamFitBlueprint (DYNAMIC_GAP_ANALYSIS): Team skill gap analysis
  */
 @Entity
-@Table(name = "test_templates")
+@Table(name = "test_templates", indexes = {
+    @Index(name = "idx_test_template_status", columnList = "status")
+})
 public class TestTemplate {
 
     @Id

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Nested;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -62,16 +63,22 @@ class CompetencyControllerIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private CacheManager cacheManager;
+
     private StandardCodesDto standardCodes;
 
     @BeforeEach
     void setUp() {
         // Setup MockMvc
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-        
+
         // Clear any existing data
         competencyRepository.deleteAll();
         competencyRepository.flush();
+
+        // Clear Caffeine caches to prevent stale data between tests
+        cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
         
         // Setup standard codes structure using the new DTO
         standardCodes = StandardCodesDto.builder()
