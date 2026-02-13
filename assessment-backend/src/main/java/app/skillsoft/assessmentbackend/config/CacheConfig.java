@@ -31,6 +31,9 @@ public class CacheConfig {
     public static final String ONET_PROFILES_CACHE = "onet-profiles";
     public static final String TEAM_PROFILES_CACHE = "team-profiles";
     public static final String PASSPORT_SCORES_CACHE = "passport-scores";
+    public static final String COMPETENCIES_CACHE = "competencies";
+    public static final String QUESTION_POOL_COUNTS_CACHE = "questionPoolCounts";
+    public static final String TEMPLATE_METADATA_CACHE = "templateMetadata";
 
     @Bean
     public CacheManager cacheManager() {
@@ -63,8 +66,36 @@ public class CacheConfig {
                 .recordStats()
                 .build());
 
-        log.info("Initialized Caffeine caches: {}, {}, {}",
-            ONET_PROFILES_CACHE, TEAM_PROFILES_CACHE, PASSPORT_SCORES_CACHE);
+        // Competencies - frequently listed during assembly/scoring
+        // 10-minute TTL, max 200 entries
+        manager.registerCustomCache(COMPETENCIES_CACHE,
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(10))
+                .maximumSize(200)
+                .recordStats()
+                .build());
+
+        // Question pool counts - availability checks during test assembly
+        // 5-minute TTL, max 500 entries (per indicator/difficulty combos)
+        manager.registerCustomCache(QUESTION_POOL_COUNTS_CACHE,
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(5))
+                .maximumSize(500)
+                .recordStats()
+                .build());
+
+        // Template metadata - config lookups during session creation
+        // 5-minute TTL, max 200 entries
+        manager.registerCustomCache(TEMPLATE_METADATA_CACHE,
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(5))
+                .maximumSize(200)
+                .recordStats()
+                .build());
+
+        log.info("Initialized Caffeine caches: {}, {}, {}, {}, {}, {}",
+            ONET_PROFILES_CACHE, TEAM_PROFILES_CACHE, PASSPORT_SCORES_CACHE,
+            COMPETENCIES_CACHE, QUESTION_POOL_COUNTS_CACHE, TEMPLATE_METADATA_CACHE);
 
         return manager;
     }

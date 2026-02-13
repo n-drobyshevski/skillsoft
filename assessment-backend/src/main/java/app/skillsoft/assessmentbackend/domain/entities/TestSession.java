@@ -17,7 +17,12 @@ import java.util.UUID;
  * Tracks the state and progress of a user taking a test.
  */
 @Entity
-@Table(name = "test_sessions")
+@Table(name = "test_sessions", indexes = {
+    @Index(name = "idx_test_session_clerk_user_id", columnList = "clerk_user_id"),
+    @Index(name = "idx_test_session_status_last_activity", columnList = "status, last_activity_at"),
+    @Index(name = "idx_test_session_access_token_hash", columnList = "session_access_token_hash"),
+    @Index(name = "idx_test_session_template_status", columnList = "template_id, status")
+})
 public class TestSession {
 
     @Id

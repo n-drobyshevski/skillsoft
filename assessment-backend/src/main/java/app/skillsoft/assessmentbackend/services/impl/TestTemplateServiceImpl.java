@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
+import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.TemplateStatus;
 import app.skillsoft.assessmentbackend.domain.dto.CreateTestTemplateRequest;
@@ -14,6 +15,8 @@ import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -55,6 +58,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     }
 
     @Override
+    @Cacheable(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id")
     public Optional<TestTemplateDto> findById(UUID id) {
         return templateRepository.findById(id)
                 .map(this::toDto);
@@ -62,6 +66,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public TestTemplateDto createTemplate(CreateTestTemplateRequest request) {
         // Validate that template name is unique among non-deleted templates
         if (templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(request.name())) {
@@ -100,6 +105,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public TestTemplateDto updateTemplate(UUID id, UpdateTestTemplateRequest request) {
         TestTemplate template = templateRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
@@ -169,6 +175,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public boolean deleteTemplate(UUID id) {
         if (templateRepository.existsById(id)) {
             templateRepository.deleteById(id);
@@ -179,6 +186,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public TestTemplateDto activateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
@@ -188,6 +196,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public TestTemplateDto deactivateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
@@ -222,6 +231,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public PublishResult publishTemplate(UUID templateId) {
         log.info("Publishing template: {}", templateId);
 

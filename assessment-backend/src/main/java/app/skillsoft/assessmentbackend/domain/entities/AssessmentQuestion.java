@@ -14,7 +14,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Entity
-@Table(name="assessment_questions")
+@Table(name = "assessment_questions", indexes = {
+    @Index(name = "idx_assessment_question_difficulty", columnList = "difficulty_level")
+})
 public class AssessmentQuestion {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
