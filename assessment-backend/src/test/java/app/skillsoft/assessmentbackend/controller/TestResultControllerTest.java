@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.services.TestResultService;
+import app.skillsoft.assessmentbackend.services.scoring.QuestionScoreService;
 import app.skillsoft.assessmentbackend.services.TestResultService.UserTestStatistics;
 import app.skillsoft.assessmentbackend.services.TestResultService.TemplateTestStatistics;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,6 +51,9 @@ class TestResultControllerTest {
 
     @MockBean
     private TestResultService testResultService;
+
+    @MockBean
+    private QuestionScoreService questionScoreService;
 
     private UUID resultId;
     private UUID sessionId;

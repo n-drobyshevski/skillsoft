@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.controller;
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.DeletionMode;
+import app.skillsoft.assessmentbackend.services.AnonymousTestService;
 import app.skillsoft.assessmentbackend.services.TemplateDeletionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService.TemplateStatistics;
@@ -69,6 +70,9 @@ class TestTemplateControllerTest {
 
     @MockBean
     private TemplateDeletionService deletionService;
+
+    @MockBean
+    private AnonymousTestService anonymousTestService;
 
     private UUID templateId;
     private UUID competencyId;

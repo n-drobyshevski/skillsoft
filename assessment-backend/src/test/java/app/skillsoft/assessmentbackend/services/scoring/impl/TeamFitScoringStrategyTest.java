@@ -203,28 +203,57 @@ class TeamFitScoringStrategyTest {
     }
 
     /**
-     * Sets up the CompetencyBatchLoader and ScoreNormalizer mocks.
+     * Sets up the CompetencyBatchLoader, IndicatorBatchLoader, and ScoreNormalizer mocks.
+     *
+     * The production code uses indicator-based aggregation:
+     * 1. indicatorBatchLoader.loadIndicatorsForAnswers() - batch load all indicators
+     * 2. indicatorBatchLoader.extractIndicatorIdSafe() - extract indicator ID from each answer
+     * 3. indicatorBatchLoader.getFromCache() - look up indicator in preloaded cache
+     * 4. competencyBatchLoader.loadCompetenciesForAnswers() - batch load all competencies
+     * 5. competencyBatchLoader.getFromCache() - look up competency in preloaded cache
      */
     private void setupBatchLoaderMock(Map<UUID, Competency> competencyMap) {
+        // --- CompetencyBatchLoader mocks (still used for competency-level rollup) ---
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
             .thenReturn(competencyMap);
-
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenAnswer(invocation -> {
-                TestAnswer answer = invocation.getArgument(0);
-                if (answer == null || answer.getQuestion() == null
-                    || answer.getQuestion().getBehavioralIndicator() == null
-                    || answer.getQuestion().getBehavioralIndicator().getCompetency() == null) {
-                    return Optional.empty();
-                }
-                return Optional.of(answer.getQuestion().getBehavioralIndicator().getCompetency().getId());
-            });
 
         when(competencyBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, Competency> cache = invocation.getArgument(0);
                 UUID competencyId = invocation.getArgument(1);
                 return cache != null ? cache.get(competencyId) : null;
+            });
+
+        // --- IndicatorBatchLoader mocks (used for indicator-based aggregation) ---
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> indicatorMap = new HashMap<>();
+                for (TestAnswer answer : answers) {
+                    if (answer != null && answer.getQuestion() != null
+                        && answer.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = answer.getQuestion().getBehavioralIndicator();
+                        indicatorMap.put(ind.getId(), ind);
+                    }
+                }
+                return indicatorMap;
+            });
+
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID indicatorId = invocation.getArgument(1);
+                return cache != null ? cache.get(indicatorId) : null;
             });
 
         // Set up score normalizer to delegate to real normalization logic
@@ -248,14 +277,44 @@ class TeamFitScoringStrategyTest {
     }
 
     private void setupBatchLoaderMockWithEmptyCache(UUID competencyId) {
+        // Competency cache is empty - simulates unknown/missing competency
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
             .thenReturn(Map.of());
 
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenReturn(Optional.of(competencyId));
-
-        when(competencyBatchLoader.getFromCache(any(), eq(competencyId)))
+        when(competencyBatchLoader.getFromCache(any(), any()))
             .thenReturn(null);
+
+        // Indicator batch loader still works (indicators exist, but their competency is missing from competency cache)
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> indicatorMap = new HashMap<>();
+                for (TestAnswer answer : answers) {
+                    if (answer != null && answer.getQuestion() != null
+                        && answer.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = answer.getQuestion().getBehavioralIndicator();
+                        indicatorMap.put(ind.getId(), ind);
+                    }
+                }
+                return indicatorMap;
+            });
+
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID indicatorId = invocation.getArgument(1);
+                return cache != null ? cache.get(indicatorId) : null;
+            });
 
         // Set up score normalizer
         when(scoreNormalizer.normalize(any(TestAnswer.class)))

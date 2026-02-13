@@ -135,8 +135,11 @@ CREATE TABLE IF NOT EXISTS test_templates (
     owner_id UUID,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP,
+    deleted_by_id UUID,
     PRIMARY KEY (id),
-    FOREIGN KEY (owner_id) REFERENCES users(id)
+    FOREIGN KEY (owner_id) REFERENCES users(id),
+    FOREIGN KEY (deleted_by_id) REFERENCES users(id)
 );
 
 -- Create template_shares table for sharing templates with users/teams

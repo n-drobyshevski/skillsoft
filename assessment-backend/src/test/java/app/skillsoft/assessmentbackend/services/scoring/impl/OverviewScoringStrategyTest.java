@@ -4,6 +4,7 @@ import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,10 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
@@ -46,10 +44,10 @@ class OverviewScoringStrategyTest {
     @Mock
     private CompetencyBatchLoader competencyBatchLoader;
 
-    @Spy
-    private ScoreNormalizer scoreNormalizer = new ScoreNormalizer();
+    @Mock
+    private IndicatorBatchLoader indicatorBatchLoader;
 
-    @InjectMocks
+    private ScoreNormalizer scoreNormalizer;
     private OverviewScoringStrategy scoringStrategy;
 
     private TestSession mockSession;
@@ -61,6 +59,16 @@ class OverviewScoringStrategyTest {
 
     @BeforeEach
     void setUp() {
+        // Initialize ScoreNormalizer (real instance, no spy needed)
+        scoreNormalizer = new ScoreNormalizer();
+
+        // Create the strategy with all dependencies
+        scoringStrategy = new OverviewScoringStrategy(
+                competencyBatchLoader,
+                indicatorBatchLoader,
+                scoreNormalizer
+        );
+
         // Set up UUIDs
         competencyId1 = UUID.randomUUID();
         competencyId2 = UUID.randomUUID();
@@ -139,46 +147,103 @@ class OverviewScoringStrategyTest {
     }
 
     /**
-     * Sets up the CompetencyBatchLoader mock to return the provided competency map.
-     * Also configures extractCompetencyIdSafe to return the competency IDs from the answers.
+     * Sets up the CompetencyBatchLoader, IndicatorBatchLoader mocks.
+     *
+     * The production code uses indicator-based aggregation:
+     * 1. indicatorBatchLoader.loadIndicatorsForAnswers() - batch load all indicators
+     * 2. indicatorBatchLoader.extractIndicatorIdSafe() - extract indicator ID from each answer
+     * 3. indicatorBatchLoader.getFromCache() - look up indicator in preloaded cache
+     * 4. competencyBatchLoader.loadCompetenciesForAnswers() - batch load all competencies
+     * 5. competencyBatchLoader.getFromCache() - look up competency in preloaded cache
      */
     private void setupBatchLoaderMock(Map<UUID, Competency> competencyMap) {
+        // --- CompetencyBatchLoader mocks (still used for competency-level rollup) ---
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
             .thenReturn(competencyMap);
 
-        // Mock extractCompetencyIdSafe to return the actual competency ID from the answer chain
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenAnswer(invocation -> {
-                TestAnswer answer = invocation.getArgument(0);
-                if (answer == null || answer.getQuestion() == null
-                    || answer.getQuestion().getBehavioralIndicator() == null
-                    || answer.getQuestion().getBehavioralIndicator().getCompetency() == null) {
-                    return Optional.empty();
-                }
-                return Optional.of(answer.getQuestion().getBehavioralIndicator().getCompetency().getId());
-            });
-
-        // Mock getFromCache to look up in the map
         when(competencyBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, Competency> cache = invocation.getArgument(0);
                 UUID competencyId = invocation.getArgument(1);
                 return cache != null ? cache.get(competencyId) : null;
             });
+
+        // --- IndicatorBatchLoader mocks (used for indicator-based aggregation) ---
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> indicatorMap = new HashMap<>();
+                for (TestAnswer answer : answers) {
+                    if (answer != null && answer.getQuestion() != null
+                        && answer.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = answer.getQuestion().getBehavioralIndicator();
+                        indicatorMap.put(ind.getId(), ind);
+                    }
+                }
+                return indicatorMap;
+            });
+
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID indicatorId = invocation.getArgument(1);
+                return cache != null ? cache.get(indicatorId) : null;
+            });
     }
 
     /**
      * Sets up the batch loader mock for tests where the competency is not found in the cache.
+     * Indicators still load correctly, but the competency cache is empty.
      */
     private void setupBatchLoaderMockWithEmptyCache(UUID competencyId) {
+        // Competency cache is empty - simulates unknown/missing competency
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
-            .thenReturn(Map.of()); // Empty cache
+            .thenReturn(Map.of());
 
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenReturn(Optional.of(competencyId));
-
-        when(competencyBatchLoader.getFromCache(any(), eq(competencyId)))
+        when(competencyBatchLoader.getFromCache(any(), any()))
             .thenReturn(null);
+
+        // Indicator batch loader still works (indicators exist, but their competency is missing from competency cache)
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> indicatorMap = new HashMap<>();
+                for (TestAnswer answer : answers) {
+                    if (answer != null && answer.getQuestion() != null
+                        && answer.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = answer.getQuestion().getBehavioralIndicator();
+                        indicatorMap.put(ind.getId(), ind);
+                    }
+                }
+                return indicatorMap;
+            });
+
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID indicatorId = invocation.getArgument(1);
+                return cache != null ? cache.get(indicatorId) : null;
+            });
     }
 
     @Nested

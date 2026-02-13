@@ -194,14 +194,13 @@ class CompetencyControllerIntegrationTest {
             onetRef.put("title", "Oral Comprehension");
             onetRef.put("element_type", "ability");
 
-            Map<String, Object> globalCategory = new HashMap<>();
-            globalCategory.put("domain", "big_five");
-            globalCategory.put("trait", "extraversion");
+            Map<String, Object> bigFiveRef = new HashMap<>();
+            bigFiveRef.put("trait", "EXTRAVERSION");
 
             Map<String, Object> complexStandardCodes = new HashMap<>();
             complexStandardCodes.put("escoRef", escoRef);
             complexStandardCodes.put("onetRef", onetRef);
-            complexStandardCodes.put("bigFiveRef", globalCategory);
+            complexStandardCodes.put("bigFiveRef", bigFiveRef);
 
             // Description must be at least 50 characters per validation
             Map<String, Object> competencyRequest = new HashMap<>();
@@ -218,7 +217,7 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/abc123-def456-789")))
                     .andExpect(jsonPath("$.standardCodes.onetRef.code", is("2.A.1.b")))
-                    .andExpect(jsonPath("$.standardCodes.bigFiveRef.trait", is("extraversion")))
+                    .andExpect(jsonPath("$.standardCodes.bigFiveRef.trait", is("EXTRAVERSION")))
                     .andExpect(jsonPath("$.standardCodes.escoRef.title", is("communicate with others")))
                     .andExpect(jsonPath("$.standardCodes.onetRef.title", is("Oral Comprehension")));
         }
@@ -290,7 +289,7 @@ class CompetencyControllerIntegrationTest {
 
             // Prepare update with new standard codes using new DTO structure
             Map<String, Object> newEscoRef = new HashMap<>();
-            newEscoRef.put("uri", "http://data.europa.eu/esco/skill/def456-ghi789-012");
+            newEscoRef.put("uri", "http://data.europa.eu/esco/skill/def456-abc789-012");
             newEscoRef.put("title", "demonstrate empathy");
             newEscoRef.put("skill_type", "skill");
 
@@ -314,7 +313,7 @@ class CompetencyControllerIntegrationTest {
                     .andExpect(jsonPath("$.name", is("Эмпатия и социальная осознанность")))
                     .andExpect(jsonPath("$.description", containsString("эмоции")))
                     .andExpect(jsonPath("$.category", is("EMOTIONAL_INTELLIGENCE")))
-                    .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/def456-ghi789-012")))
+                    .andExpect(jsonPath("$.standardCodes.escoRef.uri", is("http://data.europa.eu/esco/skill/def456-abc789-012")))
                     .andExpect(jsonPath("$.standardCodes.escoRef.title", is("demonstrate empathy")))
                     .andExpect(jsonPath("$.isActive", is(true)))
                     .andExpect(jsonPath("$.version", is(2))); // Version should increment

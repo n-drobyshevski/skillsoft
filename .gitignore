@@ -96,7 +96,3 @@ docs/
 infrastructure/database/postgres-data/
 
 
-
-# ====================
-frontend-app/*
-/frontend-app/
