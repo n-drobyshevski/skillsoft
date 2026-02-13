@@ -1,9 +1,9 @@
 package app.skillsoft.assessmentbackend.service;
 
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.impl.CompetencyServiceImpl;
 import org.mockito.ArgumentCaptor;
@@ -44,17 +44,16 @@ class CompetencyServiceTest {
     private CompetencyServiceImpl competencyService;
 
     private Competency sampleCompetency;
-    private Map<String, Object> standardCodes;
+    private StandardCodesDto standardCodes;
 
     @BeforeEach
     void setUp() {
-        // Setup standard codes
-        standardCodes = new HashMap<>();
-        Map<String, Object> escoMapping = new HashMap<>();
-        escoMapping.put("code", "S7.1.1");
-        escoMapping.put("name", "develop organisational strategies");
-        escoMapping.put("confidence", "HIGH");
-        standardCodes.put("ESCO", escoMapping);
+        // Setup standard codes using the new DTO structure
+        standardCodes = StandardCodesDto.builder()
+                .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                        "develop organisational strategies", "skill")
+                .bigFive("CONSCIENTIOUSNESS")
+                .build();
 
         // Setup sample competency entity
         sampleCompetency = new Competency();
@@ -62,7 +61,6 @@ class CompetencyServiceTest {
         sampleCompetency.setName("Стратегическое планирование");
         sampleCompetency.setDescription("Способность разрабатывать долгосрочные стратегии организации");
         sampleCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        sampleCompetency.setLevel(ProficiencyLevel.ADVANCED);
         sampleCompetency.setStandardCodes(standardCodes);
         sampleCompetency.setActive(true);
         sampleCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -85,7 +83,6 @@ class CompetencyServiceTest {
             createEntity.setName("Эмоциональный интеллект");
             createEntity.setDescription("Способность понимать и управлять эмоциями");
             createEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            createEntity.setLevel(ProficiencyLevel.PROFICIENT);
             createEntity.setStandardCodes(standardCodes);
             createEntity.setActive(true);
             createEntity.setApprovalStatus(ApprovalStatus.DRAFT);
@@ -95,7 +92,6 @@ class CompetencyServiceTest {
             savedEntity.setName("Эмоциональный интеллект");
             savedEntity.setDescription("Способность понимать и управлять эмоциями");
             savedEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            savedEntity.setLevel(ProficiencyLevel.PROFICIENT);
             savedEntity.setStandardCodes(standardCodes);
             savedEntity.setActive(true);
             savedEntity.setApprovalStatus(ApprovalStatus.DRAFT);
@@ -113,9 +109,8 @@ class CompetencyServiceTest {
             assertThat(result.getName()).isEqualTo("Эмоциональный интеллект");
             assertThat(result.getDescription()).contains("эмоциями");
             assertThat(result.getCategory()).isEqualTo(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            assertThat(result.getLevel()).isEqualTo(ProficiencyLevel.PROFICIENT);
             assertThat(result.getStandardCodes()).isNotNull();
-            assertThat(result.getStandardCodes().get("ESCO")).isNotNull();
+            assertThat(result.getStandardCodes().escoRef()).isNotNull();
             assertThat(result.isActive()).isTrue();
             assertThat(result.getVersion()).isEqualTo(1);
             assertThat(result.getId()).isNotNull();
@@ -131,7 +126,6 @@ class CompetencyServiceTest {
             createEntity.setName("Базовая компетенция");
             createEntity.setDescription("Простое описание");
             createEntity.setCategory(CompetencyCategory.CRITICAL_THINKING);
-            createEntity.setLevel(ProficiencyLevel.NOVICE);
 
             // When
             ArgumentCaptor<Competency> competencyCaptor = ArgumentCaptor.forClass(Competency.class);
@@ -172,7 +166,7 @@ class CompetencyServiceTest {
             // Then
             assertThat(result).hasSize(1);
             assertThat(result.getFirst().getName()).isEqualTo("Стратегическое планирование");
-            assertThat(result.getFirst().getStandardCodes()).containsKey("ESCO");
+            assertThat(result.getFirst().getStandardCodes().hasEscoMapping()).isTrue();
 
             verify(competencyRepository).findAll();
         }
@@ -210,7 +204,7 @@ class CompetencyServiceTest {
             assertThat(result).isPresent();
             assertThat(result.get().getId()).isEqualTo(competencyId);
             assertThat(result.get().getName()).isEqualTo("Стратегическое планирование");
-            assertThat(result.get().getStandardCodes()).containsKey("ESCO");
+            assertThat(result.get().getStandardCodes().hasEscoMapping()).isTrue();
 
             verify(competencyRepository).findById(competencyId);
         }
@@ -241,19 +235,17 @@ class CompetencyServiceTest {
             // Given
             UUID competencyId = sampleCompetency.getId();
             
-            Map<String, Object> newStandardCodes = new HashMap<>();
-            Map<String, Object> newEsco = new HashMap<>();
-            newEsco.put("code", "S4.7.1");
-            newEsco.put("name", "demonstrate empathy");
-            newEsco.put("confidence", "VERIFIED");
-            newStandardCodes.put("ESCO", newEsco);
+            StandardCodesDto newStandardCodes = StandardCodesDto.builder()
+                    .escoRef("http://data.europa.eu/esco/skill/def456-ghi789-012",
+                            "demonstrate empathy", "skill")
+                    .bigFive("AGREEABLENESS")
+                    .build();
 
             Competency updateEntity = new Competency();
             updateEntity.setId(competencyId);
             updateEntity.setName("Обновленное название");
             updateEntity.setDescription("Обновленное описание: новая функциональность");
             updateEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            updateEntity.setLevel(ProficiencyLevel.EXPERT);
             updateEntity.setStandardCodes(newStandardCodes);
             updateEntity.setActive(false);
             updateEntity.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
@@ -263,7 +255,6 @@ class CompetencyServiceTest {
             updatedEntity.setName("Обновленное название");
             updatedEntity.setDescription("Обновленное описание: новая функциональность");
             updatedEntity.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            updatedEntity.setLevel(ProficiencyLevel.EXPERT);
             updatedEntity.setStandardCodes(newStandardCodes);
             updatedEntity.setActive(false);
             updatedEntity.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
@@ -272,7 +263,7 @@ class CompetencyServiceTest {
             updatedEntity.setLastModified(LocalDateTime.now());
 
             when(competencyRepository.findById(competencyId)).thenReturn(Optional.of(sampleCompetency));
-            when(competencyRepository.save(any(Competency.class))).thenReturn(updatedEntity);
+            when(competencyRepository.saveAndFlush(any(Competency.class))).thenReturn(updatedEntity);
 
             // When
             Competency result = competencyService.updateCompetency(competencyId, updateEntity);
@@ -282,10 +273,10 @@ class CompetencyServiceTest {
             assertThat(result.getName()).isEqualTo("Обновленное название");
             assertThat(result.getDescription()).contains("новая функциональность");
             assertThat(result.getVersion()).isEqualTo(2);
-            assertThat(result.getStandardCodes().get("ESCO")).isNotNull();
+            assertThat(result.getStandardCodes().escoRef()).isNotNull();
 
             verify(competencyRepository).findById(competencyId);
-            verify(competencyRepository).save(any(Competency.class));
+            verify(competencyRepository).saveAndFlush(any(Competency.class));
         }
 
         @Test
@@ -321,27 +312,31 @@ class CompetencyServiceTest {
         void shouldDeleteCompetencyWhenIdExists() {
             // Given
             UUID competencyId = sampleCompetency.getId();
-            // Note: No need to stub existsById since service doesn't use it
+            when(competencyRepository.existsById(competencyId)).thenReturn(true);
 
             // When
-            competencyService.deleteCompetency(competencyId);
+            boolean result = competencyService.deleteCompetency(competencyId);
 
             // Then
+            assertThat(result).isTrue();
+            verify(competencyRepository).existsById(competencyId);
             verify(competencyRepository).deleteById(competencyId);
         }
 
         @Test
-        @DisplayName("Should delete even when competency does not exist")
-        void shouldDeleteEvenWhenCompetencyDoesNotExist() {
+        @DisplayName("Should return false when competency does not exist")
+        void shouldReturnFalseWhenCompetencyDoesNotExist() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            // Note: No need to stub existsById since service doesn't use it
+            when(competencyRepository.existsById(nonExistentId)).thenReturn(false);
 
             // When
-            competencyService.deleteCompetency(nonExistentId);
+            boolean result = competencyService.deleteCompetency(nonExistentId);
 
             // Then
-            verify(competencyRepository).deleteById(nonExistentId);
+            assertThat(result).isFalse();
+            verify(competencyRepository).existsById(nonExistentId);
+            verify(competencyRepository, never()).deleteById(any());
         }
     }
 
@@ -353,25 +348,17 @@ class CompetencyServiceTest {
         @DisplayName("Should handle complex standard codes structure")
         void shouldHandleComplexStandardCodesStructure() {
             // Given
-            Map<String, Object> complexStandardCodes = new HashMap<>();
-            
-            Map<String, Object> esco = new HashMap<>();
-            esco.put("code", "S2.1.1");
-            esco.put("name", "communicate with others");
-            esco.put("confidence", "HIGH");
-            complexStandardCodes.put("ESCO", esco);
-            
-            Map<String, Object> onet = new HashMap<>();
-            onet.put("code", "2.A.1.b");
-            onet.put("name", "Oral Comprehension");
-            onet.put("confidence", "VERIFIED");
-            complexStandardCodes.put("ONET", onet);
+            StandardCodesDto complexStandardCodes = StandardCodesDto.builder()
+                    .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                            "communicate with others", "skill")
+                    .onetRef("2.A.1.b", "Oral Comprehension", "ability")
+                    .bigFive("EXTRAVERSION")
+                    .build();
 
             Competency createEntity = new Competency();
             createEntity.setName("Комплексная коммуникация");
             createEntity.setDescription("Многоуровневые навыки коммуникации");
             createEntity.setCategory(CompetencyCategory.COMMUNICATION);
-            createEntity.setLevel(ProficiencyLevel.EXPERT);
             createEntity.setStandardCodes(complexStandardCodes);
             createEntity.setActive(true);
             createEntity.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -394,7 +381,6 @@ class CompetencyServiceTest {
             createEntity.setName("Простая компетенция");
             createEntity.setDescription("Без стандартных кодов");
             createEntity.setCategory(CompetencyCategory.COGNITIVE);
-            createEntity.setLevel(ProficiencyLevel.NOVICE);
             createEntity.setStandardCodes(null); // Null standard codes
             createEntity.setActive(true);
             createEntity.setApprovalStatus(ApprovalStatus.DRAFT);

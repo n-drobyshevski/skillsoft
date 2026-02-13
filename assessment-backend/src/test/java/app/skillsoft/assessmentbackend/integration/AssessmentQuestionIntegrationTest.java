@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import static org.hamcrest.Matchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -42,6 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
+@WithMockUser(roles = {"ADMIN"})
 @DisplayName("AssessmentQuestion Integration Tests - Complex JSONB Scenarios")
 class AssessmentQuestionIntegrationTest {
 
@@ -78,7 +81,6 @@ class AssessmentQuestionIntegrationTest {
         testCompetency.setDescription("Способность эффективно руководить и мотивировать команду");
         testCompetency.setActive(true);
         testCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        testCompetency.setLevel(ProficiencyLevel.PROFICIENT);
         testCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
         testCompetency.setVersion(1);
         testCompetency.setCreatedAt(LocalDateTime.now());
@@ -92,7 +94,7 @@ class AssessmentQuestionIntegrationTest {
         testBehavioralIndicator.setTitle("Делегирование задач");
         testBehavioralIndicator.setDescription("Умение эффективно распределять задачи между членами команды");
         testBehavioralIndicator.setActive(true);
-        testBehavioralIndicator.setObservabilityLevel(ProficiencyLevel.PROFICIENT);
+        testBehavioralIndicator.setObservabilityLevel(ObservabilityLevel.DIRECTLY_OBSERVABLE);
         testBehavioralIndicator.setMeasurementType(IndicatorMeasurementType.FREQUENCY);
         testBehavioralIndicator.setWeight(1.0f);
         testBehavioralIndicator.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -115,7 +117,7 @@ class AssessmentQuestionIntegrationTest {
             complexQuestion.setQuestionType(QuestionType.SITUATIONAL_JUDGMENT);
             complexQuestion.setScoringRubric("Оценка эффективности решения от 1 до 5 баллов с учетом долгосрочных последствий");
             complexQuestion.setDifficultyLevel(DifficultyLevel.EXPERT);
-            complexQuestion.setTimeLimit(900); // 15 minutes
+            complexQuestion.setTimeLimit(600); // 10 minutes (max allowed)
             complexQuestion.setActive(true);
             complexQuestion.setOrderIndex(1);
 
@@ -178,9 +180,10 @@ class AssessmentQuestionIntegrationTest {
 
             // When - Create through REST API
             String jsonRequest = objectMapper.writeValueAsString(complexQuestion);
-            
-            mockMvc.perform(post("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions",
-                            competencyId, behavioralIndicatorId)
+
+            mockMvc.perform(post("/api/questions")
+                            .param("behavioralIndicatorId", behavioralIndicatorId.toString())
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .characterEncoding("UTF-8")
                             .content(jsonRequest))
@@ -298,8 +301,9 @@ class AssessmentQuestionIntegrationTest {
             String jsonRequest = objectMapper.writeValueAsString(peerFeedbackQuestion);
 
             String response = mockMvc
-                    .perform(post("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions",
-                            competencyId, behavioralIndicatorId)
+                    .perform(post("/api/questions")
+                            .param("behavioralIndicatorId", behavioralIndicatorId.toString())
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .characterEncoding("UTF-8")
                             .content(jsonRequest))
@@ -309,10 +313,9 @@ class AssessmentQuestionIntegrationTest {
                     .getContentAsString();
 
             AssessmentQuestionDto createdDto = objectMapper.readValue(response, AssessmentQuestionDto.class);
-            
+
             // Then - Verify complex JSONB structure
-            mockMvc.perform(get("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions/{questionId}",
-                            competencyId, behavioralIndicatorId, createdDto.id())
+            mockMvc.perform(get("/api/questions/{questionId}", createdDto.id())
                             .contentType(MediaType.APPLICATION_JSON)
                             .characterEncoding("UTF-8"))
                     .andDo(print())
@@ -352,7 +355,7 @@ class AssessmentQuestionIntegrationTest {
             selfReflectionQuestion.setQuestionType(QuestionType.SELF_REFLECTION);
             selfReflectionQuestion.setScoringRubric("Качественная оценка глубины самоанализа и реалистичности самооценки с использованием ИИ-анализа");
             selfReflectionQuestion.setDifficultyLevel(DifficultyLevel.EXPERT);
-            selfReflectionQuestion.setTimeLimit(1800); // 30 minutes
+            selfReflectionQuestion.setTimeLimit(600); // 10 minutes (max allowed)
             selfReflectionQuestion.setActive(true);
             selfReflectionQuestion.setOrderIndex(1);
 
@@ -431,8 +434,9 @@ class AssessmentQuestionIntegrationTest {
             selfReflectionQuestion.setAnswerOptions(answerOptions);
 
             // When & Then - Create and verify
-            mockMvc.perform(post("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions",
-                            competencyId, behavioralIndicatorId)
+            mockMvc.perform(post("/api/questions")
+                            .param("behavioralIndicatorId", behavioralIndicatorId.toString())
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .characterEncoding("UTF-8")
                             .content(objectMapper.writeValueAsString(selfReflectionQuestion)))
@@ -470,8 +474,9 @@ class AssessmentQuestionIntegrationTest {
             // When - Create all questions
             for (AssessmentQuestion question : assessmentBattery) {
                 String response = mockMvc
-                        .perform(post("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions",
-                                competencyId, behavioralIndicatorId)
+                        .perform(post("/api/questions")
+                                .param("behavioralIndicatorId", behavioralIndicatorId.toString())
+                                .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .characterEncoding("UTF-8")
                                 .content(objectMapper.writeValueAsString(question)))
@@ -479,14 +484,13 @@ class AssessmentQuestionIntegrationTest {
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
-                
+
                 AssessmentQuestionDto dto = objectMapper.readValue(response, AssessmentQuestionDto.class);
                 createdQuestionIds.add(dto.id());
             }
 
             // Then - Verify all questions exist and work together
-            mockMvc.perform(get("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions",
-                            competencyId, behavioralIndicatorId)
+            mockMvc.perform(get("/api/questions")
                             .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$", hasSize(6)))
@@ -520,10 +524,11 @@ class AssessmentQuestionIntegrationTest {
         void shouldUpdateQuestionsWithComplexJsonbChanges() throws Exception {
             // Given - Create initial question
             AssessmentQuestion initialQuestion = createSituationalJudgmentQuestion();
-            
+
             String response = mockMvc
-                    .perform(post("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions",
-                            competencyId, behavioralIndicatorId)
+                    .perform(post("/api/questions")
+                            .param("behavioralIndicatorId", behavioralIndicatorId.toString())
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(initialQuestion)))
                     .andExpect(status().isOk())
@@ -534,12 +539,17 @@ class AssessmentQuestionIntegrationTest {
             AssessmentQuestionDto createdDto = objectMapper.readValue(response, AssessmentQuestionDto.class);
 
             // When - Update with completely new JSONB structure
-            AssessmentQuestion updateRequest = new AssessmentQuestion();
-            updateRequest.setQuestionText("Обновленный сценарий лидерства в кризисной ситуации");
-            updateRequest.setQuestionType(QuestionType.SITUATIONAL_JUDGMENT);
-            
+            // Build as a Map to ensure JSON field names match UpdateQuestionRequest exactly
+            Map<String, Object> updateRequest = new HashMap<>();
+            updateRequest.put("questionText", "Обновленный сценарий лидерства в кризисной ситуации");
+            updateRequest.put("questionType", "SITUATIONAL_JUDGMENT");
+            updateRequest.put("scoringRubric", "Новая система оценки кризисного лидерства");
+            updateRequest.put("difficultyLevel", "EXPERT");
+            updateRequest.put("isActive", true);
+            updateRequest.put("orderIndex", 1);
+
             List<Map<String, Object>> newAnswerOptions = new ArrayList<>();
-            
+
             Map<String, Object> option1 = new HashMap<>();
             option1.put("scenario_id", "CRISIS_A");
             option1.put("response", "Принять решение единолично");
@@ -564,13 +574,11 @@ class AssessmentQuestionIntegrationTest {
             option2.put("metrics", metrics2);
             newAnswerOptions.add(option2);
 
-            updateRequest.setAnswerOptions(newAnswerOptions);
-            updateRequest.setScoringRubric("Новая система оценки кризисного лидерства");
-            updateRequest.setDifficultyLevel(DifficultyLevel.EXPERT);
+            updateRequest.put("answerOptions", newAnswerOptions);
 
             // Then - Verify update
-            mockMvc.perform(put("/api/competencies/{competencyId}/bi/{behavioralIndicatorId}/questions/{questionId}",
-                            competencyId, behavioralIndicatorId, createdDto.id())
+            mockMvc.perform(put("/api/questions/{questionId}", createdDto.id())
+                            .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .characterEncoding("UTF-8")
                             .content(objectMapper.writeValueAsString(updateRequest)))

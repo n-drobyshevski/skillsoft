@@ -1,25 +1,16 @@
 package app.skillsoft.assessmentbackend.domain.mapper.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateIndicatorRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateIndicatorRequest;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
-import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
 import java.util.UUID;
 
 @Component
 public class BehavioralIndicatorMapperImpl implements BehavioralIndicatorMapper {
-
-    private final CompetencyRepository competencyRepository;
-
-    @Autowired
-    public BehavioralIndicatorMapperImpl(CompetencyRepository competencyRepository) {
-        this.competencyRepository = competencyRepository;
-    }
 
     @Override
     public BehavioralIndicator fromDto(BehavioralIndicatorDto dto) {
@@ -39,12 +30,10 @@ public class BehavioralIndicatorMapperImpl implements BehavioralIndicatorMapper 
         indicator.setActive(dto.isActive());
         indicator.setApprovalStatus(dto.approvalStatus());
         indicator.setOrderIndex(dto.orderIndex());
+        indicator.setContextScope(dto.contextScope());
 
-        // Set competency if ID is provided
-        if (dto.competencyId() != null) {
-            Optional<Competency> competency = competencyRepository.findById(dto.competencyId());
-            competency.ifPresent(indicator::setCompetency);
-        }
+        // DO NOT set competency here - it will be set by the service within transaction
+        // The competencyId from DTO is passed separately to the service layer
 
         return indicator;
     }
@@ -72,7 +61,53 @@ public class BehavioralIndicatorMapperImpl implements BehavioralIndicatorMapper 
                 entity.getCounterExamples(),
                 entity.isActive(),
                 entity.getApprovalStatus(),
-                entity.getOrderIndex()
+                entity.getOrderIndex(),
+                entity.getContextScope()
         );
+    }
+
+    @Override
+    public BehavioralIndicator fromCreateRequest(CreateIndicatorRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        BehavioralIndicator indicator = new BehavioralIndicator();
+        indicator.setTitle(request.title());
+        indicator.setDescription(request.description());
+        indicator.setObservabilityLevel(request.observabilityLevel());
+        indicator.setMeasurementType(request.measurementType());
+        indicator.setWeight(request.weight());
+        indicator.setExamples(request.examples());
+        indicator.setCounterExamples(request.counterExamples());
+        indicator.setActive(request.isActiveOrDefault());
+        indicator.setOrderIndex(request.orderIndexOrDefault());
+        indicator.setContextScope(request.contextScope());
+
+        // competency relationship is set by the service layer
+        return indicator;
+    }
+
+    @Override
+    public BehavioralIndicator fromUpdateRequest(UpdateIndicatorRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        BehavioralIndicator indicator = new BehavioralIndicator();
+        indicator.setTitle(request.title());
+        indicator.setDescription(request.description());
+        indicator.setObservabilityLevel(request.observabilityLevel());
+        indicator.setMeasurementType(request.measurementType());
+        indicator.setWeight(request.weight());
+        indicator.setExamples(request.examples());
+        indicator.setCounterExamples(request.counterExamples());
+        indicator.setActive(request.isActive());
+        indicator.setApprovalStatus(request.approvalStatus());
+        indicator.setOrderIndex(request.orderIndex());
+        indicator.setContextScope(request.contextScope());
+
+        // ID and competency are preserved from existing entity
+        return indicator;
     }
 }

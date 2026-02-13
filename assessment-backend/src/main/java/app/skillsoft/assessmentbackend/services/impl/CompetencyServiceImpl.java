@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.services.impl;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +16,8 @@ import java.util.UUID;
 
 @Service
 public class CompetencyServiceImpl implements CompetencyService {
+
+    private static final Logger logger = LoggerFactory.getLogger(CompetencyServiceImpl.class);
 
     private final CompetencyRepository competencyRepository;
 
@@ -50,7 +54,6 @@ public class CompetencyServiceImpl implements CompetencyService {
                 competency.getName(),
                 competency.getDescription(),
                 competency.getCategory(),
-                competency.getLevel(),
                 competency.getStandardCodes(),
                 competency.isActive(),
                 competency.getApprovalStatus(),
@@ -72,11 +75,14 @@ public class CompetencyServiceImpl implements CompetencyService {
     public Competency updateCompetency(UUID id, Competency competencyDetails) {
         return competencyRepository.findById(id)
                 .map(existingCompetency -> {
+                    logger.debug("Updating competency {}, current standardCodes: {}", 
+                        id, existingCompetency.getStandardCodes());
+                    logger.debug("New standardCodes: {}", competencyDetails.getStandardCodes());
+                    
                     // Update fields
                     existingCompetency.setName(competencyDetails.getName());
                     existingCompetency.setDescription(competencyDetails.getDescription());
                     existingCompetency.setCategory(competencyDetails.getCategory());
-                    existingCompetency.setLevel(competencyDetails.getLevel());
                     existingCompetency.setStandardCodes(competencyDetails.getStandardCodes());
                     existingCompetency.setActive(competencyDetails.isActive());
                     existingCompetency.setApprovalStatus(competencyDetails.getApprovalStatus());
@@ -87,14 +93,24 @@ public class CompetencyServiceImpl implements CompetencyService {
                     // Update last modified timestamp
                     existingCompetency.setLastModified(LocalDateTime.now());
 
-                    return competencyRepository.save(existingCompetency);
+                    // Save and flush to ensure the update is persisted immediately
+                    Competency saved = competencyRepository.saveAndFlush(existingCompetency);
+                    
+                    logger.debug("Saved competency {}, standardCodes after save: {}", 
+                        saved.getId(), saved.getStandardCodes());
+                    
+                    return saved;
                 })
                 .orElseThrow(() -> new RuntimeException("Competency not found with id: " + id));
     }
 
     @Override
     @Transactional
-    public void deleteCompetency(UUID id) {
-        competencyRepository.deleteById(id);
+    public boolean deleteCompetency(UUID id) {
+        if (competencyRepository.existsById(id)) {
+            competencyRepository.deleteById(id);
+            return true;
+        }
+        return false;
     }
 }

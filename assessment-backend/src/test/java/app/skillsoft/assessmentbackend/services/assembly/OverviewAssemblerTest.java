@@ -1,0 +1,314 @@
+package app.skillsoft.assessmentbackend.services.assembly;
+
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
+import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
+import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * Unit tests for OverviewAssembler.
+ *
+ * Tests the OVERVIEW (Universal Baseline) assessment assembler after refactoring
+ * to use QuestionSelectionService for centralized question selection.
+ *
+ * Test coverage:
+ * - Happy path with valid blueprint and questions
+ * - Empty competency IDs
+ * - Delegation to QuestionSelectionService
+ * - Blueprint parameter extraction (questionsPerIndicator, difficulty, shuffle)
+ */
+@ExtendWith(MockitoExtension.class)
+@DisplayName("OverviewAssembler Tests")
+class OverviewAssemblerTest {
+
+    @Mock
+    private QuestionSelectionService questionSelectionService;
+
+    @InjectMocks
+    private OverviewAssembler assembler;
+
+    // Test data
+    private UUID competencyId1;
+    private UUID competencyId2;
+    private UUID questionId1;
+    private UUID questionId2;
+    private UUID questionId3;
+
+    @BeforeEach
+    void setUp() {
+        competencyId1 = UUID.randomUUID();
+        competencyId2 = UUID.randomUUID();
+        questionId1 = UUID.randomUUID();
+        questionId2 = UUID.randomUUID();
+        questionId3 = UUID.randomUUID();
+    }
+
+    @Nested
+    @DisplayName("getSupportedGoal Tests")
+    class GetSupportedGoalTests {
+
+        @Test
+        @DisplayName("should return OVERVIEW as supported goal")
+        void shouldReturnOverviewGoal() {
+            assertThat(assembler.getSupportedGoal()).isEqualTo(AssessmentGoal.OVERVIEW);
+        }
+    }
+
+    @Nested
+    @DisplayName("supports Tests")
+    class SupportsTests {
+
+        @Test
+        @DisplayName("should support OverviewBlueprint")
+        void shouldSupportOverviewBlueprint() {
+            OverviewBlueprint blueprint = new OverviewBlueprint();
+            assertThat(assembler.supports(blueprint)).isTrue();
+        }
+
+        @Test
+        @DisplayName("should not support JobFitBlueprint")
+        void shouldNotSupportJobFitBlueprint() {
+            JobFitBlueprint blueprint = new JobFitBlueprint();
+            assertThat(assembler.supports(blueprint)).isFalse();
+        }
+
+        @Test
+        @DisplayName("should not support null blueprint")
+        void shouldNotSupportNullBlueprint() {
+            assertThat(assembler.supports(null)).isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("assemble - Input Validation Tests")
+    class AssembleInputValidationTests {
+
+        @Test
+        @DisplayName("should throw exception for non-OverviewBlueprint")
+        void shouldThrowExceptionForWrongBlueprintType() {
+            JobFitBlueprint wrongBlueprint = new JobFitBlueprint();
+
+            assertThatThrownBy(() -> assembler.assemble(wrongBlueprint))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("OverviewAssembler requires OverviewBlueprint");
+        }
+
+        @Test
+        @DisplayName("should throw exception for null blueprint")
+        void shouldThrowExceptionForNullBlueprint() {
+            assertThatThrownBy(() -> assembler.assemble(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("OverviewAssembler requires OverviewBlueprint");
+        }
+
+        @Test
+        @DisplayName("should return empty list for null competency IDs")
+        void shouldReturnEmptyListForNullCompetencyIds() {
+            OverviewBlueprint blueprint = new OverviewBlueprint();
+            blueprint.setCompetencyIds(null);
+
+            List<UUID> result = assembler.assemble(blueprint);
+
+            assertThat(result).isEmpty();
+            verifyNoInteractions(questionSelectionService);
+        }
+
+        @Test
+        @DisplayName("should return empty list for empty competency IDs")
+        void shouldReturnEmptyListForEmptyCompetencyIds() {
+            OverviewBlueprint blueprint = new OverviewBlueprint();
+            blueprint.setCompetencyIds(List.of());
+
+            List<UUID> result = assembler.assemble(blueprint);
+
+            assertThat(result).isEmpty();
+            verifyNoInteractions(questionSelectionService);
+        }
+    }
+
+    @Nested
+    @DisplayName("assemble - Delegation Tests")
+    class AssembleDelegationTests {
+
+        @Test
+        @DisplayName("should delegate to QuestionSelectionService with blueprint parameters")
+        void shouldDelegateToQuestionSelectionService() {
+            // Given
+            OverviewBlueprint blueprint = createBlueprint(competencyId1);
+            blueprint.setQuestionsPerIndicator(5);
+            blueprint.setPreferredDifficulty(DifficultyLevel.ADVANCED);
+            blueprint.setShuffleQuestions(false);
+
+            List<UUID> expectedQuestions = List.of(questionId1, questionId2, questionId3);
+            when(questionSelectionService.selectQuestionsForCompetencies(
+                anyList(), anyInt(), any(DifficultyLevel.class), anyBoolean()))
+                .thenReturn(expectedQuestions);
+
+            // When
+            List<UUID> result = assembler.assemble(blueprint);
+
+            // Then
+            assertThat(result).isEqualTo(expectedQuestions);
+            verify(questionSelectionService).selectQuestionsForCompetencies(
+                List.of(competencyId1),
+                5,
+                DifficultyLevel.ADVANCED,
+                false
+            );
+        }
+
+        @Test
+        @DisplayName("should use default questionsPerIndicator when not specified")
+        void shouldUseDefaultQuestionsPerIndicator() {
+            // Given
+            OverviewBlueprint blueprint = createBlueprint(competencyId1);
+            blueprint.setQuestionsPerIndicator(0); // Will trigger default
+
+            when(questionSelectionService.selectQuestionsForCompetencies(
+                anyList(), anyInt(), any(), anyBoolean()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - DEFAULT_QUESTIONS_PER_INDICATOR = 3
+            verify(questionSelectionService).selectQuestionsForCompetencies(
+                anyList(),
+                eq(3),
+                any(),
+                anyBoolean()
+            );
+        }
+
+        @Test
+        @DisplayName("should use default difficulty when not specified")
+        void shouldUseDefaultDifficulty() {
+            // Given
+            OverviewBlueprint blueprint = createBlueprint(competencyId1);
+            blueprint.setPreferredDifficulty(null);
+
+            when(questionSelectionService.selectQuestionsForCompetencies(
+                anyList(), anyInt(), any(), anyBoolean()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - DEFAULT_DIFFICULTY = INTERMEDIATE
+            verify(questionSelectionService).selectQuestionsForCompetencies(
+                anyList(),
+                anyInt(),
+                eq(DifficultyLevel.INTERMEDIATE),
+                anyBoolean()
+            );
+        }
+
+        @Test
+        @DisplayName("should pass shuffle preference to selection service")
+        void shouldPassShufflePreference() {
+            // Given
+            OverviewBlueprint blueprint = createBlueprint(competencyId1);
+            blueprint.setShuffleQuestions(true);
+
+            when(questionSelectionService.selectQuestionsForCompetencies(
+                anyList(), anyInt(), any(), anyBoolean()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then
+            verify(questionSelectionService).selectQuestionsForCompetencies(
+                anyList(),
+                anyInt(),
+                any(),
+                eq(true)
+            );
+        }
+
+        @Test
+        @DisplayName("should pass multiple competency IDs to selection service")
+        void shouldPassMultipleCompetencies() {
+            // Given
+            OverviewBlueprint blueprint = createBlueprint(competencyId1, competencyId2);
+
+            when(questionSelectionService.selectQuestionsForCompetencies(
+                anyList(), anyInt(), any(), anyBoolean()))
+                .thenReturn(List.of(questionId1, questionId2, questionId3));
+
+            // When
+            List<UUID> result = assembler.assemble(blueprint);
+
+            // Then
+            assertThat(result).hasSize(3);
+            verify(questionSelectionService).selectQuestionsForCompetencies(
+                eq(List.of(competencyId1, competencyId2)),
+                anyInt(),
+                any(),
+                anyBoolean()
+            );
+        }
+    }
+
+    @Nested
+    @DisplayName("assemble - Result Handling Tests")
+    class AssembleResultHandlingTests {
+
+        @Test
+        @DisplayName("should return empty list when service returns empty")
+        void shouldReturnEmptyWhenServiceReturnsEmpty() {
+            // Given
+            OverviewBlueprint blueprint = createBlueprint(competencyId1);
+            when(questionSelectionService.selectQuestionsForCompetencies(
+                anyList(), anyInt(), any(), anyBoolean()))
+                .thenReturn(List.of());
+
+            // When
+            List<UUID> result = assembler.assemble(blueprint);
+
+            // Then
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("should return questions as provided by service")
+        void shouldReturnQuestionsFromService() {
+            // Given
+            OverviewBlueprint blueprint = createBlueprint(competencyId1);
+            List<UUID> expectedQuestions = List.of(questionId1, questionId2, questionId3);
+            when(questionSelectionService.selectQuestionsForCompetencies(
+                anyList(), anyInt(), any(), anyBoolean()))
+                .thenReturn(expectedQuestions);
+
+            // When
+            List<UUID> result = assembler.assemble(blueprint);
+
+            // Then
+            assertThat(result).containsExactlyElementsOf(expectedQuestions);
+        }
+    }
+
+    // Helper methods
+
+    private OverviewBlueprint createBlueprint(UUID... competencyIds) {
+        OverviewBlueprint blueprint = new OverviewBlueprint();
+        blueprint.setCompetencyIds(List.of(competencyIds));
+        return blueprint;
+    }
+}

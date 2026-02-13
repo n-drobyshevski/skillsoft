@@ -1,8 +1,9 @@
 package app.skillsoft.assessmentbackend.domain.dto;
 
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
+import app.skillsoft.assessmentbackend.domain.entities.ContextScope;
 import app.skillsoft.assessmentbackend.domain.entities.IndicatorMeasurementType;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
+import app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel;
 
 import java.util.UUID;
 
@@ -11,13 +12,14 @@ public record BehavioralIndicatorDto(
         UUID competencyId,
         String title,
         String description,
-        ProficiencyLevel observabilityLevel,
+        ObservabilityLevel observabilityLevel,
         IndicatorMeasurementType measurementType,
         float weight,
         String examples,
         String counterExamples,
         boolean isActive,
         ApprovalStatus approvalStatus,
-        Integer orderIndex
+        Integer orderIndex,
+        ContextScope contextScope
 ) {
 }

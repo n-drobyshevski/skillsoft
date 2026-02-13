@@ -1,11 +1,15 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateCompetencyRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
+import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
 import app.skillsoft.assessmentbackend.domain.mapper.CompetencyMapper;
+import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -21,6 +26,7 @@ import java.util.*;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -35,20 +41,27 @@ class CompetencyControllerTest {
     private CompetencyService competencyService;
 
     @MockBean
+    private BehavioralIndicatorService behavioralIndicatorService;
+
+    @MockBean
     private CompetencyMapper competencyMapper;
+
+    @MockBean
+    private BehavioralIndicatorMapper behavioralIndicatorMapper;
 
     private Competency testCompetency;
     private CompetencyDto testCompetencyDto;
 
     @BeforeEach
     void setUp() {
+        StandardCodesDto standardCodes = new StandardCodesDto(); // Empty DTO
+
         testCompetency = new Competency();
         testCompetency.setId(UUID.randomUUID());
         testCompetency.setName("Test Competency");
         testCompetency.setDescription("Test Description");
         testCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        testCompetency.setLevel(ProficiencyLevel.PROFICIENT);
-        testCompetency.setStandardCodes(new HashMap<>());
+        testCompetency.setStandardCodes(standardCodes);
         testCompetency.setActive(true);
         testCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
         testCompetency.setBehavioralIndicators(new ArrayList<>());
@@ -61,7 +74,6 @@ class CompetencyControllerTest {
                 testCompetency.getName(),
                 testCompetency.getDescription(),
                 testCompetency.getCategory(),
-                testCompetency.getLevel(),
                 testCompetency.getStandardCodes(),
                 testCompetency.isActive(),
                 testCompetency.getApprovalStatus(),
@@ -73,6 +85,7 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/competencies - Should return all competencies")
     void shouldReturnAllCompetencies() throws Exception {
         when(competencyService.listCompetencies())
@@ -89,6 +102,7 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("GET /api/competencies/{id} - Should return competency by id")
     void shouldReturnCompetencyById() throws Exception {
         when(competencyService.findCompetencyById(testCompetency.getId()))
@@ -105,37 +119,47 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("POST /api/competencies - Should create new competency")
     void shouldCreateNewCompetency() throws Exception {
-        when(competencyMapper.fromDto(any(CompetencyDto.class)))
+        when(competencyMapper.fromCreateRequest(any(CreateCompetencyRequest.class)))
                 .thenReturn(testCompetency);
         when(competencyService.createCompetency(any(Competency.class)))
                 .thenReturn(testCompetency);
         when(competencyMapper.toDto(any(Competency.class)))
                 .thenReturn(testCompetencyDto);
 
+        // Description must be at least 50 characters per validation
+        String validDescription = "This is a valid description that is at least fifty characters long for testing";
+
         mockMvc.perform(post("/api/competencies")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Test Competency\",\"description\":\"Test Description\"}"))
-                .andExpect(status().isOk())
+                .content("{\"name\":\"Test Competency\",\"description\":\"" + validDescription + "\",\"category\":\"LEADERSHIP\"}"))
+                .andExpect(status().isCreated())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.name").value(testCompetency.getName()))
                 .andExpect(jsonPath("$.description").value(testCompetency.getDescription()));
     }
 
     @Test
+    @WithMockUser
     @DisplayName("PUT /api/competencies/{id} - Should update existing competency")
     void shouldUpdateExistingCompetency() throws Exception {
-        when(competencyMapper.fromDto(any(CompetencyDto.class)))
+        when(competencyMapper.fromUpdateRequest(any(UpdateCompetencyRequest.class)))
                 .thenReturn(testCompetency);
         when(competencyService.updateCompetency(any(UUID.class), any(Competency.class)))
                 .thenReturn(testCompetency);
         when(competencyMapper.toDto(any(Competency.class)))
                 .thenReturn(testCompetencyDto);
 
+        // Description must be at least 50 characters per validation
+        String validDescription = "This is a valid updated description that is at least fifty characters long";
+
         mockMvc.perform(put("/api/competencies/" + testCompetency.getId())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Updated Competency\",\"description\":\"Updated Description\"}"))
+                .content("{\"name\":\"Updated Competency\",\"description\":\"" + validDescription + "\",\"category\":\"LEADERSHIP\",\"isActive\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.name").value(testCompetency.getName()))
@@ -143,9 +167,13 @@ class CompetencyControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("DELETE /api/competencies/{id} - Should delete competency")
     void shouldDeleteCompetency() throws Exception {
-        mockMvc.perform(delete("/api/competencies/" + testCompetency.getId()))
+        when(competencyService.deleteCompetency(testCompetency.getId())).thenReturn(true);
+
+        mockMvc.perform(delete("/api/competencies/" + testCompetency.getId())
+                .with(csrf()))
                 .andExpect(status().isNoContent());
     }
 }

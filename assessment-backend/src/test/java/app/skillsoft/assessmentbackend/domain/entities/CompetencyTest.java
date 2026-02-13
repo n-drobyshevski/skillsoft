@@ -1,13 +1,12 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Nested;
 
 import java.time.LocalDateTime;
-import java.util.Map;
-import java.util.HashMap;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -26,26 +25,20 @@ import static org.assertj.core.api.Assertions.*;
 class CompetencyTest {
 
     private Competency competency;
-    private Map<String, Object> standardCodes;
+    private StandardCodesDto standardCodes;
     private LocalDateTime now;
 
     @BeforeEach
     void setUp() {
         now = LocalDateTime.now();
         
-        // Setup standard codes JSON structure
-        standardCodes = new HashMap<>();
-        Map<String, Object> escoMapping = new HashMap<>();
-        escoMapping.put("code", "S7.1.1");
-        escoMapping.put("name", "develop organisational strategies");
-        escoMapping.put("confidence", "HIGH");
-        standardCodes.put("ESCO", escoMapping);
-        
-        Map<String, Object> onetMapping = new HashMap<>();
-        onetMapping.put("code", "2.B.3.c");
-        onetMapping.put("name", "Leadership requirements");
-        onetMapping.put("confidence", "VERIFIED");
-        standardCodes.put("ONET", onetMapping);
+        // Setup standard codes using the new DTO structure
+        standardCodes = StandardCodesDto.builder()
+                .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                        "develop organisational strategies", "skill")
+                .onetRef("2.B.3.c", "Leadership requirements", "ability")
+                .bigFive("CONSCIENTIOUSNESS")
+                .build();
         
         competency = new Competency();
     }
@@ -75,7 +68,6 @@ class CompetencyTest {
                 "Стратегическое лидерство",
                 "Способность определять долгосрочные цели",
                 CompetencyCategory.LEADERSHIP,
-                ProficiencyLevel.ADVANCED,
                 standardCodes,
                 true,
                 ApprovalStatus.APPROVED,
@@ -84,13 +76,14 @@ class CompetencyTest {
                 now,
                 now
             );
-            
+
             assertThat(fullCompetency.getId()).isEqualTo(id);
             assertThat(fullCompetency.getName()).isEqualTo("Стратегическое лидерство");
             assertThat(fullCompetency.getDescription()).isEqualTo("Способность определять долгосрочные цели");
             assertThat(fullCompetency.getCategory()).isEqualTo(CompetencyCategory.LEADERSHIP);
-            assertThat(fullCompetency.getLevel()).isEqualTo(ProficiencyLevel.ADVANCED);
             assertThat(fullCompetency.getStandardCodes()).isEqualTo(standardCodes);
+            assertThat(fullCompetency.getStandardCodes().hasEscoMapping()).isTrue();
+            assertThat(fullCompetency.getStandardCodes().hasOnetMapping()).isTrue();
             assertThat(fullCompetency.isActive()).isTrue();
             assertThat(fullCompetency.getApprovalStatus()).isEqualTo(ApprovalStatus.APPROVED);
             assertThat(fullCompetency.getVersion()).isEqualTo(1);
@@ -112,7 +105,6 @@ class CompetencyTest {
             competency.setName("Коммуникация");
             competency.setDescription("Эффективная коммуникация");
             competency.setCategory(CompetencyCategory.COMMUNICATION);
-            competency.setLevel(ProficiencyLevel.PROFICIENT);
             competency.setActive(true);
             competency.setApprovalStatus(ApprovalStatus.PENDING_REVIEW);
             competency.setVersion(2);
@@ -123,7 +115,6 @@ class CompetencyTest {
             assertThat(competency.getName()).isEqualTo("Коммуникация");
             assertThat(competency.getDescription()).isEqualTo("Эффективная коммуникация");
             assertThat(competency.getCategory()).isEqualTo(CompetencyCategory.COMMUNICATION);
-            assertThat(competency.getLevel()).isEqualTo(ProficiencyLevel.PROFICIENT);
             assertThat(competency.isActive()).isTrue();
             assertThat(competency.getApprovalStatus()).isEqualTo(ApprovalStatus.PENDING_REVIEW);
             assertThat(competency.getVersion()).isEqualTo(2);
@@ -137,14 +128,15 @@ class CompetencyTest {
             competency.setStandardCodes(standardCodes);
             
             assertThat(competency.getStandardCodes()).isNotNull();
-            assertThat(competency.getStandardCodes()).containsKey("ESCO");
-            assertThat(competency.getStandardCodes()).containsKey("ONET");
+            assertThat(competency.getStandardCodes().hasEscoMapping()).isTrue();
+            assertThat(competency.getStandardCodes().hasOnetMapping()).isTrue();
             
-            @SuppressWarnings("unchecked")
-            Map<String, Object> esco = (Map<String, Object>) competency.getStandardCodes().get("ESCO");
-            assertThat(esco.get("code")).isEqualTo("S7.1.1");
-            assertThat(esco.get("name")).isEqualTo("develop organisational strategies");
-            assertThat(esco.get("confidence")).isEqualTo("HIGH");
+            assertThat(competency.getStandardCodes().escoRef().uri())
+                    .isEqualTo("http://data.europa.eu/esco/skill/abc123-def456-789");
+            assertThat(competency.getStandardCodes().escoRef().title())
+                    .isEqualTo("develop organisational strategies");
+            assertThat(competency.getStandardCodes().onetRef().code())
+                    .isEqualTo("2.B.3.c");
         }
 
         @Test
@@ -158,10 +150,11 @@ class CompetencyTest {
         @Test
         @DisplayName("Handle empty standard codes")
         void handleEmptyStandardCodes() {
-            Map<String, Object> emptyMap = new HashMap<>();
-            competency.setStandardCodes(emptyMap);
+            StandardCodesDto emptyDto = new StandardCodesDto();
+            competency.setStandardCodes(emptyDto);
             
-            assertThat(competency.getStandardCodes()).isEmpty();
+            assertThat(competency.getStandardCodes()).isNotNull();
+            assertThat(competency.getStandardCodes().hasAnyMapping()).isFalse();
         }
     }
 
@@ -216,25 +209,20 @@ class CompetencyTest {
         @Test
         @DisplayName("Handle complex standard codes structure")
         void handleComplexStandardCodes() {
-            Map<String, Object> complexCodes = new HashMap<>();
-            
-            // Add multiple standards
-            Map<String, Object> esco = new HashMap<>();
-            esco.put("code", "S7.1.1");
-            esco.put("name", "develop organisational strategies");
-            esco.put("confidence", "HIGH");
-            complexCodes.put("ESCO", esco);
-            
-            Map<String, Object> bigFive = new HashMap<>();
-            bigFive.put("code", "EXTRAVERSION");
-            bigFive.put("name", "Extraversion traits");
-            bigFive.put("confidence", "MODERATE");
-            complexCodes.put("BIG_FIVE", bigFive);
+            // Create complex standard codes with all fields
+            StandardCodesDto complexCodes = StandardCodesDto.builder()
+                    .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                            "develop organisational strategies", "skill")
+                    .onetRef("2.B.3.c", "Leadership requirements", "ability")
+                    .bigFive("EXTRAVERSION")
+                    .build();
             
             competency.setStandardCodes(complexCodes);
             
-            assertThat(competency.getStandardCodes()).hasSize(2);
-            assertThat(competency.getStandardCodes()).containsKeys("ESCO", "BIG_FIVE");
+            assertThat(competency.getStandardCodes().hasAnyMapping()).isTrue();
+            assertThat(competency.getStandardCodes().hasEscoMapping()).isTrue();
+            assertThat(competency.getStandardCodes().hasOnetMapping()).isTrue();
+            assertThat(competency.getStandardCodes().bigFiveRef()).isNotNull();
         }
 
         @Test
@@ -256,13 +244,7 @@ class CompetencyTest {
                 competency.setCategory(category);
                 assertThat(competency.getCategory()).isEqualTo(category);
             }
-            
-            // Test all ProficiencyLevel values
-            for (ProficiencyLevel level : ProficiencyLevel.values()) {
-                competency.setLevel(level);
-                assertThat(competency.getLevel()).isEqualTo(level);
-            }
-            
+
             // Test all ApprovalStatus values
             for (ApprovalStatus status : ApprovalStatus.values()) {
                 competency.setApprovalStatus(status);

@@ -1,17 +1,25 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
 
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Competency entity representing a skill or ability that can be assessed.
+ * 
+ * The standardCodes field uses JSONB storage for flexible taxonomy mappings.
+ * Uses @JdbcTypeCode(SqlTypes.JSON) with HibernateJsonConfig for proper snake_case serialization.
+ */
 @Entity
 @Table(name = "competencies")
+@DynamicUpdate
 public class Competency {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
@@ -27,13 +35,36 @@ public class Competency {
     @Enumerated(EnumType.STRING)
     private CompetencyCategory category;
 
-    @Column(name="level", nullable = false)
-    @Enumerated(EnumType.STRING)
-    private ProficiencyLevel level;
-
+    /**
+     * Triple Standard Mapping for global competency alignment.
+     * Per ROADMAP.md Section 1.A "Mapping Strategy":
+     * 
+     * Schema (JSONB structure):
+     * {
+     *   // 1. Psychological Standard (Team Fit / Big Five)
+     *   "global_category": { "big_five": "CONSCIENTIOUSNESS" },
+     *   
+     *   // 2. Occupational Standard (Job Fit Baseline - O*NET)
+     *   "onet_ref": {
+     *     "code": "2.B.1.a",
+     *     "name": "Social Perceptiveness"
+     *   },
+     *   
+     *   // 3. Transversal Standard (Interoperability - ESCO)
+     *   "esco_ref": {
+     *     "uri": "http://data.europa.eu/esco/skill/S1.2",
+     *     "label": "Working with others"
+     *   }
+     * }
+     * 
+     * Benefits:
+     * - One answer feeds three analytical models simultaneously
+     * - Enables Competency Passport reuse across scenarios
+     * - Normalizes local competencies to global standards
+     */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name="standard_codes", columnDefinition = "jsonb")
-    private Map<String, Object> standardCodes;
+    private StandardCodesDto standardCodes;
 
     @Column(name="is_active", nullable = false)
     private boolean isActive;
@@ -58,12 +89,11 @@ public class Competency {
         // Default constructor required by JPA
     }
 
-    public Competency(UUID id, String name, String description, CompetencyCategory category, ProficiencyLevel level, Map<String, Object> standardCodes, boolean isActive, ApprovalStatus approvalStatus, List<BehavioralIndicator> behavioralIndicators, int version, LocalDateTime createdAt, LocalDateTime lastModified) {
+    public Competency(UUID id, String name, String description, CompetencyCategory category, StandardCodesDto standardCodes, boolean isActive, ApprovalStatus approvalStatus, List<BehavioralIndicator> behavioralIndicators, int version, LocalDateTime createdAt, LocalDateTime lastModified) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.category = category;
-        this.level = level;
         this.standardCodes = standardCodes;
         this.isActive = isActive;
         this.approvalStatus = approvalStatus;
@@ -105,20 +135,82 @@ public class Competency {
         this.category = category;
     }
 
-    public ProficiencyLevel getLevel() {
-        return level;
-    }
-
-    public void setLevel(ProficiencyLevel level) {
-        this.level = level;
-    }
-
-    public Map<String, Object> getStandardCodes() {
+    public StandardCodesDto getStandardCodes() {
         return standardCodes;
     }
 
-    public void setStandardCodes(Map<String, Object> standardCodes) {
+    public void setStandardCodes(StandardCodesDto standardCodes) {
         this.standardCodes = standardCodes;
+    }
+
+    /**
+     * Get the Big Five psychological category mapping.
+     * Per ROADMAP.md: e.g., "BIG_FIVE_CONSCIENTIOUSNESS", "BIG_FIVE_AGREEABLENESS"
+     * @return Big Five category string or null if not mapped
+     */
+    @Transient
+    public String getBigFiveCategory() {
+        if (standardCodes == null || standardCodes.bigFiveRef() == null) return null;
+        StandardCodesDto.BigFiveRefDto bigFiveRef = standardCodes.bigFiveRef();
+        if (bigFiveRef.trait() != null) {
+            return "BIG_FIVE_" + bigFiveRef.trait().toUpperCase();
+        }
+        return null;
+    }
+
+    /**
+     * Get the O*NET reference mapping.
+     * Per ROADMAP.md: Contains code (e.g., "2.B.1.a"), title, and element type
+     * @return O*NET reference DTO or null if not mapped
+     */
+    @Transient
+    public StandardCodesDto.OnetRefDto getOnetRef() {
+        if (standardCodes == null) return null;
+        return standardCodes.onetRef();
+    }
+
+    /**
+     * Get the O*NET code (e.g., "2.B.1.a")
+     * @return O*NET code string or null
+     */
+    @Transient
+    public String getOnetCode() {
+        StandardCodesDto.OnetRefDto onetRef = getOnetRef();
+        return onetRef != null ? onetRef.code() : null;
+    }
+
+    /**
+     * Get the ESCO reference mapping.
+     * Per ROADMAP.md: Contains URI and label for transversal skill
+     * @return ESCO reference DTO or null if not mapped
+     */
+    @Transient
+    public StandardCodesDto.EscoRefDto getEscoRef() {
+        if (standardCodes == null) return null;
+        return standardCodes.escoRef();
+    }
+
+    /**
+     * Get the ESCO URI (e.g., "http://data.europa.eu/esco/skill/abc123")
+     * @return ESCO URI string or null
+     */
+    @Transient
+    public String getEscoUri() {
+        StandardCodesDto.EscoRefDto escoRef = getEscoRef();
+        return escoRef != null ? escoRef.uri() : null;
+    }
+
+    /**
+     * Check if this competency has complete Triple Standard mapping.
+     * Per ROADMAP.md: Required for Scenario A (Universal Baseline) to generate Competency Passport
+     * @return true if Big Five, O*NET, and ESCO mappings are all present
+     */
+    @Transient
+    public boolean hasTripleStandardMapping() {
+        return standardCodes != null 
+            && standardCodes.hasBigFiveMapping() 
+            && standardCodes.hasOnetMapping() 
+            && standardCodes.hasEscoMapping();
     }
 
     public boolean isActive() {
@@ -152,7 +244,6 @@ public class Competency {
                 ", name='" + name + '\'' +
                 ", description='" + description + '\'' +
                 ", category=" + category +
-                ", level=" + level +
                 ", standardCodes=" + standardCodes +
                 ", isActive=" + isActive +
                 ", approvalStatus=" + approvalStatus +

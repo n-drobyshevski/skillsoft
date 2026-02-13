@@ -1,0 +1,111 @@
+### Test Template API Requests
+### Base URL: http://localhost:8080/api/v1/tests/templates
+
+### ============================================================
+### LIST OPERATIONS
+### ============================================================
+
+### List all templates (with pagination)
+GET http://localhost:8080/api/v1/tests/templates?page=0&size=20&sort=createdAt,desc
+Content-Type: application/json
+
+### List only active templates
+GET http://localhost:8080/api/v1/tests/templates/active
+Content-Type: application/json
+
+### Search templates by name
+GET http://localhost:8080/api/v1/tests/templates/search?name=Лидерство
+Content-Type: application/json
+
+### Find templates by competency
+GET http://localhost:8080/api/v1/tests/templates/by-competency/{{competencyId}}
+Content-Type: application/json
+
+### Get template statistics
+GET http://localhost:8080/api/v1/tests/templates/statistics
+Content-Type: application/json
+
+### ============================================================
+### GET BY ID
+### ============================================================
+
+### Get template by ID
+GET http://localhost:8080/api/v1/tests/templates/{{templateId}}
+Content-Type: application/json
+
+### ============================================================
+### CREATE OPERATIONS
+### ============================================================
+
+### Create a new test template
+POST http://localhost:8080/api/v1/tests/templates
+Content-Type: application/json
+
+{
+  "name": "Оценка лидерских компетенций",
+  "description": "Комплексная оценка лидерских качеств и управленческих навыков",
+  "competencyIds": [
+    "550e8400-e29b-41d4-a716-446655440000",
+    "660e8400-e29b-41d4-a716-446655440001"
+  ],
+  "questionsPerIndicator": 3,
+  "timeLimitMinutes": 45,
+  "passingScore": 70.0,
+  "shuffleQuestions": true,
+  "shuffleOptions": true,
+  "allowSkip": true,
+  "allowBackNavigation": true,
+  "showResultsImmediately": true
+}
+
+### Create minimal template (with defaults)
+POST http://localhost:8080/api/v1/tests/templates
+Content-Type: application/json
+
+{
+  "name": "Базовый тест коммуникации",
+  "competencyIds": [
+    "770e8400-e29b-41d4-a716-446655440002"
+  ]
+}
+
+### ============================================================
+### UPDATE OPERATIONS
+### ============================================================
+
+### Update template
+PUT http://localhost:8080/api/v1/tests/templates/{{templateId}}
+Content-Type: application/json
+
+{
+  "name": "Обновлённый тест лидерства",
+  "description": "Обновлённое описание теста",
+  "timeLimitMinutes": 60,
+  "passingScore": 75.0
+}
+
+### ============================================================
+### DELETE OPERATIONS
+### ============================================================
+
+### Delete template
+DELETE http://localhost:8080/api/v1/tests/templates/{{templateId}}
+
+### ============================================================
+### ACTIVATION OPERATIONS
+### ============================================================
+
+### Activate template
+POST http://localhost:8080/api/v1/tests/templates/{{templateId}}/activate
+Content-Type: application/json
+
+### Deactivate template
+POST http://localhost:8080/api/v1/tests/templates/{{templateId}}/deactivate
+Content-Type: application/json
+
+### ============================================================
+### VARIABLES
+### ============================================================
+# Set these variables before running requests:
+# @templateId = your-template-uuid-here
+# @competencyId = your-competency-uuid-here

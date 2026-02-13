@@ -15,5 +15,5 @@ public interface CompetencyService {
 
     Competency updateCompetency(UUID id, Competency competency);
 
-    void deleteCompetency(UUID id);
+    boolean deleteCompetency(UUID id);
 }

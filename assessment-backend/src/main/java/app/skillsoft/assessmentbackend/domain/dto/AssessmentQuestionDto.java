@@ -7,6 +7,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * DTO for AssessmentQuestion entity.
+ * Supports Smart Assessment features per ROADMAP.md:
+ * - questionType: LIKERT, SJT, MCQ (primary types)
+ * - answerOptions: JSON with vector weights for SJT questions
+ * - metadata: JSONB for tags, context filtering, and additional scoring info
+ */
 public record AssessmentQuestionDto(
         UUID id,
         UUID behavioralIndicatorId,
@@ -16,6 +23,7 @@ public record AssessmentQuestionDto(
         String scoringRubric,
         Integer timeLimit,
         DifficultyLevel difficultyLevel,
+        Map<String, Object> metadata,
         boolean isActive,
         int orderIndex
 ) {

@@ -1,0 +1,4 @@
+[submodule "frontend-app"]
+	path = frontend-app
+	url = https://github.com/n-drobyshevski/skillsoft-front.git
+	branch = dev

@@ -1,0 +1,79 @@
+### Test Result API Requests
+### Base URL: http://localhost:8080/api/v1/tests/results
+
+### ============================================================
+### RESULT RETRIEVAL
+### ============================================================
+
+### Get result by ID
+GET http://localhost:8080/api/v1/tests/results/{{resultId}}
+Content-Type: application/json
+
+### Get result by session ID
+GET http://localhost:8080/api/v1/tests/results/session/{{sessionId}}
+Content-Type: application/json
+
+### Get percentile for a result
+GET http://localhost:8080/api/v1/tests/results/{{resultId}}/percentile
+Content-Type: application/json
+
+### ============================================================
+### USER RESULTS
+### ============================================================
+
+### Get all results for user (with pagination)
+GET http://localhost:8080/api/v1/tests/results/user/{{clerkUserId}}?page=0&size=20
+Content-Type: application/json
+
+### Get all user results (no pagination)
+GET http://localhost:8080/api/v1/tests/results/user/{{clerkUserId}}/all
+Content-Type: application/json
+
+### Get user results for specific template
+GET http://localhost:8080/api/v1/tests/results/user/{{clerkUserId}}/template/{{templateId}}
+Content-Type: application/json
+
+### Get latest result for user on template
+GET http://localhost:8080/api/v1/tests/results/user/{{clerkUserId}}/template/{{templateId}}/latest
+Content-Type: application/json
+
+### Get passed results for user
+GET http://localhost:8080/api/v1/tests/results/user/{{clerkUserId}}/passed
+Content-Type: application/json
+
+### ============================================================
+### STATISTICS
+### ============================================================
+
+### Get user statistics
+GET http://localhost:8080/api/v1/tests/results/user/{{clerkUserId}}/statistics
+Content-Type: application/json
+
+### Get template statistics (Admin only)
+GET http://localhost:8080/api/v1/tests/results/template/{{templateId}}/statistics
+Content-Type: application/json
+
+### ============================================================
+### ADMIN OPERATIONS
+### ============================================================
+
+### Get results by date range (Admin only)
+GET http://localhost:8080/api/v1/tests/results/report?startDate=2025-01-01T00:00:00&endDate=2025-12-31T23:59:59
+Content-Type: application/json
+
+### Get recent results (Admin dashboard)
+GET http://localhost:8080/api/v1/tests/results/recent?limit=10
+Content-Type: application/json
+
+### Get recent results (default limit)
+GET http://localhost:8080/api/v1/tests/results/recent
+Content-Type: application/json
+
+### ============================================================
+### VARIABLES
+### ============================================================
+# Set these variables before running requests:
+# @resultId = your-result-uuid-here
+# @sessionId = your-session-uuid-here
+# @templateId = your-template-uuid-here
+# @clerkUserId = user_2abc123def456

@@ -103,21 +103,76 @@ public class AnswerOptionUtils {
      */
     public static List<Map<String, Object>> createDefaultOptionsForType(QuestionType questionType) {
         switch (questionType) {
+            // Likert scale types (1-5 agreement scale)
+            case LIKERT:
             case LIKERT_SCALE:
-                List<String> labels = List.of("Полностью не согласен", "Скорее не согласен", 
+                List<String> labels = List.of("Полностью не согласен", "Скорее не согласен",
                                              "Частично согласен", "Скорее согласен", "Полностью согласен");
                 List<Integer> values = List.of(1, 2, 3, 4, 5);
                 return createLikertScaleOptions(labels, values);
-                
+
+            // Multiple choice types
+            case MCQ:
             case MULTIPLE_CHOICE:
                 List<String> options = List.of("Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4");
                 return createMultipleChoiceOptionsFromIndices(options, List.of(0));
-                
+
+            // Frequency scale (how often behavior occurs)
             case FREQUENCY_SCALE:
                 List<String> freqLabels = List.of("Никогда", "Редко", "Иногда", "Часто", "Всегда");
                 List<Integer> freqValues = List.of(1, 2, 3, 4, 5);
                 return createLikertScaleOptions(freqLabels, freqValues);
-                
+
+            // Situational Judgment Test types (A/B/C/D options with effectiveness scores)
+            case SJT:
+            case SITUATIONAL_JUDGMENT:
+                List<String> sjtOptions = List.of(
+                    "A) Первый вариант действия",
+                    "B) Второй вариант действия",
+                    "C) Третий вариант действия",
+                    "D) Четвертый вариант действия"
+                );
+                List<Integer> sjtScores = List.of(3, 2, 1, 0); // Most to least effective
+                List<String> sjtExplanations = List.of(
+                    "Наиболее эффективный подход",
+                    "Частично эффективный подход",
+                    "Менее эффективный подход",
+                    "Неэффективный подход"
+                );
+                return createSituationalJudgmentOptions(sjtOptions, sjtScores, sjtExplanations);
+
+            // Capability assessment (similar to MCQ with skill demonstration)
+            case CAPABILITY_ASSESSMENT:
+                List<String> capOptions = List.of(
+                    "Не владею",
+                    "Базовый уровень",
+                    "Средний уровень",
+                    "Продвинутый уровень",
+                    "Экспертный уровень"
+                );
+                List<Integer> capValues = List.of(1, 2, 3, 4, 5);
+                return createLikertScaleOptions(capOptions, capValues);
+
+            // Peer feedback (similar to Likert for rating colleagues)
+            case PEER_FEEDBACK:
+                List<String> peerLabels = List.of(
+                    "Значительно ниже ожиданий",
+                    "Ниже ожиданий",
+                    "Соответствует ожиданиям",
+                    "Выше ожиданий",
+                    "Значительно выше ожиданий"
+                );
+                List<Integer> peerValues = List.of(1, 2, 3, 4, 5);
+                return createLikertScaleOptions(peerLabels, peerValues);
+
+            // Text-based question types (no predefined options)
+            case BEHAVIORAL_EXAMPLE:
+            case OPEN_TEXT:
+            case SELF_REFLECTION:
+                // These types don't have predefined options - return empty list
+                // The actual response is free-form text
+                return new ArrayList<>();
+
             default:
                 return new ArrayList<>();
         }

@@ -82,6 +82,7 @@ class AssessmentQuestionTest {
                     "Test scoring rubric",
                     300,
                     DifficultyLevel.INTERMEDIATE,
+                    null,
                     true,
                     1
             );
@@ -104,7 +105,7 @@ class AssessmentQuestionTest {
         void shouldHandleNullValuesInConstructorGracefully() {
             // When
             AssessmentQuestion question = new AssessmentQuestion(
-                    null, null, null, null, null, null, null, null, false, 0
+                    null, null, null, null, null, null, null, null, null, false, 0
             );
 
             // Then
@@ -401,13 +402,13 @@ class AssessmentQuestionTest {
             AssessmentQuestion question1 = new AssessmentQuestion(
                     questionId, mockBehavioralIndicator, "Test question",
                     QuestionType.LIKERT_SCALE, answerOptions, "Test rubric",
-                    300, DifficultyLevel.INTERMEDIATE, true, 1
+                    300, DifficultyLevel.INTERMEDIATE, null, true, 1
             );
 
             AssessmentQuestion question2 = new AssessmentQuestion(
                     questionId, mockBehavioralIndicator, "Test question",
                     QuestionType.LIKERT_SCALE, answerOptions, "Test rubric",
-                    300, DifficultyLevel.INTERMEDIATE, true, 1
+                    300, DifficultyLevel.INTERMEDIATE, null, true, 1
             );
 
             // When & Then
@@ -443,13 +444,13 @@ class AssessmentQuestionTest {
             AssessmentQuestion question1 = new AssessmentQuestion(
                     questionId, mockBehavioralIndicator, "Test question",
                     QuestionType.LIKERT_SCALE, answerOptions, "Test rubric",
-                    300, DifficultyLevel.INTERMEDIATE, true, 1
+                    300, DifficultyLevel.INTERMEDIATE, null, true, 1
             );
 
             AssessmentQuestion question2 = new AssessmentQuestion(
                     questionId, mockBehavioralIndicator, "Test question",
                     QuestionType.LIKERT_SCALE, answerOptions, "Test rubric",
-                    300, DifficultyLevel.INTERMEDIATE, true, 1
+                    300, DifficultyLevel.INTERMEDIATE, null, true, 1
             );
 
             // When & Then

@@ -17,5 +17,7 @@ public interface BehavioralIndicatorService {
 
     BehavioralIndicator updateBehavioralIndicator(UUID behavioralIndicatorId, BehavioralIndicator behavioralIndicator);
 
+    BehavioralIndicator updateBehavioralIndicatorCompetency(UUID behavioralIndicatorId, UUID newCompetencyId, BehavioralIndicator behavioralIndicator);
+
     void deleteBehavioralIndicator( UUID behavioralIndicatorId);
 }

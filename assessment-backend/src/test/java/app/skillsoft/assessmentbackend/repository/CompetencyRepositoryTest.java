@@ -3,10 +3,10 @@ package app.skillsoft.assessmentbackend.repository;
 import app.skillsoft.assessmentbackend.config.TestJacksonConfig;
 import app.skillsoft.assessmentbackend.config.TestHibernateConfig;
 import app.skillsoft.assessmentbackend.config.JsonbTestHelper;
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,9 +20,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,25 +53,23 @@ class CompetencyRepositoryTest {
     @Autowired
     private JsonbTestHelper jsonbTestHelper;
 
-    private Map<String, Object> standardCodes;
+    private StandardCodesDto standardCodes;
     private Competency sampleCompetency;
 
     @BeforeEach
     void setUp() {
-        // Setup standard codes structure
-        standardCodes = new HashMap<>();
-        Map<String, Object> escoMapping = new HashMap<>();
-        escoMapping.put("code", "S7.1.1");
-        escoMapping.put("name", "develop organisational strategies");
-        escoMapping.put("confidence", "HIGH");
-        standardCodes.put("ESCO", escoMapping);
+        // Setup standard codes structure using the new DTO
+        standardCodes = StandardCodesDto.builder()
+                .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                        "develop organisational strategies", "skill")
+                .bigFive("CONSCIENTIOUSNESS")
+                .build();
 
         // Create sample competency
         sampleCompetency = new Competency();
         sampleCompetency.setName("Стратегическое лидерство");
         sampleCompetency.setDescription("Способность вести команду к достижению стратегических целей");
         sampleCompetency.setCategory(CompetencyCategory.LEADERSHIP);
-        sampleCompetency.setLevel(ProficiencyLevel.ADVANCED);
         sampleCompetency.setStandardCodes(standardCodes);
         sampleCompetency.setActive(true);
         sampleCompetency.setApprovalStatus(ApprovalStatus.APPROVED);
@@ -99,12 +94,11 @@ class CompetencyRepositoryTest {
             assertThat(saved.getName()).isEqualTo("Стратегическое лидерство");
             assertThat(saved.getDescription()).contains("команду");
             assertThat(saved.getStandardCodes()).isNotNull();
-            assertThat(saved.getStandardCodes().get("ESCO")).isNotNull();
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> escoData = (Map<String, Object>) saved.getStandardCodes().get("ESCO");
-            assertThat(escoData.get("code")).isEqualTo("S7.1.1");
-            assertThat(escoData.get("confidence")).isEqualTo("HIGH");
+            assertThat(saved.getStandardCodes().hasEscoMapping()).isTrue();
+            assertThat(saved.getStandardCodes().escoRef().uri())
+                    .isEqualTo("http://data.europa.eu/esco/skill/abc123-def456-789");
+            assertThat(saved.getStandardCodes().escoRef().title())
+                    .isEqualTo("develop organisational strategies");
         }
 
         @Test
@@ -131,7 +125,6 @@ class CompetencyRepositoryTest {
             secondCompetency.setName("Эмоциональный интеллект");
             secondCompetency.setDescription("Способность понимать эмоции");
             secondCompetency.setCategory(CompetencyCategory.EMOTIONAL_INTELLIGENCE);
-            secondCompetency.setLevel(ProficiencyLevel.PROFICIENT);
             secondCompetency.setActive(true);
             secondCompetency.setApprovalStatus(ApprovalStatus.DRAFT);
             secondCompetency.setVersion(1);
@@ -160,17 +153,15 @@ class CompetencyRepositoryTest {
             UUID competencyId = saved.getId();
             
             // When - Directly test update via SQL without triggering Hibernate entity reads
-            Map<String, Object> newStandardCodes = new HashMap<>();
-            Map<String, Object> newEsco = new HashMap<>();
-            newEsco.put("code", "S8.2.1");
-            newEsco.put("name", "updated leadership skills");
-            newEsco.put("confidence", "VERIFIED");
-            newStandardCodes.put("ESCO", newEsco);
+            StandardCodesDto newStandardCodes = StandardCodesDto.builder()
+                    .escoRef("http://data.europa.eu/esco/skill/def456-ghi789-012",
+                            "updated leadership skills", "skill")
+                    .bigFive("CONSCIENTIOUSNESS")
+                    .build();
 
             // Update the existing entity directly
             saved.setName("Обновленное лидерство");
             saved.setDescription("Обновленное описание лидерских навыков");
-            saved.setLevel(ProficiencyLevel.EXPERT);
             saved.setVersion(2);
             saved.setLastModified(LocalDateTime.now());
             saved.setStandardCodes(newStandardCodes);
@@ -181,10 +172,9 @@ class CompetencyRepositoryTest {
             assertThat(updated.getId()).isEqualTo(competencyId);
             assertThat(updated.getName()).isEqualTo("Обновленное лидерство");
             assertThat(updated.getDescription()).contains("Обновленное");
-            assertThat(updated.getLevel()).isEqualTo(ProficiencyLevel.EXPERT);
             assertThat(updated.getVersion()).isEqualTo(2);
             assertThat(updated.getStandardCodes()).isNotNull();
-            assertThat(updated.getStandardCodes()).containsKey("ESCO");
+            assertThat(updated.getStandardCodes().hasEscoMapping()).isTrue();
             
             // Verify the database was updated
             assertThat(jsonbTestHelper.competencyExistsWithName(competencyId, "Обновленное лидерство")).isTrue();
@@ -215,31 +205,12 @@ class CompetencyRepositoryTest {
         @DisplayName("Should persist complex standard codes structure")
         void shouldPersistComplexStandardCodesStructure() {
             // Given
-            Map<String, Object> complexStandardCodes = new HashMap<>();
-            
-            Map<String, Object> esco = new HashMap<>();
-            esco.put("code", "S2.1.1");
-            esco.put("name", "communicate with others");
-            esco.put("confidence", "HIGH");
-            esco.put("lastUpdated", "2024-01-15");
-            complexStandardCodes.put("ESCO", esco);
-            
-            Map<String, Object> onet = new HashMap<>();
-            onet.put("code", "2.A.1.b");
-            onet.put("name", "Oral Comprehension");
-            onet.put("confidence", "VERIFIED");
-            onet.put("category", "Abilities");
-            complexStandardCodes.put("ONET", onet);
-            
-            Map<String, Object> bigFive = new HashMap<>();
-            bigFive.put("code", "EXTRAVERSION");
-            bigFive.put("name", "Extraversion traits");
-            bigFive.put("confidence", "MODERATE");
-            Map<String, Object> facets = new HashMap<>();
-            facets.put("assertiveness", "HIGH");
-            facets.put("sociability", "MODERATE");
-            bigFive.put("facets", facets);
-            complexStandardCodes.put("BIG_FIVE", bigFive);
+            StandardCodesDto complexStandardCodes = StandardCodesDto.builder()
+                    .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                            "communicate with others", "skill")
+                    .onetRef("2.A.1.b", "Oral Comprehension", "ability")
+                    .bigFive("EXTRAVERSION")
+                    .build();
 
             sampleCompetency.setStandardCodes(complexStandardCodes);
 
@@ -250,17 +221,17 @@ class CompetencyRepositoryTest {
 
             // Then - Verify the data was persisted and the entity properties are accessible
             assertThat(saved.getId()).isNotNull();
-            assertThat(saved.getStandardCodes()).isNotNull(); // This works on the saved entity
-            assertThat(saved.getStandardCodes()).hasSize(3);
+            assertThat(saved.getStandardCodes()).isNotNull();
+            assertThat(saved.getStandardCodes().hasAnyMapping()).isTrue();
             
             // Verify the competency exists in database
             assertThat(jsonbTestHelper.competencyExistsWithName(saved.getId(), "Стратегическое лидерство")).isTrue();
             
-            // Test that we can access the JSONB data on the saved entity (before trying to reload)
-            @SuppressWarnings("unchecked")
-            Map<String, Object> savedEsco = (Map<String, Object>) saved.getStandardCodes().get("ESCO");
-            assertThat(savedEsco.get("code")).isEqualTo("S2.1.1");
-            assertThat(savedEsco.get("lastUpdated")).isEqualTo("2024-01-15");
+            // Test that we can access the data on the saved entity
+            assertThat(saved.getStandardCodes().escoRef().uri())
+                    .isEqualTo("http://data.europa.eu/esco/skill/abc123-def456-789");
+            assertThat(saved.getStandardCodes().onetRef().code())
+                    .isEqualTo("2.A.1.b");
         }
 
         @Test
@@ -281,19 +252,19 @@ class CompetencyRepositoryTest {
         }
 
         @Test
-        @DisplayName("Should handle empty standard codes map")
-        void shouldHandleEmptyStandardCodesMap() {
+        @DisplayName("Should handle empty standard codes DTO")
+        void shouldHandleEmptyStandardCodesDto() {
             // Given
-            sampleCompetency.setStandardCodes(new HashMap<>());
+            sampleCompetency.setStandardCodes(new StandardCodesDto());
 
             // When
             Competency saved = competencyRepository.save(sampleCompetency);
             entityManager.flush();
             entityManager.clear();
 
-            // Then - Verify the saved entity has empty map
+            // Then - Verify the saved entity has empty DTO
             assertThat(saved.getStandardCodes()).isNotNull();
-            assertThat(saved.getStandardCodes()).isEmpty();
+            assertThat(saved.getStandardCodes().hasAnyMapping()).isFalse();
             
             // Verify existence in database
             assertThat(jsonbTestHelper.competencyExistsWithName(saved.getId(), "Стратегическое лидерство")).isTrue();
@@ -327,7 +298,7 @@ class CompetencyRepositoryTest {
             
             // Verify JSONB data is accessible on saved entity
             assertThat(saved.getStandardCodes()).isNotNull();
-            assertThat(saved.getStandardCodes()).containsKey("ESCO");
+            assertThat(saved.getStandardCodes().hasEscoMapping()).isTrue();
         }
 
         @Test
@@ -431,32 +402,29 @@ class CompetencyRepositoryTest {
     class QueryPerformanceTests {
 
         @Test
-        @DisplayName("Should efficiently handle multiple competencies with large standard codes")
-        void shouldEfficientlyHandleMultipleCompetenciesWithLargeStandardCodes() {
-            // Given - Create multiple competencies with large standard codes
+        @DisplayName("Should efficiently handle multiple competencies with standard codes")
+        void shouldEfficientlyHandleMultipleCompetenciesWithStandardCodes() {
+            // Given - Create multiple competencies with standard codes
             for (int i = 0; i < 10; i++) {
                 Competency competency = new Competency();
                 competency.setName("Компетенция " + (i + 1));
                 competency.setDescription("Описание компетенции номер " + (i + 1));
                 competency.setCategory(CompetencyCategory.values()[i % CompetencyCategory.values().length]);
-                competency.setLevel(ProficiencyLevel.values()[i % ProficiencyLevel.values().length]);
                 competency.setActive(true);
                 competency.setApprovalStatus(ApprovalStatus.APPROVED);
                 competency.setVersion(1);
                 competency.setCreatedAt(LocalDateTime.now());
                 competency.setLastModified(LocalDateTime.now());
 
-                // Create large standard codes
-                Map<String, Object> largeStandardCodes = new HashMap<>();
-                for (int j = 0; j < 5; j++) {
-                    Map<String, Object> standardData = new HashMap<>();
-                    standardData.put("code", "CODE_" + i + "_" + j);
-                    standardData.put("name", "Standard " + j + " for competency " + i);
-                    standardData.put("confidence", "HIGH");
-                    standardData.put("description", "Detailed description ".repeat(10));
-                    largeStandardCodes.put("STANDARD_" + j, standardData);
-                }
-                competency.setStandardCodes(largeStandardCodes);
+                // Create standard codes using the new DTO structure
+                StandardCodesDto standardCodesDto = StandardCodesDto.builder()
+                        .escoRef("http://data.europa.eu/esco/skill/abc123-" + i,
+                                "Standard " + i + " competency", "skill")
+                        .onetRef("2.A.1." + (char)('a' + (i % 26)),
+                                "Ability " + i, "ability")
+                        .bigFive("OPENNESS")
+                        .build();
+                competency.setStandardCodes(standardCodesDto);
 
                 entityManager.persist(competency);
             }

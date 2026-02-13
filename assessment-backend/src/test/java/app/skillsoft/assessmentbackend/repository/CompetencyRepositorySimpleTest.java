@@ -2,9 +2,9 @@ package app.skillsoft.assessmentbackend.repository;
 
 import app.skillsoft.assessmentbackend.config.TestJacksonConfig;
 import app.skillsoft.assessmentbackend.config.TestHibernateConfig;
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
-import app.skillsoft.assessmentbackend.domain.entities.ProficiencyLevel;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,8 +16,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -37,15 +35,16 @@ class CompetencyRepositorySimpleTest {
     @Test
     void shouldSaveAndRetrieveCompetencyWithJsonbField() {
         // Given
-        Map<String, Object> standardCodes = new HashMap<>();
-        standardCodes.put("IEEE", "IEEE-123");
-        standardCodes.put("ISO", "ISO-9001");
+        StandardCodesDto standardCodes = StandardCodesDto.builder()
+                .onetRef("2.B.1.a", "Oral Comprehension", "ability")
+                .escoRef("http://data.europa.eu/esco/skill/abc123-def456-789",
+                        "Communication Skills", "skill")
+                .build();
 
         Competency competency = new Competency();
         competency.setName("Test Competency");
         competency.setDescription("Test Description");
         competency.setCategory(CompetencyCategory.COGNITIVE);
-        competency.setLevel(ProficiencyLevel.PROFICIENT);
         competency.setStandardCodes(standardCodes);
         competency.setApprovalStatus(ApprovalStatus.APPROVED);
         competency.setActive(true);
@@ -68,11 +67,13 @@ class CompetencyRepositorySimpleTest {
         String jsonData = row[1] != null ? 
             (row[1] instanceof String ? (String) row[1] : new String((byte[]) row[1])) : null;
         
-        // Then
+        // Then - JSON uses camelCase (onetRef, not onet_ref)
         assertThat(name).isEqualTo("Test Competency");
-        assertThat(jsonData).contains("IEEE-123");
-        assertThat(jsonData).contains("ISO-9001");
+        assertThat(jsonData).contains("onetRef");
+        assertThat(jsonData).contains("2.B.1.a");
         assertThat(saved.getId()).isNotNull();
+        assertThat(saved.getStandardCodes().hasOnetMapping()).isTrue();
+        assertThat(saved.getStandardCodes().hasEscoMapping()).isTrue();
     }
 
     @Test
@@ -82,7 +83,6 @@ class CompetencyRepositorySimpleTest {
         competency.setName("Competency Without Standards");
         competency.setDescription("Test Description");
         competency.setCategory(CompetencyCategory.COMMUNICATION);
-        competency.setLevel(ProficiencyLevel.NOVICE);
         competency.setApprovalStatus(ApprovalStatus.DRAFT);
         competency.setStandardCodes(null);
         competency.setActive(true);
@@ -112,14 +112,14 @@ class CompetencyRepositorySimpleTest {
     @Test
     void shouldSaveCompetencyWithRussianText() {
         // Given
-        Map<String, Object> standardCodes = new HashMap<>();
-        standardCodes.put("ГОСТ", "ГОСТ-123");
+        StandardCodesDto standardCodes = StandardCodesDto.builder()
+                .onetRef("2.A.1.a", "Устное понимание", "ability")
+                .build();
 
         Competency competency = new Competency();
         competency.setName("Компетенция по программированию");
         competency.setDescription("Описание компетенции на русском языке");
         competency.setCategory(CompetencyCategory.CRITICAL_THINKING);
-        competency.setLevel(ProficiencyLevel.ADVANCED);
         competency.setApprovalStatus(ApprovalStatus.APPROVED);
         competency.setStandardCodes(standardCodes);
         competency.setActive(true);
@@ -144,10 +144,12 @@ class CompetencyRepositorySimpleTest {
         String jsonData = row[2] != null ? 
             (row[2] instanceof String ? (String) row[2] : new String((byte[]) row[2])) : null;
 
-        // Then
+        // Then - JSON uses camelCase (onetRef, not onet_ref)
         assertThat(name).isEqualTo("Компетенция по программированию");
         assertThat(description).isEqualTo("Описание компетенции на русском языке");
-        assertThat(jsonData).contains("ГОСТ-123");
+        assertThat(jsonData).contains("onetRef");
+        assertThat(jsonData).contains("2.A.1.a");
         assertThat(saved.getId()).isNotNull();
+        assertThat(saved.getStandardCodes().hasOnetMapping()).isTrue();
     }
 }

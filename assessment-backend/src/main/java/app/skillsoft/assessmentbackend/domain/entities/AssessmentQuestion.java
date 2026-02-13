@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.domain.entities;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -44,10 +46,44 @@ public class AssessmentQuestion {
     @Enumerated(EnumType.STRING)
     private DifficultyLevel difficultyLevel;
 
+    /**
+     * Metadata JSONB field for flexible tagging and context filtering.
+     * Part of the Two-Tier Scoping System for Smart Assessment filtering.
+     * 
+     * Per ROADMAP.md Section 1.B: "Allows filtering questions by context and difficulty"
+     * 
+     * Schema standard (controlled vocabulary):
+     * {
+     *   "tags": ["GENERAL", "JUNIOR"],    // Required for context filtering
+     *   "complexity_score": 0.8,          // Optional: 0.0-1.0 scale
+     *   "scenario_type": "WORKPLACE",     // Optional: WORKPLACE, ACADEMIC, INTERPERSONAL
+     *   "measurement_target": "BEHAVIORAL" // Optional: BEHAVIORAL, COGNITIVE, SKILL
+     * }
+     * 
+     * Tag Taxonomy (Controlled Vocabulary):
+     * - GENERAL: Critical for Scenario A - no industry jargon, context-neutral scenarios
+     * - IT, SALES, FINANCE, MEDICAL, ENGINEERING: Industry/domain markers for Scenario B (Job Fit)
+     * - JUNIOR, MID, SENIOR: Complexity/seniority markers for adaptive difficulty
+     * 
+     * Usage:
+     * - Scenario A (Universal Baseline): Query with tag="GENERAL" for context-neutral Competency Passport
+     * - Scenario B (Job Fit): Query with tag="IT" or tag="SALES" for role-specific assessments
+     * - Scenario C (Team Fit): Combine with ContextScope.MANAGERIAL for leadership team fit
+     * 
+     * Integration:
+     * - Works with BehavioralIndicator.contextScope (macro-level filtering)
+     * - metadata.tags provides micro-level, question-specific filtering
+     */
+    @Column(name = "metadata", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, Object> metadata;
+
     @Column(name="is_active", nullable = false)
     private boolean isActive;
 
     @Column(name="order_index", nullable = false)
+    @Min(value = 1, message = "Order index must be positive")
+    @Max(value = 50, message = "Maximum 50 questions per indicator")
     private int orderIndex;
 
     // Constructors
@@ -57,8 +93,8 @@ public class AssessmentQuestion {
 
     public AssessmentQuestion(UUID id, BehavioralIndicator behavioralIndicator, String questionText, 
                              QuestionType questionType, List<Map<String, Object>> answerOptions, 
-                             String scoringRubric, Integer timeLimit, DifficultyLevel difficultyLevel, 
-                             boolean isActive, int orderIndex) {
+                             String scoringRubric, Integer timeLimit, DifficultyLevel difficultyLevel,
+                             Map<String, Object> metadata, boolean isActive, int orderIndex) {
         this.id = id;
         this.behavioralIndicator = behavioralIndicator;
         this.questionText = questionText;
@@ -67,6 +103,7 @@ public class AssessmentQuestion {
         this.scoringRubric = scoringRubric;
         this.timeLimit = timeLimit;
         this.difficultyLevel = difficultyLevel;
+        this.metadata = metadata;
         this.isActive = isActive;
         this.orderIndex = orderIndex;
     }
@@ -155,6 +192,54 @@ public class AssessmentQuestion {
 
     public void setDifficultyLevel(DifficultyLevel difficultyLevel) {
         this.difficultyLevel = difficultyLevel;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata;
+    }
+
+    /**
+     * Convenience method to get tags from metadata.
+     * Returns empty list if metadata or tags are null.
+     */
+    @SuppressWarnings("unchecked")
+    @Transient
+    public List<String> getTags() {
+        if (metadata == null || !metadata.containsKey("tags")) {
+            return List.of();
+        }
+        Object tags = metadata.get("tags");
+        if (tags instanceof List) {
+            return (List<String>) tags;
+        }
+        return List.of();
+    }
+
+    /**
+     * Check if question has a specific tag (case-insensitive).
+     * Used for Context Neutrality Filter in test assembly.
+     */
+    @Transient
+    public boolean hasTag(String tag) {
+        return getTags().stream()
+                .anyMatch(t -> t.equalsIgnoreCase(tag));
+    }
+
+    /**
+     * Check if this is a context-neutral question.
+     * Per ROADMAP.md: Questions with GENERAL/UNIVERSAL tags or without narrow tags (IT, SALES, FINANCE)
+     */
+    @Transient
+    public boolean isContextNeutral() {
+        List<String> tags = getTags();
+        if (tags.isEmpty()) return true;
+        if (hasTag("GENERAL") || hasTag("UNIVERSAL")) return true;
+        // Check for narrow context tags
+        return !hasTag("IT") && !hasTag("SALES") && !hasTag("FINANCE") && !hasTag("HEALTHCARE");
     }
 
     public boolean isActive() {

@@ -1,0 +1,146 @@
+### Test Session API Requests
+### Base URL: http://localhost:8080/api/v1/tests/sessions
+
+### ============================================================
+### SESSION LIFECYCLE
+### ============================================================
+
+### Start a new test session
+POST http://localhost:8080/api/v1/tests/sessions
+Content-Type: application/json
+
+{
+  "templateId": "{{templateId}}",
+  "clerkUserId": "user_2abc123def456"
+}
+
+### Get session by ID
+GET http://localhost:8080/api/v1/tests/sessions/{{sessionId}}
+Content-Type: application/json
+
+### Complete a test session
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/complete
+Content-Type: application/json
+
+### Abandon a test session
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/abandon
+Content-Type: application/json
+
+### ============================================================
+### ANSWER SUBMISSION
+### ============================================================
+
+### Submit single choice answer
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/answers
+Content-Type: application/json
+
+{
+  "sessionId": "{{sessionId}}",
+  "questionId": "{{questionId}}",
+  "selectedOptionIds": ["opt_1"],
+  "timeSpentSeconds": 45
+}
+
+### Submit multiple choice answer
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/answers
+Content-Type: application/json
+
+{
+  "sessionId": "{{sessionId}}",
+  "questionId": "{{questionId}}",
+  "selectedOptionIds": ["opt_1", "opt_3", "opt_4"],
+  "timeSpentSeconds": 60
+}
+
+### Submit Likert scale answer
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/answers
+Content-Type: application/json
+
+{
+  "sessionId": "{{sessionId}}",
+  "questionId": "{{questionId}}",
+  "likertValue": 4,
+  "timeSpentSeconds": 30
+}
+
+### Submit ranking answer
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/answers
+Content-Type: application/json
+
+{
+  "sessionId": "{{sessionId}}",
+  "questionId": "{{questionId}}",
+  "rankingOrder": ["opt_3", "opt_1", "opt_4", "opt_2"],
+  "timeSpentSeconds": 90
+}
+
+### Submit open-ended answer
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/answers
+Content-Type: application/json
+
+{
+  "sessionId": "{{sessionId}}",
+  "questionId": "{{questionId}}",
+  "textResponse": "В данной ситуации я бы сначала выслушал все стороны конфликта, затем предложил бы компромиссное решение.",
+  "timeSpentSeconds": 120
+}
+
+### Skip a question
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/answers
+Content-Type: application/json
+
+{
+  "sessionId": "{{sessionId}}",
+  "questionId": "{{questionId}}",
+  "skip": true,
+  "timeSpentSeconds": 5
+}
+
+### Get all answers for session
+GET http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/answers
+Content-Type: application/json
+
+### ============================================================
+### QUESTION NAVIGATION
+### ============================================================
+
+### Get current question
+GET http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/current-question
+Content-Type: application/json
+
+### Navigate to specific question (0-based index)
+POST http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/navigate?questionIndex=5
+Content-Type: application/json
+
+### Update remaining time
+PUT http://localhost:8080/api/v1/tests/sessions/{{sessionId}}/time?timeRemainingSeconds=1800
+Content-Type: application/json
+
+### ============================================================
+### USER SESSION QUERIES
+### ============================================================
+
+### Get all sessions for user (with pagination)
+GET http://localhost:8080/api/v1/tests/sessions/user/{{clerkUserId}}?page=0&size=20
+Content-Type: application/json
+
+### Get user sessions by status
+GET http://localhost:8080/api/v1/tests/sessions/user/{{clerkUserId}}/status/COMPLETED
+Content-Type: application/json
+
+### Get user sessions by status - IN_PROGRESS
+GET http://localhost:8080/api/v1/tests/sessions/user/{{clerkUserId}}/status/IN_PROGRESS
+Content-Type: application/json
+
+### Find in-progress session for resuming
+GET http://localhost:8080/api/v1/tests/sessions/user/{{clerkUserId}}/in-progress?templateId={{templateId}}
+Content-Type: application/json
+
+### ============================================================
+### VARIABLES
+### ============================================================
+# Set these variables before running requests:
+# @templateId = your-template-uuid-here
+# @sessionId = your-session-uuid-here
+# @questionId = your-question-uuid-here
+# @clerkUserId = user_2abc123def456

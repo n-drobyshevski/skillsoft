@@ -3,22 +3,38 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateCompetencyRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
 import app.skillsoft.assessmentbackend.domain.mapper.CompetencyMapper;
 import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 import java.util.List;
 
+/**
+ * REST Controller for Competency management.
+ *
+ * @deprecated This controller is deprecated and will be removed in a future version.
+ *             Use {@link app.skillsoft.assessmentbackend.controller.v1.CompetencyControllerV1} instead
+ *             with the endpoint path /api/v1/competencies.
+ *
+ * Security:
+ * - GET endpoints: All authenticated users (ROLE_USER)
+ * - POST/PUT/DELETE: ADMIN or EDITOR role required
+ */
+@Deprecated(since = "1.0", forRemoval = true)
 @RestController
 @RequestMapping("/api/competencies")
 public class CompetencyController {
@@ -66,11 +82,14 @@ public class CompetencyController {
     }
 
     @PostMapping
-    public ResponseEntity<CompetencyDto> createCompetency(@RequestBody CompetencyDto competencyDto) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public ResponseEntity<CompetencyDto> createCompetency(
+            @Valid @RequestBody CreateCompetencyRequest request) {
         logger.info("POST /api/competencies endpoint called");
 
         try {
-            Competency createdCompetency = competencyService.createCompetency(competencyMapper.fromDto(competencyDto));
+            Competency competencyEntity = competencyMapper.fromCreateRequest(request);
+            Competency createdCompetency = competencyService.createCompetency(competencyEntity);
             logger.info("Created competency with id: {}", createdCompetency.getId());
             return ResponseEntity.status(HttpStatus.CREATED).body(competencyMapper.toDto(createdCompetency));
         } catch (IllegalArgumentException e) {
@@ -84,13 +103,16 @@ public class CompetencyController {
 
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<CompetencyDto> updateCompetency(
             @PathVariable UUID id,
-            @RequestBody CompetencyDto competencyDto) {
+            @Valid @RequestBody UpdateCompetencyRequest request) {
         logger.info("PUT /api/competencies/{} endpoint called", id);
+        logger.debug("Received UpdateCompetencyRequest standardCodes: {}", request.standardCodes());
         try {
-            Competency competencyDetails = competencyMapper.fromDto(competencyDto);
-            Competency updatedCompetency = competencyService.updateCompetency(id, competencyDetails);
+            Competency competencyEntity = competencyMapper.fromUpdateRequest(request);
+            logger.debug("Mapped Competency standardCodes: {}", competencyEntity.getStandardCodes());
+            Competency updatedCompetency = competencyService.updateCompetency(id, competencyEntity);
             logger.info("Updated competency with id: {}", updatedCompetency.getId());
             return ResponseEntity.ok(competencyMapper.toDto(updatedCompetency));
         } catch (RuntimeException e) {
@@ -104,17 +126,16 @@ public class CompetencyController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
     public ResponseEntity<Void> deleteCompetency(@PathVariable UUID id) {
         logger.info("DELETE /api/competencies/{} endpoint called", id);
         
-        // Check if competency exists before attempting deletion
-        if (competencyService.findCompetencyById(id).isEmpty()) {
-            logger.warn("Competency with id {} not found for deletion", id);
-            return ResponseEntity.notFound().build();
-        }
-        
         try {
-            competencyService.deleteCompetency(id);
+            boolean deleted = competencyService.deleteCompetency(id);
+            if (!deleted) {
+                logger.warn("Competency with id {} not found for deletion", id);
+                return ResponseEntity.notFound().build();
+            }
             logger.info("Deleted competency with id: {}", id);
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {

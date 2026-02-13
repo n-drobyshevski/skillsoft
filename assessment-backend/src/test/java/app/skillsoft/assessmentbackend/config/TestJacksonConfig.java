@@ -11,9 +11,13 @@ import org.springframework.context.annotation.Primary;
 @TestConfiguration
 public class TestJacksonConfig {
 
-    @Bean
-    @Primary
-    public ObjectMapper objectMapper() {
+    /**
+     * Customizes the ObjectMapper for test environment.
+     * Note: We don't use @Primary here to avoid conflicts with main JsonConfig.
+     * The main JsonConfig's objectMapper will be used instead.
+     */
+    @Bean(name = "testObjectMapper")
+    public ObjectMapper testObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         // Configure Jackson to handle JSON deserialization properly
         mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);

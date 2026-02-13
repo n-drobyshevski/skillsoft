@@ -1,23 +1,16 @@
 package app.skillsoft.assessmentbackend.domain.mapper.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.AssessmentQuestionDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateQuestionRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateQuestionRequest;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.mapper.AssessmentQuestionMapper;
-import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
 @Component
 public class AssessmentQuestionMapperImpl implements AssessmentQuestionMapper {
-
-    private final BehavioralIndicatorRepository behavioralIndicatorRepository;
-
-    @Autowired
-    public AssessmentQuestionMapperImpl(BehavioralIndicatorRepository behavioralIndicatorRepository) {
-        this.behavioralIndicatorRepository = behavioralIndicatorRepository;
-    }
 
     @Override
     public AssessmentQuestion fromDto(AssessmentQuestionDto dto) {
@@ -33,13 +26,12 @@ public class AssessmentQuestionMapperImpl implements AssessmentQuestionMapper {
         question.setScoringRubric(dto.scoringRubric());
         question.setTimeLimit(dto.timeLimit());
         question.setDifficultyLevel(dto.difficultyLevel());
+        question.setMetadata(dto.metadata());
         question.setActive(dto.isActive());
         question.setOrderIndex(dto.orderIndex());
 
-        if (dto.behavioralIndicatorId() != null) {
-            behavioralIndicatorRepository.findById(dto.behavioralIndicatorId())
-                    .ifPresent(question::setBehavioralIndicator);
-        }
+        // DO NOT set behavioralIndicator here - it will be set by the service within transaction
+        // The behavioralIndicatorId from DTO is passed separately to the service layer
 
         return question;
     }
@@ -64,8 +56,51 @@ public class AssessmentQuestionMapperImpl implements AssessmentQuestionMapper {
                 entity.getScoringRubric(),
                 entity.getTimeLimit(),
                 entity.getDifficultyLevel(),
+                entity.getMetadata(),
                 entity.isActive(),
                 entity.getOrderIndex()
         );
+    }
+
+    @Override
+    public AssessmentQuestion fromCreateRequest(CreateQuestionRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        AssessmentQuestion question = new AssessmentQuestion();
+        question.setQuestionText(request.questionText());
+        question.setQuestionType(request.questionType());
+        question.setAnswerOptions(request.answerOptions());
+        question.setScoringRubric(request.scoringRubric());
+        question.setTimeLimit(request.timeLimitOrDefault());
+        question.setDifficultyLevel(request.difficultyLevel());
+        question.setMetadata(request.metadata());
+        question.setActive(request.isActiveOrDefault());
+        question.setOrderIndex(request.orderIndexOrDefault());
+
+        // behavioralIndicator relationship is set by the service layer
+        return question;
+    }
+
+    @Override
+    public AssessmentQuestion fromUpdateRequest(UpdateQuestionRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        AssessmentQuestion question = new AssessmentQuestion();
+        question.setQuestionText(request.questionText());
+        question.setQuestionType(request.questionType());
+        question.setAnswerOptions(request.answerOptions());
+        question.setScoringRubric(request.scoringRubric());
+        question.setTimeLimit(request.timeLimit());
+        question.setDifficultyLevel(request.difficultyLevel());
+        question.setMetadata(request.metadata());
+        question.setActive(request.isActive());
+        question.setOrderIndex(request.orderIndex());
+
+        // ID and behavioralIndicator are preserved from existing entity
+        return question;
     }
 }

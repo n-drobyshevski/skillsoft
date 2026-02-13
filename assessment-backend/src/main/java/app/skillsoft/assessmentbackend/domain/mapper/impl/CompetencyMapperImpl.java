@@ -2,6 +2,9 @@ package app.skillsoft.assessmentbackend.domain.mapper.impl;
 
 import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
+import app.skillsoft.assessmentbackend.domain.dto.request.CreateCompetencyRequest;
+import app.skillsoft.assessmentbackend.domain.dto.request.UpdateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.mapper.BehavioralIndicatorMapper;
 import app.skillsoft.assessmentbackend.domain.mapper.CompetencyMapper;
@@ -33,7 +36,6 @@ public class CompetencyMapperImpl implements CompetencyMapper {
         competency.setName(dto.name());
         competency.setDescription(dto.description());
         competency.setCategory(dto.category());
-        competency.setLevel(dto.level());
         competency.setStandardCodes(dto.standardCodes());
         competency.setActive(dto.isActive());
         competency.setApprovalStatus(dto.approvalStatus());
@@ -64,7 +66,6 @@ public class CompetencyMapperImpl implements CompetencyMapper {
                 entity.getName(),
                 entity.getDescription(),
                 entity.getCategory(),
-                entity.getLevel(),
                 entity.getStandardCodes(),
                 entity.isActive(),
                 entity.getApprovalStatus(),
@@ -73,5 +74,45 @@ public class CompetencyMapperImpl implements CompetencyMapper {
                 entity.getCreatedAt(),
                 entity.getLastModified()
         );
+    }
+
+    @Override
+    public Competency fromCreateRequest(CreateCompetencyRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        Competency competency = new Competency();
+        competency.setName(request.name());
+        competency.setDescription(request.description());
+        competency.setCategory(request.category());
+        competency.setStandardCodes(convertStandardCodes(request.standardCodes()));
+        competency.setActive(request.isActiveOrDefault());
+        competency.setApprovalStatus(request.approvalStatusOrDefault());
+
+        return competency;
+    }
+
+    @Override
+    public Competency fromUpdateRequest(UpdateCompetencyRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        Competency competency = new Competency();
+        competency.setName(request.name());
+        competency.setDescription(request.description());
+        competency.setCategory(request.category());
+        competency.setStandardCodes(convertStandardCodes(request.standardCodes()));
+        competency.setActive(request.isActive());
+        competency.setApprovalStatus(request.approvalStatus());
+
+        // ID and version are preserved from existing entity
+        return competency;
+    }
+
+    private StandardCodesDto convertStandardCodes(StandardCodesDto dto) {
+        // StandardCodesDto is already the correct type, just return it
+        return dto;
     }
 }

@@ -15,6 +15,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -332,6 +334,56 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // ===============================
+    // SECURITY EXCEPTIONS
+    // ===============================
+
+    /**
+     * Handle AccessDeniedException (insufficient permissions/role).
+     * Returns HTTP 403 Forbidden when user lacks required role.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(
+            AccessDeniedException ex, WebRequest request) {
+        
+        String correlationId = getCorrelationId(request);
+        logger.warn("Access denied [{}]: {}", correlationId, ex.getMessage());
+        
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.FORBIDDEN,
+            "Access denied",
+            "You do not have sufficient permissions to access this resource",
+            request
+        );
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+    }
+
+    /**
+     * Handle AuthenticationException (user not authenticated).
+     * Returns HTTP 401 Unauthorized when authentication fails.
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleAuthenticationException(
+            AuthenticationException ex, WebRequest request) {
+        
+        String correlationId = getCorrelationId(request);
+        logger.warn("Authentication failed [{}]: {}", correlationId, ex.getMessage());
+        
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.UNAUTHORIZED,
+            "Authentication required",
+            "You must be authenticated to access this resource",
+            request
+        );
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
+    }
+
+    // ===============================
     // DOMAIN-SPECIFIC EXCEPTIONS
     // ===============================
 
@@ -424,10 +476,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ResponseEntity<ErrorResponse> handleIllegalArgumentException(
             IllegalArgumentException ex, WebRequest request) {
-        
+
         String correlationId = getCorrelationId(request);
         logger.warn("Invalid argument [{}]: {}", correlationId, ex.getMessage());
-        
+
         ErrorResponse errorResponse = buildErrorResponse(
             ex,
             HttpStatus.BAD_REQUEST,
@@ -437,6 +489,236 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
 
         return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Handle illegal state exceptions (business rule violations).
+     * Returns HTTP 400 Bad Request when the operation cannot be performed
+     * due to invalid state (e.g., session already completed, back navigation not allowed).
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleIllegalStateException(
+            IllegalStateException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Invalid state [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage(),
+            "The requested operation cannot be performed in the current state",
+            request
+        );
+
+        return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Handle resource not found exceptions.
+     * Returns HTTP 404 Not Found when a requested entity doesn't exist in the database.
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
+            ResourceNotFoundException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Resource not found [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.NOT_FOUND,
+            ex.getMessage(),
+            "The requested resource does not exist",
+            request
+        );
+
+        // Add resource context if available
+        if (ex.getResourceType() != null) {
+            errorResponse.addContext("resourceType", ex.getResourceType());
+            errorResponse.addContext("resourceId", ex.getResourceId());
+        }
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    /**
+     * Handle DuplicateSessionException when user tries to start a new session
+     * while already having an in-progress session for the same template.
+     * Returns HTTP 409 Conflict with the existing session ID.
+     */
+    @ExceptionHandler(DuplicateSessionException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleDuplicateSessionException(
+            DuplicateSessionException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Duplicate session attempt [{}]: User {} attempted to start new session for template {} " +
+                "while session {} is still in progress",
+                correlationId, ex.getClerkUserId(), ex.getTemplateId(), ex.getExistingSessionId());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.CONFLICT,
+            "User already has an in-progress session for this template",
+            "You can either resume the existing session or abandon it to start a new one",
+            request
+        );
+
+        // Set error code for frontend programmatic handling
+        errorResponse.setCode("DUPLICATE_SESSION");
+
+        // Add existing session ID to context for frontend to offer resume option
+        errorResponse.addContext("existingSessionId", ex.getExistingSessionId());
+        errorResponse.addContext("templateId", ex.getTemplateId());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
+
+    /**
+     * Handle TestNotReadyException when a test template cannot be started
+     * because competencies lack sufficient questions.
+     * Returns HTTP 422 Unprocessable Entity with detailed competency issues.
+     */
+    @ExceptionHandler(TestNotReadyException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ResponseEntity<ErrorResponse> handleTestNotReadyException(
+            TestNotReadyException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Test not ready [{}]: Template {} cannot start - {} questions available, {} required. Issues: {}",
+                correlationId, ex.getTemplateId(), ex.getTotalQuestionsAvailable(),
+                ex.getQuestionsRequired(), ex.getCompetencyIssues().size());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            ex.getMessage(),
+            "Please ensure all competencies have sufficient assessment questions before starting the test",
+            request
+        );
+
+        // Set error code for frontend programmatic handling
+        errorResponse.setCode("TEST_NOT_READY");
+
+        // Add detailed context for frontend to display actionable info
+        errorResponse.addContext("templateId", ex.getTemplateId());
+        errorResponse.addContext("totalQuestionsAvailable", ex.getTotalQuestionsAvailable());
+        errorResponse.addContext("questionsRequired", ex.getQuestionsRequired());
+        errorResponse.addContext("competencyIssues", ex.getCompetencyIssues());
+
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+    }
+
+    // ===============================
+    // ANONYMOUS SESSION EXCEPTIONS
+    // ===============================
+
+    /**
+     * Handle InvalidSessionTokenException when anonymous session token is missing or invalid.
+     * Returns HTTP 401 UNAUTHORIZED.
+     */
+    @ExceptionHandler(InvalidSessionTokenException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ResponseEntity<ErrorResponse> handleInvalidSessionTokenException(
+            InvalidSessionTokenException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Invalid session token [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.UNAUTHORIZED,
+            ex.getMessage(),
+            "Please provide a valid session access token in the X-Session-Token header",
+            request
+        );
+
+        errorResponse.setCode("INVALID_SESSION_TOKEN");
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
+    }
+
+    /**
+     * Handle RateLimitExceededException when rate limit is exceeded.
+     * Returns HTTP 429 TOO MANY REQUESTS with Retry-After header.
+     */
+    @ExceptionHandler(RateLimitExceededException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ResponseEntity<ErrorResponse> handleRateLimitExceededException(
+            RateLimitExceededException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Rate limit exceeded [{}]: {} - retry after {} seconds",
+                correlationId, ex.getMessage(), ex.getRetryAfterSeconds());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.TOO_MANY_REQUESTS,
+            ex.getMessage(),
+            "Please wait before making more requests",
+            request
+        );
+
+        errorResponse.setCode("RATE_LIMIT_EXCEEDED");
+        errorResponse.addContext("retryAfterSeconds", ex.getRetryAfterSeconds());
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(errorResponse);
+    }
+
+    /**
+     * Handle ShareLinkException when a share link is invalid, expired, or revoked.
+     * Returns HTTP 400 BAD REQUEST with specific error code.
+     */
+    @ExceptionHandler(ShareLinkException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ErrorResponse> handleShareLinkException(
+            ShareLinkException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Share link error [{}]: {} - code: {}",
+                correlationId, ex.getMessage(), ex.getErrorCode());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage(),
+            "The share link cannot be used",
+            request
+        );
+
+        errorResponse.setCode(ex.getErrorCode().name());
+
+        return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Handle SessionExpiredException when an anonymous session has expired.
+     * Returns HTTP 410 GONE.
+     */
+    @ExceptionHandler(SessionExpiredException.class)
+    @ResponseStatus(HttpStatus.GONE)
+    public ResponseEntity<ErrorResponse> handleSessionExpiredException(
+            SessionExpiredException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Session expired [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.GONE,
+            ex.getMessage(),
+            "The session has expired. Please start a new session.",
+            request
+        );
+
+        errorResponse.setCode("SESSION_EXPIRED");
+
+        return ResponseEntity.status(HttpStatus.GONE).body(errorResponse);
     }
 
     // ===============================
