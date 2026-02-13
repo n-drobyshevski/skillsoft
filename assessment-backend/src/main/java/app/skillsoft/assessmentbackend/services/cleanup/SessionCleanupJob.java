@@ -82,6 +82,7 @@ public class SessionCleanupJob {
 
     /**
      * Find and abandon IN_PROGRESS sessions that have been inactive too long.
+     * Uses batch saveAll() instead of individual save() calls.
      */
     private int abandonStaleInProgressSessions() {
         LocalDateTime cutoffTime = LocalDateTime.now().minusHours(config.getStaleHours());
@@ -89,23 +90,22 @@ public class SessionCleanupJob {
         List<TestSession> staleSessions = sessionRepository.findStaleSessions(
                 SessionStatus.IN_PROGRESS, cutoffTime);
 
-        int count = 0;
-        for (TestSession session : staleSessions) {
-            try {
-                session.abandon();
-                sessionRepository.save(session);
-                count++;
-                log.debug("Abandoned stale IN_PROGRESS session: {}", session.getId());
-            } catch (Exception e) {
-                log.warn("Failed to abandon session {}: {}", session.getId(), e.getMessage());
-            }
+        if (staleSessions.isEmpty()) {
+            return 0;
         }
 
-        return count;
+        for (TestSession session : staleSessions) {
+            session.abandon();
+        }
+
+        sessionRepository.saveAll(staleSessions);
+        log.debug("Batch-abandoned {} stale IN_PROGRESS sessions", staleSessions.size());
+        return staleSessions.size();
     }
 
     /**
      * Find and abandon NOT_STARTED sessions that are too old.
+     * Uses batch saveAll() instead of individual save() calls.
      */
     private int abandonOldNotStartedSessions() {
         LocalDateTime cutoffTime = LocalDateTime.now().minusHours(config.getStaleHours());
@@ -113,25 +113,24 @@ public class SessionCleanupJob {
         List<TestSession> oldSessions = sessionRepository.findStaleSessions(
                 SessionStatus.NOT_STARTED, cutoffTime);
 
-        int count = 0;
-        for (TestSession session : oldSessions) {
-            try {
-                session.setStatus(SessionStatus.ABANDONED);
-                session.setCompletedAt(LocalDateTime.now());
-                sessionRepository.save(session);
-                count++;
-                log.debug("Abandoned old NOT_STARTED session: {}", session.getId());
-            } catch (Exception e) {
-                log.warn("Failed to abandon session {}: {}", session.getId(), e.getMessage());
-            }
+        if (oldSessions.isEmpty()) {
+            return 0;
         }
 
-        return count;
+        LocalDateTime now = LocalDateTime.now();
+        for (TestSession session : oldSessions) {
+            session.setStatus(SessionStatus.ABANDONED);
+            session.setCompletedAt(now);
+        }
+
+        sessionRepository.saveAll(oldSessions);
+        log.debug("Batch-abandoned {} old NOT_STARTED sessions", oldSessions.size());
+        return oldSessions.size();
     }
 
     /**
      * Delete abandoned sessions that have no answers and are old enough.
-     * This is an aggressive cleanup for sessions that add no value.
+     * Uses batch deleteAllInBatch() instead of individual delete() calls.
      */
     private int deleteEmptyAbandonedSessions() {
         if (config.getDeleteEmptyAfterDays() <= 0) {
@@ -143,22 +142,19 @@ public class SessionCleanupJob {
         List<TestSession> abandonedSessions = sessionRepository.findStaleSessions(
                 SessionStatus.ABANDONED, cutoffTime);
 
-        int count = 0;
-        for (TestSession session : abandonedSessions) {
-            // Only delete if session has no answers and no result
-            if ((session.getAnswers() == null || session.getAnswers().isEmpty())
-                    && session.getResult() == null) {
-                try {
-                    sessionRepository.delete(session);
-                    count++;
-                    log.debug("Deleted empty abandoned session: {}", session.getId());
-                } catch (Exception e) {
-                    log.warn("Failed to delete empty session {}: {}", session.getId(), e.getMessage());
-                }
-            }
+        // Filter to only empty sessions (no answers and no result)
+        List<TestSession> emptyToDelete = abandonedSessions.stream()
+                .filter(session -> (session.getAnswers() == null || session.getAnswers().isEmpty())
+                        && session.getResult() == null)
+                .toList();
+
+        if (emptyToDelete.isEmpty()) {
+            return 0;
         }
 
-        return count;
+        sessionRepository.deleteAllInBatch(emptyToDelete);
+        log.debug("Batch-deleted {} empty abandoned sessions", emptyToDelete.size());
+        return emptyToDelete.size();
     }
 
     /**
