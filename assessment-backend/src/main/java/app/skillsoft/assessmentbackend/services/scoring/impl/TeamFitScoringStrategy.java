@@ -185,6 +185,9 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             scoreDto.setQuestionsAnswered(compAgg.getQuestionCount());
             scoreDto.setQuestionsCorrect(questionsCorrect);
             scoreDto.setOnetCode(onetCode);
+            scoreDto.setEscoUri(escoUri);
+            String bigFive = competency != null ? competency.getBigFiveCategory() : null;
+            scoreDto.setBigFiveCategory(bigFive);
             scoreDto.setIndicatorScores(compAgg.getIndicatorScores());
 
             finalScores.add(scoreDto);
@@ -201,7 +204,6 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             double weight = (escoUri != null && !escoUri.isEmpty()) ? weights.getEscoBoost() : 1.0;
 
             // Additional weight for competencies with Big Five mapping
-            String bigFive = competency != null ? competency.getBigFiveCategory() : null;
             if (bigFive != null) {
                 weight *= weights.getBigFiveBoost();
             }
@@ -230,11 +232,13 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
 
         // Step 5: Calculate Overall Team Fit Score
         double escoBoostForWeighting = weights.getEscoBoost();
+        double bigFiveBoostForWeighting = weights.getBigFiveBoost();
         double totalWeight = competencyCount > 0
                 ? finalScores.stream()
                 .mapToDouble(s -> {
                     double w = 1.0;
-                    if (s.getOnetCode() != null && !s.getOnetCode().isEmpty()) w *= escoBoostForWeighting;
+                    if (s.getEscoUri() != null && !s.getEscoUri().isEmpty()) w *= escoBoostForWeighting;
+                    if (s.getBigFiveCategory() != null && !s.getBigFiveCategory().isEmpty()) w *= bigFiveBoostForWeighting;
                     return w;
                 })
                 .sum()

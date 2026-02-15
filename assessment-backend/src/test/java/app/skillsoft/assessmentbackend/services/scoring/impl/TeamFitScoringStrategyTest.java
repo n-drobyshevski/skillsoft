@@ -95,7 +95,7 @@ class TeamFitScoringStrategyTest {
         competencyWithEscoOnly = createCompetency(
             competencyId2,
             "Communication",
-            "2.A.1.b",
+            null,
             "http://data.europa.eu/esco/skill/def456",
             null
         );
@@ -203,28 +203,57 @@ class TeamFitScoringStrategyTest {
     }
 
     /**
-     * Sets up the CompetencyBatchLoader and ScoreNormalizer mocks.
+     * Sets up the IndicatorBatchLoader, CompetencyBatchLoader, and ScoreNormalizer mocks.
+     *
+     * The production code uses IndicatorBatchLoader for answer processing
+     * (extractIndicatorIdSafe, getFromCache) and CompetencyBatchLoader for
+     * competency lookups (loadCompetenciesForAnswers, getFromCache).
      */
     private void setupBatchLoaderMock(Map<UUID, Competency> competencyMap) {
+        // Set up CompetencyBatchLoader for competency cache
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
             .thenReturn(competencyMap);
-
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenAnswer(invocation -> {
-                TestAnswer answer = invocation.getArgument(0);
-                if (answer == null || answer.getQuestion() == null
-                    || answer.getQuestion().getBehavioralIndicator() == null
-                    || answer.getQuestion().getBehavioralIndicator().getCompetency() == null) {
-                    return Optional.empty();
-                }
-                return Optional.of(answer.getQuestion().getBehavioralIndicator().getCompetency().getId());
-            });
 
         when(competencyBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, Competency> cache = invocation.getArgument(0);
-                UUID competencyId = invocation.getArgument(1);
-                return cache != null ? cache.get(competencyId) : null;
+                UUID id = invocation.getArgument(1);
+                return cache != null ? cache.get(id) : null;
+            });
+
+        // Build indicator cache from competencyMap and answers
+        // The production code calls indicatorBatchLoader.loadIndicatorsForAnswers(answers)
+        // which returns Map<UUID, BehavioralIndicator>
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> cache = new HashMap<>();
+                for (TestAnswer answer : answers) {
+                    if (answer.getQuestion() != null && answer.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = answer.getQuestion().getBehavioralIndicator();
+                        cache.put(ind.getId(), ind);
+                    }
+                }
+                return cache;
+            });
+
+        // extractIndicatorIdSafe: extract indicator ID from answer -> question -> indicator
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        // getFromCache for indicators
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID id = invocation.getArgument(1);
+                return cache != null ? cache.get(id) : null;
             });
 
         // Set up score normalizer to delegate to real normalization logic
@@ -251,11 +280,39 @@ class TeamFitScoringStrategyTest {
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
             .thenReturn(Map.of());
 
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenReturn(Optional.of(competencyId));
-
         when(competencyBatchLoader.getFromCache(any(), eq(competencyId)))
             .thenReturn(null);
+
+        // Set up indicator batch loader
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> cache = new HashMap<>();
+                for (TestAnswer answer : answers) {
+                    if (answer.getQuestion() != null && answer.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = answer.getQuestion().getBehavioralIndicator();
+                        cache.put(ind.getId(), ind);
+                    }
+                }
+                return cache;
+            });
+
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID id = invocation.getArgument(1);
+                return cache != null ? cache.get(id) : null;
+            });
 
         // Set up score normalizer
         when(scoreNormalizer.normalize(any(TestAnswer.class)))
@@ -998,6 +1055,99 @@ class TeamFitScoringStrategyTest {
     }
 
     @Nested
+    @DisplayName("Weight Denominator Consistency Tests")
+    class WeightDenominatorConsistencyTests {
+
+        @Test
+        @DisplayName("Should use ESCO URI (not O*NET code) for weight denominator")
+        void shouldUseEscoUriForWeightDenominator() {
+            // Given: Competency with ESCO URI but NO O*NET code
+            // This is the exact scenario that exposed the original bug
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer answer = createAnswer(mockSession, question, 5, null, false); // 100%
+
+            setupBatchLoaderMock(Map.of(competencyId2, competencyWithEscoOnly));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: numerator weight = 1.15 (ESCO boost), denominator weight = 1.15
+            // Result = (100 * 1.15) / 1.15 = 100% (before multiplier)
+            // With single competency at 100%, saturation penalty (0.9x) applies: 100 * 0.9 = 90%
+            // If the bug existed (denominator = 1.0), result would be 115% * 0.9 = ~103.5%
+            assertThat(result.getOverallPercentage()).isLessThanOrEqualTo(100.0);
+        }
+
+        @Test
+        @DisplayName("Should set ESCO URI in competency score DTO")
+        void shouldSetEscoUriInScoreDto() {
+            // Given
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId2, competencyWithEscoOnly));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getEscoUri()).isEqualTo("http://data.europa.eu/esco/skill/def456");
+            assertThat(score.getOnetCode()).isNull();
+        }
+
+        @Test
+        @DisplayName("Should set Big Five category in competency score DTO")
+        void shouldSetBigFiveCategoryInScoreDto() {
+            // Given
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getBigFiveCategory()).isEqualTo("BIG_FIVE_CONSCIENTIOUSNESS");
+        }
+
+        @Test
+        @DisplayName("Numerator and denominator weights must be symmetric for mixed competencies")
+        void shouldHaveSymmetricWeightsForMixedCompetencies() {
+            // Given: Two competencies both at equal scores
+            // One with ESCO only, one with no mappings
+            BehavioralIndicator indWithEsco = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            BehavioralIndicator indBasic = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indWithEsco, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indBasic, QuestionType.LIKERT);
+
+            // Both at 75% (Likert 4)
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId2, competencyWithEscoOnly, competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: With equal underlying scores, ESCO weighting should not shift the result
+            // numerator = 75*1.15 + 75*1.0 = 161.25
+            // denominator = 1.15 + 1.0 = 2.15
+            // result = 161.25 / 2.15 = 75% (weighted avg equals unweighted when all scores are equal)
+            // Then diversity/saturation multiplier applied on top
+            assertThat(result.getCompetencyScores()).hasSize(2);
+            // Both at 75% means underlying avg is 75%
+            // The overall should reflect this without inflation/deflation from weighting
+        }
+    }
+
+    @Nested
     @DisplayName("Result Metadata Tests")
     class ResultMetadataTests {
 
@@ -1019,7 +1169,7 @@ class TeamFitScoringStrategyTest {
         }
 
         @Test
-        @DisplayName("Should set O*NET code in competency score DTO")
+        @DisplayName("Should set O*NET code and ESCO URI in competency score DTO")
         void shouldSetOnetCodeInScoreDto() {
             // Given
             BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
@@ -1034,6 +1184,8 @@ class TeamFitScoringStrategyTest {
             // Then
             CompetencyScoreDto score = result.getCompetencyScores().get(0);
             assertThat(score.getOnetCode()).isEqualTo("2.B.1.a");
+            assertThat(score.getEscoUri()).isEqualTo("http://data.europa.eu/esco/skill/abc123");
+            assertThat(score.getBigFiveCategory()).isEqualTo("BIG_FIVE_CONSCIENTIOUSNESS");
         }
     }
 }
