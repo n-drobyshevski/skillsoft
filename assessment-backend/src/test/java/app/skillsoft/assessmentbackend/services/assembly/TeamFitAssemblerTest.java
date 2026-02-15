@@ -407,6 +407,213 @@ class TeamFitAssemblerTest {
         }
     }
 
+    @Nested
+    @DisplayName("assemble - Adaptive Difficulty Tests")
+    class AssembleAdaptiveDifficultyTests {
+
+        @Test
+        @DisplayName("should select ADVANCED difficulty for critical gap (saturation < 0.1)")
+        void shouldSelectAdvancedDifficultyForCriticalGap() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.05);  // Critical gap: < 0.1
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
+                .thenReturn(List.of(competencyId1));
+            when(indicatorRepository.findByCompetencyId(competencyId1))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Critical gap should use ADVANCED difficulty
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.ADVANCED), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should select INTERMEDIATE difficulty for moderate gap (saturation 0.1-0.3)")
+        void shouldSelectIntermediateDifficultyForModerateGap() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.2);  // Moderate gap: 0.1 <= sat < 0.3
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
+                .thenReturn(List.of(competencyId1));
+            when(indicatorRepository.findByCompetencyId(competencyId1))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Moderate gap should use INTERMEDIATE difficulty
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should select FOUNDATIONAL difficulty for minor gap (saturation >= 0.3)")
+        void shouldSelectFoundationalDifficultyForMinorGap() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.5);  // Higher threshold to include 0.4
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.4);  // Minor gap: >= 0.3
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
+                .thenReturn(List.of(competencyId1));
+            when(indicatorRepository.findByCompetencyId(competencyId1))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Minor gap should use FOUNDATIONAL difficulty
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.FOUNDATIONAL), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use different difficulties for multiple competencies with different saturations")
+        void shouldUseDifferentDifficultiesPerCompetency() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.5);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.05);  // Critical gap -> ADVANCED
+            saturation.put(competencyId2, 0.4);   // Minor gap -> FOUNDATIONAL
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
+                .thenReturn(List.of(competencyId1, competencyId2));
+            when(indicatorRepository.findByCompetencyId(competencyId1))
+                .thenReturn(List.of(indicator1));
+            when(indicatorRepository.findByCompetencyId(competencyId2))
+                .thenReturn(List.of(indicator2));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Each competency should get its own difficulty based on saturation
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.ADVANCED), anySet()
+            );
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId2), anyInt(), eq(DifficultyLevel.FOUNDATIONAL), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use ADVANCED at boundary saturation of exactly 0.0")
+        void shouldSelectAdvancedAtZeroSaturation() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.0);  // Zero saturation -> ADVANCED
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
+                .thenReturn(List.of(competencyId1));
+            when(indicatorRepository.findByCompetencyId(competencyId1))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.ADVANCED), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use INTERMEDIATE at boundary saturation of exactly 0.1")
+        void shouldSelectIntermediateAtBoundarySaturation() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.1);  // Exactly 0.1 -> INTERMEDIATE
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
+                .thenReturn(List.of(competencyId1));
+            when(indicatorRepository.findByCompetencyId(competencyId1))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use FOUNDATIONAL at boundary saturation of exactly 0.3")
+        void shouldSelectFoundationalAtBoundarySaturation() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.5);  // Higher threshold
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.3);  // Exactly 0.3 -> FOUNDATIONAL
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
+                .thenReturn(List.of(competencyId1));
+            when(indicatorRepository.findByCompetencyId(competencyId1))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.FOUNDATIONAL), anySet()
+            );
+        }
+    }
+
     // Helper methods
 
     private TeamFitBlueprint createBlueprint(UUID teamId, double saturationThreshold) {

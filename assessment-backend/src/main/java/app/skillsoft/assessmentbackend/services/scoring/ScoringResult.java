@@ -4,6 +4,7 @@ import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -133,19 +134,43 @@ public class ScoringResult {
          */
         private int gapCount;
 
+        /**
+         * Per-competency saturation map: competency name -> candidate percentage (0.0-1.0).
+         * Uses competency names (not UUIDs) as keys for frontend radar chart display.
+         */
+        private Map<String, Double> competencySaturation = new HashMap<>();
+
+        /**
+         * Number of members in the team (from TeamService).
+         * 0 if team profile was not available or no members found.
+         */
+        private int teamSize;
+
+        /**
+         * Personality compatibility score between candidate and team (0.0-1.0).
+         * Based on Euclidean distance between candidate's Big Five profile and team's averagePersonality.
+         * Higher = more compatible. Null if no personality data available.
+         */
+        private Double personalityCompatibility;
+
         // Default constructor
         public TeamFitMetrics() {
         }
 
         // All-args constructor
         public TeamFitMetrics(double diversityRatio, double saturationRatio, double teamFitMultiplier,
-                              int diversityCount, int saturationCount, int gapCount) {
+                              int diversityCount, int saturationCount, int gapCount,
+                              Map<String, Double> competencySaturation, int teamSize,
+                              Double personalityCompatibility) {
             this.diversityRatio = diversityRatio;
             this.saturationRatio = saturationRatio;
             this.teamFitMultiplier = teamFitMultiplier;
             this.diversityCount = diversityCount;
             this.saturationCount = saturationCount;
             this.gapCount = gapCount;
+            this.competencySaturation = competencySaturation != null ? competencySaturation : new HashMap<>();
+            this.teamSize = teamSize;
+            this.personalityCompatibility = personalityCompatibility;
         }
 
         // Builder pattern for convenience
@@ -202,6 +227,30 @@ public class ScoringResult {
             this.gapCount = gapCount;
         }
 
+        public Map<String, Double> getCompetencySaturation() {
+            return competencySaturation;
+        }
+
+        public void setCompetencySaturation(Map<String, Double> competencySaturation) {
+            this.competencySaturation = competencySaturation != null ? competencySaturation : new HashMap<>();
+        }
+
+        public int getTeamSize() {
+            return teamSize;
+        }
+
+        public void setTeamSize(int teamSize) {
+            this.teamSize = teamSize;
+        }
+
+        public Double getPersonalityCompatibility() {
+            return personalityCompatibility;
+        }
+
+        public void setPersonalityCompatibility(Double personalityCompatibility) {
+            this.personalityCompatibility = personalityCompatibility;
+        }
+
         /**
          * Builder class for TeamFitMetrics.
          */
@@ -212,6 +261,9 @@ public class ScoringResult {
             private int diversityCount;
             private int saturationCount;
             private int gapCount;
+            private Map<String, Double> competencySaturation = new HashMap<>();
+            private int teamSize;
+            private Double personalityCompatibility;
 
             public Builder diversityRatio(double diversityRatio) {
                 this.diversityRatio = diversityRatio;
@@ -243,9 +295,25 @@ public class ScoringResult {
                 return this;
             }
 
+            public Builder competencySaturation(Map<String, Double> competencySaturation) {
+                this.competencySaturation = competencySaturation != null ? competencySaturation : new HashMap<>();
+                return this;
+            }
+
+            public Builder teamSize(int teamSize) {
+                this.teamSize = teamSize;
+                return this;
+            }
+
+            public Builder personalityCompatibility(Double personalityCompatibility) {
+                this.personalityCompatibility = personalityCompatibility;
+                return this;
+            }
+
             public TeamFitMetrics build() {
                 return new TeamFitMetrics(diversityRatio, saturationRatio, teamFitMultiplier,
-                        diversityCount, saturationCount, gapCount);
+                        diversityCount, saturationCount, gapCount, competencySaturation, teamSize,
+                        personalityCompatibility);
             }
         }
     }

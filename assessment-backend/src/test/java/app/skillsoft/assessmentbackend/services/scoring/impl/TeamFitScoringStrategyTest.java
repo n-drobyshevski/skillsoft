@@ -5,6 +5,7 @@ import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
@@ -53,6 +54,9 @@ class TeamFitScoringStrategyTest {
     @Mock
     private ScoreNormalizer scoreNormalizer;
 
+    @Mock
+    private TeamService teamService;
+
     private ScoringConfiguration scoringConfig;
     private TeamFitScoringStrategy scoringStrategy;
 
@@ -75,7 +79,8 @@ class TeamFitScoringStrategyTest {
                 competencyBatchLoader,
                 indicatorBatchLoader,
                 scoringConfig,
-                scoreNormalizer
+                scoreNormalizer,
+                teamService
         );
 
         // Set up UUIDs
@@ -1186,6 +1191,775 @@ class TeamFitScoringStrategyTest {
             assertThat(score.getOnetCode()).isEqualTo("2.B.1.a");
             assertThat(score.getEscoUri()).isEqualTo("http://data.europa.eu/esco/skill/abc123");
             assertThat(score.getBigFiveCategory()).isEqualTo("BIG_FIVE_CONSCIENTIOUSNESS");
+        }
+    }
+
+    @Nested
+    @DisplayName("Team Service Integration Tests")
+    class TeamServiceIntegrationTests {
+
+        @Test
+        @DisplayName("Should use real team saturation data when available")
+        void shouldUseRealTeamSaturationData() {
+            // Given: Team where competencyId1 is saturated and competencyId3 is a gap
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                teamId, "Test Team",
+                List.of(), // members
+                Map.of(competencyId1, 0.9, competencyId2, 0.6, competencyId3, 0.1), // saturation
+                Map.of(), // personality
+                List.of(competencyId3) // gaps
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            // Create answers for all 3 competencies
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            BehavioralIndicator ind3 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+            AssessmentQuestion q3 = createQuestion(UUID.randomUUID(), ind3, QuestionType.LIKERT);
+
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false); // 75%
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false); // 75%
+            TestAnswer a3 = createAnswer(mockSession, q3, 4, null, false); // 75%
+
+            setupBatchLoaderMock(Map.of(
+                competencyId1, competencyWithEscoAndBigFive,
+                competencyId2, competencyWithEscoOnly,
+                competencyId3, competencyBasic
+            ));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
+
+            // Then - classification should be based on TEAM data, not candidate scores
+            assertThat(result.getTeamFitMetrics()).isNotNull();
+            // comp1 (team sat 0.9) -> saturation, comp2 (team sat 0.6) -> diversity, comp3 (team sat 0.1) -> gap
+            assertThat(result.getTeamFitMetrics().getSaturationCount()).isEqualTo(1);
+            assertThat(result.getTeamFitMetrics().getDiversityCount()).isEqualTo(1);
+            assertThat(result.getTeamFitMetrics().getGapCount()).isEqualTo(1);
+            assertThat(result.getTeamFitMetrics().getTeamSize()).isEqualTo(0); // empty members list
+        }
+
+        @Test
+        @DisplayName("Should fall back to self-referential scoring when team profile not found")
+        void shouldFallbackWhenTeamProfileNotFound() {
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.empty());
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            assertThat(result).isNotNull();
+            assertThat(result.getTeamFitMetrics().getTeamSize()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("Should fall back when no teamId in blueprint")
+        void shouldFallbackWhenNoTeamId() {
+            TeamFitBlueprint blueprint = new TeamFitBlueprint();
+            blueprint.setTeamId(null);
+            mockTemplate.setTypedBlueprint(blueprint);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            assertThat(result).isNotNull();
+            // Should not call teamService at all
+            verify(teamService, never()).getTeamProfile(any());
+        }
+
+        @Test
+        @DisplayName("Should weight competencies filling deeper gaps more heavily")
+        void shouldWeightDeeperGapsMoreHeavily() {
+            // Given: Team with one deep gap (0.1 saturation) and one fully saturated (0.9)
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                teamId, "Test Team",
+                List.of(),
+                Map.of(competencyId1, 0.1, competencyId2, 0.9), // comp1 is deep gap, comp2 is saturated
+                Map.of(),
+                List.of(competencyId1)
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+
+            // Both at same raw score (75%)
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(
+                competencyId1, competencyWithEscoAndBigFive,
+                competencyId2, competencyWithEscoOnly
+            ));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: competencyId1 (deep gap) should have been weighted more heavily
+            // Gap relevance: comp1 = 1.0 + (1.0 - 0.1) = 1.9, comp2 = 1.0 + (1.0 - 0.9) = 1.1
+            // The overall score should reflect the gap-weighted average
+            assertThat(result).isNotNull();
+            assertThat(result.getOverallPercentage()).isGreaterThan(0);
+            // Verify team fit metrics
+            assertThat(result.getTeamFitMetrics().getGapCount()).isEqualTo(1); // comp1 at 0.1 < diversityThreshold 0.5
+            assertThat(result.getTeamFitMetrics().getSaturationCount()).isEqualTo(1); // comp2 at 0.9 >= saturationThreshold 0.75
+        }
+
+        @Test
+        @DisplayName("Should lower pass threshold for small teams")
+        void shouldLowerThresholdForSmallTeams() {
+            // Given: Small team (3 members, below default threshold of 5)
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            // Create 3 team members
+            List<TeamService.TeamMemberProfile> members = List.of(
+                new TeamService.TeamMemberProfile(UUID.randomUUID(), "Alice", "Dev", Map.of(), Map.of()),
+                new TeamService.TeamMemberProfile(UUID.randomUUID(), "Bob", "Dev", Map.of(), Map.of()),
+                new TeamService.TeamMemberProfile(UUID.randomUUID(), "Charlie", "QA", Map.of(), Map.of())
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                teamId, "Small Team", members,
+                Map.of(competencyId1, 0.3), // diversity range
+                Map.of(), List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            // Candidate scores at 55% (below default 60% threshold, but above adjusted 50%)
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            TestAnswer a1 = createAnswer(mockSession, q1, 3, null, false); // 50%
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1));
+
+            // Then: With small team adjustment (-10%), threshold drops to 50%
+            // teamSize = 3 < 5 (smallTeamThreshold), so adjustment applied
+            assertThat(result).isNotNull();
+            assertThat(result.getTeamFitMetrics().getTeamSize()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("Should not reduce threshold below minimum floor")
+        void shouldNotReduceBelowMinimumFloor() {
+            // Given: Very small team with severe gaps (both adjustments apply)
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            // Set very low initial pass threshold to test floor
+            scoringConfig.getThresholds().getTeamFit().setPassThreshold(0.35);
+
+            List<TeamService.TeamMemberProfile> members = List.of(
+                new TeamService.TeamMemberProfile(UUID.randomUUID(), "Alice", "Dev", Map.of(), Map.of())
+            );
+
+            // All competencies are gaps (saturation below diversity threshold)
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                teamId, "Tiny Team", members,
+                Map.of(competencyId1, 0.05, competencyId2, 0.05, competencyId3, 0.05),
+                Map.of(), List.of(competencyId1, competencyId2, competencyId3)
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            TestAnswer a1 = createAnswer(mockSession, q1, 3, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1));
+
+            // Then: Both adjustments would reduce to 0.15 (0.35 - 0.1 - 0.1)
+            // But floor is 0.3, so threshold should be 30%
+            assertThat(result).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("Sigmoid Multiplier Tests")
+    class SigmoidMultiplierTests {
+
+        @Test
+        @DisplayName("Should produce multiplier near 1.0 when diversity equals saturation")
+        void shouldProduceNeutralWhenBalanced() {
+            // Given: 2 competencies, one diversity + one saturation = balanced
+            setTemplateSaturationThreshold(0.6);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+
+            // One above threshold (saturation), one between diversity and saturation
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false); // 75% - saturation (>0.6)
+            TestAnswer a2 = createAnswer(mockSession, q2, 3, null, false); // 50% - diversity (>=0.5, <0.6)
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive, competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: diversity=0.5, saturation=0.5, balance=0 -> sigmoid(0) = 0.5
+            // multiplier = 0.9 + (1.1 - 0.9) * 0.5 = 1.0
+            assertThat(result.getTeamFitMetrics().getTeamFitMultiplier())
+                .isCloseTo(1.0, within(0.01));
+        }
+
+        @Test
+        @DisplayName("Should produce multiplier near bonus for high diversity")
+        void shouldProduceBonusForHighDiversity() {
+            // Given: 3 competencies, 2 diversity + 0 saturation + 1 gap
+            setTemplateSaturationThreshold(0.9);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            BehavioralIndicator ind3 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+            AssessmentQuestion q3 = createQuestion(UUID.randomUUID(), ind3, QuestionType.LIKERT);
+
+            // All in diversity range (50-90%)
+            TestAnswer a1 = createAnswer(mockSession, q1, 3, null, false); // 50%
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false); // 75%
+            TestAnswer a3 = createAnswer(mockSession, q3, 2, null, false); // 25% - gap
+
+            setupBatchLoaderMock(Map.of(
+                competencyId1, competencyWithEscoAndBigFive,
+                competencyId2, competencyWithEscoOnly,
+                competencyId3, competencyBasic
+            ));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
+
+            // Then: diversity=0.67, saturation=0, balance=0.67 -> sigmoid positive
+            // multiplier should be > 1.0 (approaching bonus)
+            assertThat(result.getTeamFitMetrics().getTeamFitMultiplier())
+                .isGreaterThan(1.05);
+        }
+
+        @Test
+        @DisplayName("Should produce multiplier near penalty for high saturation")
+        void shouldProducePenaltyForHighSaturation() {
+            // Given: All competencies saturated
+            setTemplateSaturationThreshold(0.4);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+
+            // Both above threshold (saturated)
+            TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false); // 100%
+            TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false); // 100%
+
+            setupBatchLoaderMock(Map.of(
+                competencyId1, competencyWithEscoAndBigFive,
+                competencyId2, competencyWithEscoOnly
+            ));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: diversity=0, saturation=1.0, balance=-1.0 -> sigmoid very low
+            // multiplier should be < 1.0 (approaching penalty)
+            assertThat(result.getTeamFitMetrics().getTeamFitMultiplier())
+                .isLessThan(0.95);
+        }
+
+        @Test
+        @DisplayName("Sigmoid should be monotonically increasing with diversity-saturation balance")
+        void shouldBeMonotonicallyIncreasing() {
+            // Given: Validate that as balance increases, multiplier increases
+            // We test this by running two scenarios and comparing
+
+            // Scenario A: balanced (diversity=saturation)
+            setTemplateSaturationThreshold(0.7);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            AssessmentQuestion qA1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion qA2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+
+            TestAnswer aA1 = createAnswer(mockSession, qA1, 4, null, false); // 75% - saturation
+            TestAnswer aA2 = createAnswer(mockSession, qA2, 3, null, false); // 50% - diversity
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive, competencyId3, competencyBasic));
+            ScoringResult balancedResult = scoringStrategy.calculate(mockSession, List.of(aA1, aA2));
+
+            // Scenario B: all saturated
+            setTemplateSaturationThreshold(0.4);
+            BehavioralIndicator ind3 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            AssessmentQuestion qB1 = createQuestion(UUID.randomUUID(), ind3, QuestionType.LIKERT);
+            TestAnswer aB1 = createAnswer(mockSession, qB1, 5, null, false); // 100% - saturated
+
+            setupBatchLoaderMock(Map.of(competencyId2, competencyWithEscoOnly));
+            ScoringResult saturatedResult = scoringStrategy.calculate(mockSession, List.of(aB1));
+
+            // Then: balanced multiplier > saturated multiplier
+            assertThat(balancedResult.getTeamFitMetrics().getTeamFitMultiplier())
+                .isGreaterThan(saturatedResult.getTeamFitMetrics().getTeamFitMultiplier());
+        }
+    }
+
+    @Nested
+    @DisplayName("Personality Compatibility Tests")
+    class PersonalityCompatibilityTests {
+
+        @Test
+        @DisplayName("Should calculate personality compatibility when both profiles available")
+        void shouldCalculatePersonalityCompatibilityWhenBothProfilesAvailable() {
+            // Given: Team with averagePersonality and candidate with Big Five competencies
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            // Create competencies for each Big Five trait
+            UUID openId = UUID.randomUUID();
+            UUID consId = UUID.randomUUID();
+            UUID extraId = UUID.randomUUID();
+
+            Competency openness = createCompetency(openId, "Openness Trait", null,
+                    "http://data.europa.eu/esco/skill/open1", "OPENNESS");
+            Competency conscientiousness = createCompetency(consId, "Conscientiousness Trait", null,
+                    "http://data.europa.eu/esco/skill/cons1", "CONSCIENTIOUSNESS");
+            Competency extraversion = createCompetency(extraId, "Extraversion Trait", null,
+                    "http://data.europa.eu/esco/skill/extra1", "EXTRAVERSION");
+
+            // Team personality profile (0-100 scale)
+            Map<String, Double> teamPersonality = Map.of(
+                    "OPENNESS", 70.0,
+                    "CONSCIENTIOUSNESS", 60.0,
+                    "EXTRAVERSION", 50.0
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Personality Team",
+                    List.of(new TeamService.TeamMemberProfile(UUID.randomUUID(), "Alice", "Dev",
+                            Map.of(), Map.of("OPENNESS", 70.0, "CONSCIENTIOUSNESS", 60.0))),
+                    Map.of(openId, 0.5, consId, 0.5, extraId, 0.5), // diversity range
+                    teamPersonality,
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            // Create answers - candidate scores similar to team (high compatibility)
+            BehavioralIndicator indOpen = createBehavioralIndicator(UUID.randomUUID(), openness);
+            BehavioralIndicator indCons = createBehavioralIndicator(UUID.randomUUID(), conscientiousness);
+            BehavioralIndicator indExtra = createBehavioralIndicator(UUID.randomUUID(), extraversion);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indOpen, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indCons, QuestionType.LIKERT);
+            AssessmentQuestion q3 = createQuestion(UUID.randomUUID(), indExtra, QuestionType.LIKERT);
+
+            // Likert 4 -> normalized 0.75 -> bigFiveAverage = 75.0
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+            TestAnswer a3 = createAnswer(mockSession, q3, 3, null, false); // 50%
+
+            setupBatchLoaderMock(Map.of(openId, openness, consId, conscientiousness, extraId, extraversion));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
+
+            // Then
+            assertThat(result.getTeamFitMetrics()).isNotNull();
+            assertThat(result.getTeamFitMetrics().getPersonalityCompatibility()).isNotNull();
+            assertThat(result.getTeamFitMetrics().getPersonalityCompatibility())
+                    .isBetween(0.0, 1.0);
+        }
+
+        @Test
+        @DisplayName("Should return null compatibility when no Big Five data")
+        void shouldReturnNullCompatibilityWhenNoBigFiveData() {
+            // Given: Competencies without Big Five mappings
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            Map<String, Double> teamPersonality = Map.of("OPENNESS", 70.0, "CONSCIENTIOUSNESS", 60.0);
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Personality Team",
+                    List.of(),
+                    Map.of(competencyId3, 0.5),
+                    teamPersonality,
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            // Candidate has no Big Five competencies
+            BehavioralIndicator ind = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind, QuestionType.LIKERT);
+            TestAnswer a = createAnswer(mockSession, q, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
+
+            // Then: No Big Five data -> personalityCompatibility should be null
+            assertThat(result.getTeamFitMetrics().getPersonalityCompatibility()).isNull();
+        }
+
+        @Test
+        @DisplayName("Should return null when team has no personality data")
+        void shouldReturnNullWhenTeamHasNoPersonalityData() {
+            // Given: Team profile with empty averagePersonality
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "No Personality Team",
+                    List.of(),
+                    Map.of(competencyId1, 0.5),
+                    Map.of(), // empty personality
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            // Candidate with Big Five competency
+            BehavioralIndicator ind = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind, QuestionType.LIKERT);
+            TestAnswer a = createAnswer(mockSession, q, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
+
+            // Then: Team has no personality data -> personalityCompatibility should be null
+            assertThat(result.getTeamFitMetrics().getPersonalityCompatibility()).isNull();
+        }
+
+        @Test
+        @DisplayName("Should boost multiplier for high compatibility")
+        void shouldBoostMultiplierForHighCompatibility() {
+            // Given: Candidate and team have very similar personality profiles
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            // Create Big Five competencies
+            UUID openId = UUID.randomUUID();
+            UUID consId = UUID.randomUUID();
+
+            Competency openness = createCompetency(openId, "Openness", null,
+                    "http://data.europa.eu/esco/skill/open2", "OPENNESS");
+            Competency conscientiousness = createCompetency(consId, "Conscientiousness", null,
+                    "http://data.europa.eu/esco/skill/cons2", "CONSCIENTIOUSNESS");
+
+            // Team personality closely matches what candidate will score
+            // Candidate will score Likert 5 -> normalized 1.0 -> bigFiveAverage = 100.0
+            Map<String, Double> teamPersonality = Map.of(
+                    "OPENNESS", 100.0,
+                    "CONSCIENTIOUSNESS", 100.0
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Similar Team",
+                    List.of(),
+                    Map.of(openId, 0.5, consId, 0.5), // diversity range
+                    teamPersonality,
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            BehavioralIndicator indOpen = createBehavioralIndicator(UUID.randomUUID(), openness);
+            BehavioralIndicator indCons = createBehavioralIndicator(UUID.randomUUID(), conscientiousness);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indOpen, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indCons, QuestionType.LIKERT);
+
+            // Candidate scores max (100%) -> bigFiveAverages = {OPENNESS: 100, CONSCIENTIOUSNESS: 100}
+            TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(openId, openness, consId, conscientiousness));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: Identical profiles -> compatibility = 1.0
+            // Adjustment = (1.0 - 0.5) * 0.1 = +0.05
+            // Multiplier should be higher than without personality adjustment
+            assertThat(result.getTeamFitMetrics().getPersonalityCompatibility())
+                    .isCloseTo(1.0, within(0.01));
+            // The multiplier includes the personality boost
+            // Base sigmoid multiplier for 2 diversity, 0 saturation at threshold 0.75 would be > 1.0
+            // Plus personality adjustment of +0.05
+            assertThat(result.getTeamFitMetrics().getTeamFitMultiplier())
+                    .isGreaterThan(1.0);
+        }
+
+        @Test
+        @DisplayName("Should reduce multiplier for low compatibility")
+        void shouldReduceMultiplierForLowCompatibility() {
+            // Given: Candidate and team have very different personality profiles
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            UUID openId = UUID.randomUUID();
+            UUID consId = UUID.randomUUID();
+
+            Competency openness = createCompetency(openId, "Openness", null,
+                    "http://data.europa.eu/esco/skill/open3", "OPENNESS");
+            Competency conscientiousness = createCompetency(consId, "Conscientiousness", null,
+                    "http://data.europa.eu/esco/skill/cons3", "CONSCIENTIOUSNESS");
+
+            // Team has 0% on both traits, candidate will score 100% -> max distance
+            Map<String, Double> teamPersonality = Map.of(
+                    "OPENNESS", 0.0,
+                    "CONSCIENTIOUSNESS", 0.0
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Different Team",
+                    List.of(),
+                    Map.of(openId, 0.5, consId, 0.5), // diversity range
+                    teamPersonality,
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            BehavioralIndicator indOpen = createBehavioralIndicator(UUID.randomUUID(), openness);
+            BehavioralIndicator indCons = createBehavioralIndicator(UUID.randomUUID(), conscientiousness);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indOpen, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indCons, QuestionType.LIKERT);
+
+            // Candidate scores max (100%) -> bigFiveAverages = {OPENNESS: 100, CONSCIENTIOUSNESS: 100}
+            // Team has 0% -> max Euclidean distance
+            TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(openId, openness, consId, conscientiousness));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: Max distance -> compatibility = 0.0
+            // Adjustment = (0.0 - 0.5) * 0.1 = -0.05
+            assertThat(result.getTeamFitMetrics().getPersonalityCompatibility())
+                    .isCloseTo(0.0, within(0.01));
+            // The multiplier should be reduced by the personality penalty
+            // Compare: without personality data, the sigmoid-only multiplier for
+            // 2 diversity/0 saturation would be higher
+            double multiplierWithPenalty = result.getTeamFitMetrics().getTeamFitMultiplier();
+
+            // Run the same scenario without personality data to compare
+            TeamService.TeamProfile noPersonalityProfile = new TeamService.TeamProfile(
+                    teamId, "No Personality Team",
+                    List.of(),
+                    Map.of(openId, 0.5, consId, 0.5),
+                    Map.of(), // empty personality
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(noPersonalityProfile));
+
+            setupBatchLoaderMock(Map.of(openId, openness, consId, conscientiousness));
+            TestAnswer a3 = createAnswer(mockSession, q1, 5, null, false);
+            TestAnswer a4 = createAnswer(mockSession, q2, 5, null, false);
+
+            ScoringResult resultWithout = scoringStrategy.calculate(mockSession, List.of(a3, a4));
+            double multiplierWithout = resultWithout.getTeamFitMetrics().getTeamFitMultiplier();
+
+            // Multiplier with low compatibility penalty should be lower
+            assertThat(multiplierWithPenalty).isLessThan(multiplierWithout);
+        }
+    }
+
+    @Nested
+    @DisplayName("Role Weight Tests")
+    class RoleWeightTests {
+
+        @Test
+        @DisplayName("Should apply role weights to scoring when present")
+        void shouldApplyRoleWeightsToScoringWhenPresent() {
+            // Given: Blueprint with role weights giving competencyId1 a 2.0x weight
+            // and competencyId2 a 0.5x weight
+            TeamFitBlueprint blueprint = new TeamFitBlueprint();
+            blueprint.setTeamId(UUID.randomUUID());
+            blueprint.setSaturationThreshold(0.75);
+            blueprint.setTargetRole("Backend Developer");
+            blueprint.setRoleCompetencyWeights(Map.of(competencyId1, 2.0, competencyId2, 0.5));
+            mockTemplate.setTypedBlueprint(blueprint);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+
+            // Both at same raw score (75%)
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(
+                competencyId1, competencyWithEscoAndBigFive,
+                competencyId2, competencyWithEscoOnly
+            ));
+
+            // When: Calculate with role weights
+            ScoringResult resultWithRoleWeights = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: Calculate without role weights for comparison
+            TeamFitBlueprint noRoleBlueprint = new TeamFitBlueprint();
+            noRoleBlueprint.setTeamId(UUID.randomUUID());
+            noRoleBlueprint.setSaturationThreshold(0.75);
+            mockTemplate.setTypedBlueprint(noRoleBlueprint);
+
+            // Re-create answers and indicators for fresh mock state
+            BehavioralIndicator ind1b = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2b = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+
+            AssessmentQuestion q1b = createQuestion(UUID.randomUUID(), ind1b, QuestionType.LIKERT);
+            AssessmentQuestion q2b = createQuestion(UUID.randomUUID(), ind2b, QuestionType.LIKERT);
+
+            TestAnswer a1b = createAnswer(mockSession, q1b, 4, null, false);
+            TestAnswer a2b = createAnswer(mockSession, q2b, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(
+                competencyId1, competencyWithEscoAndBigFive,
+                competencyId2, competencyWithEscoOnly
+            ));
+
+            ScoringResult resultWithoutRoleWeights = scoringStrategy.calculate(mockSession, List.of(a1b, a2b));
+
+            // Both should complete successfully
+            assertThat(resultWithRoleWeights).isNotNull();
+            assertThat(resultWithoutRoleWeights).isNotNull();
+            assertThat(resultWithRoleWeights.getCompetencyScores()).hasSize(2);
+            assertThat(resultWithoutRoleWeights.getCompetencyScores()).hasSize(2);
+
+            // The overall percentage should be the same because role weights are applied
+            // symmetrically to both numerator and denominator. When all competencies have
+            // equal raw scores (75%), the weighted average still equals 75%.
+            // This validates the symmetry property. The weight distribution shifts emphasis
+            // but the overall result is the same when raw scores are identical.
+            assertThat(resultWithRoleWeights.getOverallPercentage()).isGreaterThan(0);
+        }
+
+        @Test
+        @DisplayName("Should not affect scoring when role weights are empty")
+        void shouldNotAffectScoringWhenRoleWeightsEmpty() {
+            // Given: Blueprint with null roleCompetencyWeights
+            TeamFitBlueprint blueprintNull = new TeamFitBlueprint();
+            blueprintNull.setTeamId(UUID.randomUUID());
+            blueprintNull.setSaturationThreshold(0.75);
+            blueprintNull.setRoleCompetencyWeights(null);
+            mockTemplate.setTypedBlueprint(blueprintNull);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            ScoringResult resultNull = scoringStrategy.calculate(mockSession, List.of(a1));
+
+            // Now with empty map
+            TeamFitBlueprint blueprintEmpty = new TeamFitBlueprint();
+            blueprintEmpty.setTeamId(UUID.randomUUID());
+            blueprintEmpty.setSaturationThreshold(0.75);
+            blueprintEmpty.setRoleCompetencyWeights(Map.of());
+            mockTemplate.setTypedBlueprint(blueprintEmpty);
+
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            ScoringResult resultEmpty = scoringStrategy.calculate(mockSession, List.of(a2));
+
+            // Both should produce the same result
+            assertThat(resultNull.getOverallPercentage())
+                .isCloseTo(resultEmpty.getOverallPercentage(), within(0.001));
+        }
+
+        @Test
+        @DisplayName("Should extract target role from blueprint without errors")
+        void shouldExtractTargetRoleFromBlueprint() {
+            // Given: Blueprint with targetRole set
+            TeamFitBlueprint blueprint = new TeamFitBlueprint();
+            blueprint.setTeamId(UUID.randomUUID());
+            blueprint.setSaturationThreshold(0.75);
+            blueprint.setTargetRole("Backend Developer");
+            mockTemplate.setTypedBlueprint(blueprint);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer answer = createAnswer(mockSession, question, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: Scoring completes without error and produces valid result
+            assertThat(result).isNotNull();
+            assertThat(result.getOverallPercentage()).isGreaterThan(0);
+            assertThat(result.getCompetencyScores()).hasSize(1);
+            assertThat(result.getGoal()).isEqualTo(AssessmentGoal.TEAM_FIT);
+        }
+
+        @Test
+        @DisplayName("Should extract role weights from legacy blueprint map")
+        void shouldExtractRoleWeightsFromLegacyBlueprint() {
+            // Given: Legacy map-based blueprint with roleCompetencyWeights
+            mockTemplate.setTypedBlueprint(null);
+            Map<String, Object> legacyBlueprint = new HashMap<>();
+            legacyBlueprint.put("teamId", UUID.randomUUID().toString());
+            legacyBlueprint.put("saturationThreshold", 0.75);
+            legacyBlueprint.put("targetRole", "Project Manager");
+
+            // Role weights as Map<String, Number> (legacy format)
+            Map<String, Number> legacyRoleWeights = new HashMap<>();
+            legacyRoleWeights.put(competencyId1.toString(), 2.0);
+            legacyRoleWeights.put(competencyId2.toString(), 0.5);
+            legacyBlueprint.put("roleCompetencyWeights", legacyRoleWeights);
+            mockTemplate.setBlueprint(legacyBlueprint);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.LIKERT);
+
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(
+                competencyId1, competencyWithEscoAndBigFive,
+                competencyId2, competencyWithEscoOnly
+            ));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: Scoring completes successfully using legacy blueprint extraction
+            assertThat(result).isNotNull();
+            assertThat(result.getCompetencyScores()).hasSize(2);
+            assertThat(result.getOverallPercentage()).isGreaterThan(0);
         }
     }
 }

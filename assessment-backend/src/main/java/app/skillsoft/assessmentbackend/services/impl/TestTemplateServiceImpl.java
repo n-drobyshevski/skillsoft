@@ -11,6 +11,7 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
+import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import org.slf4j.Logger;
@@ -33,12 +34,15 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     private static final Logger log = LoggerFactory.getLogger(TestTemplateServiceImpl.class);
 
     private final TestTemplateRepository templateRepository;
+    private final UserRepository userRepository;
     private final BlueprintConversionService blueprintConversionService;
 
     public TestTemplateServiceImpl(
             TestTemplateRepository templateRepository,
+            UserRepository userRepository,
             BlueprintConversionService blueprintConversionService) {
         this.templateRepository = templateRepository;
+        this.userRepository = userRepository;
         this.blueprintConversionService = blueprintConversionService;
     }
 
@@ -55,6 +59,15 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         return templateRepository.findByIsActiveTrueAndDeletedAtIsNull().stream()
                 .map(this::toSummaryDto)
                 .toList();
+    }
+
+    @Override
+    public List<TestTemplateSummaryDto> listMyTemplates(String clerkId) {
+        return userRepository.findByClerkId(clerkId)
+                .map(user -> templateRepository.findActiveOwnedByUser(user.getId()).stream()
+                        .map(this::toSummaryDto)
+                        .toList())
+                .orElseGet(List::of);
     }
 
     @Override

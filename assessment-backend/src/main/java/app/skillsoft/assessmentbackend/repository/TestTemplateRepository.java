@@ -57,6 +57,18 @@ public interface TestTemplateRepository extends JpaRepository<TestTemplate, UUID
     List<TestTemplate> findActiveTemplatesContainingCompetency(@Param("competencyId") String competencyIdJson);
 
     /**
+     * Find active, non-deleted templates owned by a specific user.
+     * Used for personal mode catalog — shows only templates the user created.
+     */
+    @Query(value = """
+            SELECT t.* FROM test_templates t
+            WHERE t.is_active = true AND t.deleted_at IS NULL
+            AND t.owner_id = :ownerId
+            ORDER BY t.created_at DESC
+            """, nativeQuery = true)
+    List<TestTemplate> findActiveOwnedByUser(@Param("ownerId") UUID ownerId);
+
+    /**
      * Count active, non-deleted templates.
      */
     long countByIsActiveTrueAndDeletedAtIsNull();

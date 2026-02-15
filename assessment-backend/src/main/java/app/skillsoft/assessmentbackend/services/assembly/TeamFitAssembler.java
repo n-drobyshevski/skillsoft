@@ -152,11 +152,16 @@ public class TeamFitAssembler implements TestAssembler {
             // Lower saturation = more questions
             var saturation = saturationLevels.getOrDefault(competencyId, 1.0);
             var questionsToSelect = calculateQuestionsForSaturation(saturation);
+            var difficulty = determineDifficultyForGap(saturation);
+
+            log.debug("Competency {} saturation={}, selecting {} questions at {} difficulty",
+                competencyId, String.format("%.2f", saturation), questionsToSelect, difficulty);
 
             // Select questions across indicators for this competency
             var questionsForCompetency = selectQuestionsAcrossIndicators(
                 indicators,
                 questionsToSelect,
+                difficulty,
                 usedQuestions
             );
 
@@ -173,6 +178,7 @@ public class TeamFitAssembler implements TestAssembler {
     private List<UUID> selectQuestionsAcrossIndicators(
             List<BehavioralIndicator> indicators,
             int totalQuestions,
+            DifficultyLevel difficulty,
             Set<UUID> usedQuestions) {
 
         List<UUID> selected = new ArrayList<>();
@@ -187,7 +193,7 @@ public class TeamFitAssembler implements TestAssembler {
             List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
                 indicator.getId(),
                 toSelect,
-                DEFAULT_DIFFICULTY,
+                difficulty,
                 usedQuestions
             );
 
@@ -211,6 +217,23 @@ public class TeamFitAssembler implements TestAssembler {
             return DEFAULT_QUESTIONS_PER_GAP - 1; // Minor gap
         } else {
             return DEFAULT_QUESTIONS_PER_GAP - 2; // Minimal gap
+        }
+    }
+
+    /**
+     * Determine question difficulty based on gap severity.
+     * Deeper gaps (lower saturation) get harder questions to better discriminate candidate ability.
+     *
+     * @param saturation Team saturation level (0.0-1.0) for this competency
+     * @return Appropriate difficulty level
+     */
+    private DifficultyLevel determineDifficultyForGap(double saturation) {
+        if (saturation < 0.1) {
+            return DifficultyLevel.ADVANCED;        // Critical gap: need advanced questions to discriminate
+        } else if (saturation < 0.3) {
+            return DifficultyLevel.INTERMEDIATE;    // Moderate gap: balanced assessment
+        } else {
+            return DifficultyLevel.FOUNDATIONAL;    // Minor gap: basic screening sufficient
         }
     }
 }

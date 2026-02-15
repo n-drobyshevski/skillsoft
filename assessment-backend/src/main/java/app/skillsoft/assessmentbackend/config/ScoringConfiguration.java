@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.config;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -194,6 +196,61 @@ public class ScoringConfiguration {
             @DecimalMin("0.0")
             @DecimalMax("1.0")
             private double minDiversityRatio = 0.3;
+
+            /**
+             * Team size threshold for small team adjustment.
+             * Teams with fewer members than this get a lower pass threshold.
+             * Default: 5
+             */
+            @Min(1)
+            @Max(20)
+            private int smallTeamThreshold = 5;
+
+            /**
+             * Pass threshold reduction for small teams.
+             * Subtracted from passThreshold when team size < smallTeamThreshold.
+             * Default: 0.1 (10% reduction)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("0.3")
+            private double smallTeamAdjustment = 0.1;
+
+            /**
+             * Pass threshold reduction for teams with severe gaps.
+             * Applied when > 50% of team competencies are gaps (saturation < diversityThreshold).
+             * Default: 0.1 (10% reduction)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("0.3")
+            private double severeGapAdjustment = 0.1;
+
+            /**
+             * Minimum pass threshold floor.
+             * The threshold will never be reduced below this value.
+             * Default: 0.3 (30%)
+             */
+            @DecimalMin("0.1")
+            @DecimalMax("0.5")
+            private double minPassThreshold = 0.3;
+
+            /**
+             * Steepness of the sigmoid curve for team fit multiplier calculation.
+             * Higher values create a sharper transition; lower values create a smoother curve.
+             * At steepness=10, the multiplier transitions from ~0.92 to ~1.08 over a balance range of [-0.2, +0.2].
+             * Default: 10.0
+             */
+            @DecimalMin("1.0")
+            @DecimalMax("30.0")
+            private double sigmoidSteepness = 10.0;
+
+            /**
+             * Weight factor for personality compatibility in overall score.
+             * Applied as additive multiplier adjustment: multiplier += (compatibility - 0.5) * personalityWeight
+             * Default: 0.1 (±5% adjustment at extremes)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("0.5")
+            private double personalityWeight = 0.1;
         }
     }
 }

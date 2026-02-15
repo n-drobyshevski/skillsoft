@@ -27,6 +27,15 @@ public interface TestTemplateService {
     List<TestTemplateSummaryDto> listActiveTemplates();
 
     /**
+     * Get active templates owned by the authenticated user.
+     * Used for personal mode catalog.
+     *
+     * @param clerkId The Clerk ID of the authenticated user
+     * @return List of template summaries owned by the user
+     */
+    List<TestTemplateSummaryDto> listMyTemplates(String clerkId);
+
+    /**
      * Get a test template by ID.
      */
     Optional<TestTemplateDto> findById(UUID id);

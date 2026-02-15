@@ -104,8 +104,30 @@ public class TestTemplateController {
     }
 
     /**
+     * List active templates owned by the current user.
+     * Used for personal mode catalog — shows only templates the user created.
+     *
+     * @return List of template summaries owned by the authenticated user
+     */
+    @GetMapping("/mine")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<TestTemplateSummaryDto>> listMyTemplates() {
+        logger.info("GET /api/v1/tests/templates/mine - Listing user's own templates");
+
+        String clerkId = securityService.getAuthenticatedClerkId();
+        if (clerkId == null) {
+            logger.warn("No authenticated user for my-templates request");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        List<TestTemplateSummaryDto> templates = testTemplateService.listMyTemplates(clerkId);
+        logger.info("Found {} templates owned by user", templates.size());
+        return ResponseEntity.ok(templates);
+    }
+
+    /**
      * Get a specific test template by ID.
-     * 
+     *
      * @param id Template UUID
      * @return Template details or 404 if not found
      */

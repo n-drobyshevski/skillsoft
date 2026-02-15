@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.domain.dto.blueprint;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -37,6 +39,23 @@ public class TeamFitBlueprint extends TestBlueprintDto {
      */
     private double saturationThreshold = 0.75;
 
+    /**
+     * Target role for the candidate in the team.
+     * Used for display purposes and role-based competency weighting.
+     * Examples: "Backend Developer", "Project Manager", "UX Designer"
+     */
+    private String targetRole;
+
+    /**
+     * Role-specific competency weights (competency UUID -> weight multiplier).
+     * When populated, these weights are applied alongside ESCO/BigFive weights
+     * to emphasize competencies critical for the target role.
+     *
+     * Weight range: 0.5 - 2.0 (default 1.0 if not specified).
+     * Example: A "Project Manager" role might weight Leadership at 2.0 and Coding at 0.5.
+     */
+    private Map<UUID, Double> roleCompetencyWeights;
+
     // Constructors
     public TeamFitBlueprint() {
         super();
@@ -53,6 +72,15 @@ public class TeamFitBlueprint extends TestBlueprintDto {
         super(AssessmentGoal.TEAM_FIT, adaptivity);
         this.teamId = teamId;
         this.saturationThreshold = saturationThreshold;
+    }
+
+    public TeamFitBlueprint(UUID teamId, double saturationThreshold, String targetRole, Map<UUID, Double> roleCompetencyWeights) {
+        super();
+        setStrategy(AssessmentGoal.TEAM_FIT);
+        this.teamId = teamId;
+        this.saturationThreshold = saturationThreshold;
+        this.targetRole = targetRole;
+        this.roleCompetencyWeights = roleCompetencyWeights;
     }
 
     // Getters and Setters
@@ -72,12 +100,32 @@ public class TeamFitBlueprint extends TestBlueprintDto {
         this.saturationThreshold = saturationThreshold;
     }
 
+    public String getTargetRole() {
+        return targetRole;
+    }
+
+    public void setTargetRole(String targetRole) {
+        this.targetRole = targetRole;
+    }
+
+    public Map<UUID, Double> getRoleCompetencyWeights() {
+        return roleCompetencyWeights;
+    }
+
+    public void setRoleCompetencyWeights(Map<UUID, Double> roleCompetencyWeights) {
+        this.roleCompetencyWeights = roleCompetencyWeights;
+    }
+
     @Override
     public TestBlueprintDto deepCopy() {
         TeamFitBlueprint copy = new TeamFitBlueprint();
         copy.setStrategy(this.getStrategy());
         copy.setTeamId(this.teamId);
         copy.setSaturationThreshold(this.saturationThreshold);
+        copy.setTargetRole(this.targetRole);
+        if (this.roleCompetencyWeights != null) {
+            copy.setRoleCompetencyWeights(new HashMap<>(this.roleCompetencyWeights));
+        }
         if (this.getAdaptivity() != null) {
             copy.setAdaptivity(this.getAdaptivity().deepCopy());
         }
@@ -90,13 +138,15 @@ public class TeamFitBlueprint extends TestBlueprintDto {
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         TeamFitBlueprint that = (TeamFitBlueprint) o;
-        return Double.compare(that.saturationThreshold, saturationThreshold) == 0 && 
-               Objects.equals(teamId, that.teamId);
+        return Double.compare(that.saturationThreshold, saturationThreshold) == 0 &&
+               Objects.equals(teamId, that.teamId) &&
+               Objects.equals(targetRole, that.targetRole) &&
+               Objects.equals(roleCompetencyWeights, that.roleCompetencyWeights);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), teamId, saturationThreshold);
+        return Objects.hash(super.hashCode(), teamId, saturationThreshold, targetRole, roleCompetencyWeights);
     }
 
     @Override
@@ -105,6 +155,8 @@ public class TeamFitBlueprint extends TestBlueprintDto {
                 "strategy=" + getStrategy() +
                 ", teamId=" + teamId +
                 ", saturationThreshold=" + saturationThreshold +
+                ", targetRole='" + targetRole + '\'' +
+                ", roleCompetencyWeights=" + roleCompetencyWeights +
                 ", adaptivity=" + getAdaptivity() +
                 '}';
     }

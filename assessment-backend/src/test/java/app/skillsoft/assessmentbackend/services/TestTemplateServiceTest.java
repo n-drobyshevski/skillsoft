@@ -4,6 +4,8 @@ import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
+import app.skillsoft.assessmentbackend.repository.UserRepository;
+import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.impl.TestTemplateServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +43,12 @@ class TestTemplateServiceTest {
 
     @Mock
     private TestTemplateRepository templateRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private BlueprintConversionService blueprintConversionService;
 
     @InjectMocks
     private TestTemplateServiceImpl testTemplateService;

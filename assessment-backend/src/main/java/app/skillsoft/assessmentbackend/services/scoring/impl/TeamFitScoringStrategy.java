@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
@@ -46,16 +47,19 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
     private final IndicatorBatchLoader indicatorBatchLoader;
     private final ScoringConfiguration scoringConfig;
     private final ScoreNormalizer scoreNormalizer;
+    private final TeamService teamService;
 
     public TeamFitScoringStrategy(
             CompetencyBatchLoader competencyBatchLoader,
             IndicatorBatchLoader indicatorBatchLoader,
             ScoringConfiguration scoringConfig,
-            ScoreNormalizer scoreNormalizer) {
+            ScoreNormalizer scoreNormalizer,
+            TeamService teamService) {
         this.competencyBatchLoader = competencyBatchLoader;
         this.indicatorBatchLoader = indicatorBatchLoader;
         this.scoringConfig = scoringConfig;
         this.scoreNormalizer = scoreNormalizer;
+        this.teamService = teamService;
     }
 
     @Override
@@ -66,6 +70,14 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         TeamFitBlueprint blueprint = extractTeamFitBlueprint(template);
 
         UUID teamId = blueprint != null ? blueprint.getTeamId() : null;
+        Map<UUID, Double> roleWeights = (blueprint != null && blueprint.getRoleCompetencyWeights() != null)
+                ? blueprint.getRoleCompetencyWeights()
+                : Collections.emptyMap();
+        String targetRole = blueprint != null ? blueprint.getTargetRole() : null;
+
+        if (targetRole != null) {
+            log.debug("Role context: targetRole={}, roleWeights={}", targetRole, roleWeights.size());
+        }
 
         // Get Team Fit configuration
         ScoringConfiguration.Thresholds.TeamFit teamFitConfig = scoringConfig.getThresholds().getTeamFit();
@@ -77,6 +89,25 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                 : teamFitConfig.getSaturationThreshold();
 
         log.debug("Team Fit parameters - Team ID: {}, Saturation Threshold: {}", teamId, saturationThreshold);
+
+        // Fetch real team profile for saturation comparison
+        Map<UUID, Double> teamCompetencySaturation = Collections.emptyMap();
+        Map<String, Double> teamAveragePersonality = Collections.emptyMap();
+        int teamSize = 0;
+        if (teamId != null) {
+            var teamProfileOpt = teamService.getTeamProfile(teamId);
+            if (teamProfileOpt.isPresent()) {
+                var teamProfile = teamProfileOpt.get();
+                teamCompetencySaturation = teamProfile.competencySaturation();
+                teamAveragePersonality = teamProfile.averagePersonality() != null
+                        ? teamProfile.averagePersonality() : Collections.emptyMap();
+                teamSize = teamProfile.members().size();
+                log.debug("Loaded team profile: {} members, {} competency saturations, {} personality traits",
+                        teamSize, teamCompetencySaturation.size(), teamAveragePersonality.size());
+            } else {
+                log.warn("Team profile not found for team: {}, falling back to self-referential scoring", teamId);
+            }
+        }
 
         // Batch load all competencies and indicators upfront to prevent N+1 queries
         Map<UUID, Competency> competencyCache = competencyBatchLoader.loadCompetenciesForAnswers(answers);
@@ -160,6 +191,9 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         int diversityContributors = 0;
         int saturationContributors = 0;
 
+        // Track per-competency saturation: competencyName -> candidate percentage (0-1 scale)
+        Map<String, Double> competencySaturationMap = new HashMap<>();
+
         for (var entry : competencyAggs.entrySet()) {
             UUID competencyId = entry.getKey();
             CompetencyAggregation compAgg = entry.getValue();
@@ -192,12 +226,35 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
 
             finalScores.add(scoreDto);
 
+            // Record candidate percentage on 0-1 scale for radar chart display
+            competencySaturationMap.put(competencyName, average);
+
             // Determine if this competency contributes to team diversity or saturation
             double diversityThreshold = teamFitConfig.getDiversityThreshold();
-            if (average >= saturationThreshold) {
-                saturationContributors++;
-            } else if (average >= diversityThreshold) {
-                diversityContributors++;
+
+            // Classify based on real team data when available, fallback to self-referential
+            if (!teamCompetencySaturation.isEmpty() && competencyId != null) {
+                // Look up team saturation for this competency
+                Double teamSat = teamCompetencySaturation.get(competencyId);
+                if (teamSat != null) {
+                    if (teamSat >= saturationThreshold) {
+                        // Team already has this skill covered
+                        saturationContributors++;
+                    } else if (teamSat >= diversityThreshold) {
+                        // Team has some coverage, candidate adds diversity
+                        diversityContributors++;
+                    }
+                    // else: gap (team lacks this skill entirely)
+                }
+                // Competency not in team profile - treat as gap (candidate brings new skill)
+                // Don't increment either counter - falls through to gap calculation
+            } else {
+                // Fallback: self-referential classification (no team data available)
+                if (average >= saturationThreshold) {
+                    saturationContributors++;
+                } else if (average >= diversityThreshold) {
+                    diversityContributors++;
+                }
             }
 
             // Weight based on ESCO mapping
@@ -206,6 +263,27 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             // Additional weight for competencies with Big Five mapping
             if (bigFive != null) {
                 weight *= weights.getBigFiveBoost();
+            }
+
+            // Gap relevance weight: competencies filling deeper team gaps get higher weight
+            // Formula: 1.0 + (1.0 - teamSaturation) -> range [1.0, 2.0]
+            // A competency with 0% team saturation gets 2.0x weight (most critical gap)
+            // A competency with 100% team saturation gets 1.0x weight (no gap)
+            if (!teamCompetencySaturation.isEmpty() && competencyId != null) {
+                Double teamSat = teamCompetencySaturation.get(competencyId);
+                if (teamSat != null) {
+                    double gapRelevanceWeight = 1.0 + (1.0 - teamSat);
+                    weight *= gapRelevanceWeight;
+                }
+                // If competencyId not in team profile, no gap relevance adjustment (weight stays as-is)
+            }
+
+            // Role-based weight: emphasize competencies critical for the target role
+            if (!roleWeights.isEmpty() && competencyId != null) {
+                Double roleWeight = roleWeights.get(competencyId);
+                if (roleWeight != null) {
+                    weight *= roleWeight;
+                }
             }
 
             totalWeightedScore += (percentage * weight);
@@ -233,12 +311,30 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         // Step 5: Calculate Overall Team Fit Score
         double escoBoostForWeighting = weights.getEscoBoost();
         double bigFiveBoostForWeighting = weights.getBigFiveBoost();
+        // Build final references for use in lambda
+        final Map<UUID, Double> teamSatForDenominator = teamCompetencySaturation;
+        final Map<UUID, Double> roleWeightsForDenominator = roleWeights;
+
         double totalWeight = competencyCount > 0
                 ? finalScores.stream()
                 .mapToDouble(s -> {
                     double w = 1.0;
                     if (s.getEscoUri() != null && !s.getEscoUri().isEmpty()) w *= escoBoostForWeighting;
                     if (s.getBigFiveCategory() != null && !s.getBigFiveCategory().isEmpty()) w *= bigFiveBoostForWeighting;
+                    // Apply same gap relevance weight in denominator for symmetry
+                    if (!teamSatForDenominator.isEmpty() && s.getCompetencyId() != null) {
+                        Double teamSat = teamSatForDenominator.get(s.getCompetencyId());
+                        if (teamSat != null) {
+                            w *= 1.0 + (1.0 - teamSat);
+                        }
+                    }
+                    // Apply same role weight in denominator for symmetry
+                    if (!roleWeightsForDenominator.isEmpty() && s.getCompetencyId() != null) {
+                        Double roleW = roleWeightsForDenominator.get(s.getCompetencyId());
+                        if (roleW != null) {
+                            w *= roleW;
+                        }
+                    }
                     return w;
                 })
                 .sum()
@@ -263,17 +359,26 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                 ? (double) saturationContributors / competencyCount
                 : 0.0;
 
-        // Adjust score based on diversity/saturation balance
-        double teamFitMultiplier = 1.0;
-        double diversityBonusThreshold = teamFitConfig.getDiversityBonusThreshold();
-        double saturationPenaltyThreshold = teamFitConfig.getSaturationPenaltyThreshold();
-        double diversityBonus = teamFitConfig.getDiversityBonus();
-        double saturationPenalty = teamFitConfig.getSaturationPenalty();
+        // Adjust score based on diversity/saturation balance using continuous sigmoid
+        double teamFitMultiplier = calculateTeamFitMultiplier(diversityRatio, saturationRatio, teamFitConfig);
 
-        if (diversityRatio > diversityBonusThreshold && saturationRatio < (1.0 - diversityBonusThreshold)) {
-            teamFitMultiplier = diversityBonus;
-        } else if (saturationRatio > saturationPenaltyThreshold) {
-            teamFitMultiplier = saturationPenalty;
+        log.debug("Sigmoid multiplier: balance={}, multiplier={}",
+                String.format("%.3f", diversityRatio - saturationRatio),
+                String.format("%.4f", teamFitMultiplier));
+
+        // Step 5b: Personality compatibility adjustment
+        Double personalityCompatibility = null;
+        if (!bigFiveAverages.isEmpty() && !teamAveragePersonality.isEmpty()) {
+            personalityCompatibility = calculatePersonalityCompatibility(bigFiveAverages, teamAveragePersonality);
+
+            // Apply as additive multiplier adjustment
+            double personalityAdjustment = (personalityCompatibility - 0.5) * teamFitConfig.getPersonalityWeight();
+            teamFitMultiplier += personalityAdjustment;
+
+            log.debug("Personality compatibility: {}, adjustment: {}, adjusted multiplier: {}",
+                    String.format("%.3f", personalityCompatibility),
+                    String.format("%.4f", personalityAdjustment),
+                    String.format("%.4f", teamFitMultiplier));
         }
 
         double adjustedPercentage = overallPercentage * teamFitMultiplier;
@@ -303,14 +408,45 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                 .diversityCount(diversityContributors)
                 .saturationCount(saturationContributors)
                 .gapCount(gapContributors)
+                .competencySaturation(competencySaturationMap)
+                .teamSize(teamSize)
+                .personalityCompatibility(personalityCompatibility)
                 .build();
         result.setTeamFitMetrics(teamFitMetrics);
 
         // For Team Fit, "pass" means the candidate would add value to the team
-        double passThreshold = teamFitConfig.getPassThreshold() * 100.0;
+        // Adaptive threshold: lower for small teams or teams with severe gaps
+        double basePassThreshold = teamFitConfig.getPassThreshold();
+        double adjustedPassThreshold = basePassThreshold;
+
+        // Small team adjustment: smaller teams benefit more from any new member
+        if (teamSize > 0 && teamSize < teamFitConfig.getSmallTeamThreshold()) {
+            adjustedPassThreshold -= teamFitConfig.getSmallTeamAdjustment();
+            log.debug("Small team adjustment applied: threshold reduced by {} (team size: {})",
+                    teamFitConfig.getSmallTeamAdjustment(), teamSize);
+        }
+
+        // Severe gap adjustment: teams with many gaps need help urgently
+        double gapRatio = competencyCount > 0 ? (double) gapContributors / competencyCount : 0.0;
+        if (gapRatio > 0.5) {
+            adjustedPassThreshold -= teamFitConfig.getSevereGapAdjustment();
+            log.debug("Severe gap adjustment applied: threshold reduced by {} (gap ratio: {}%)",
+                    teamFitConfig.getSevereGapAdjustment(), String.format("%.1f", gapRatio * 100));
+        }
+
+        // Floor: never go below minimum threshold
+        adjustedPassThreshold = Math.max(adjustedPassThreshold, teamFitConfig.getMinPassThreshold());
+
+        double passThreshold = adjustedPassThreshold * 100.0;
         double minDiversityRatio = teamFitConfig.getMinDiversityRatio();
         boolean addsTeamValue = adjustedPercentage >= passThreshold && diversityRatio >= minDiversityRatio;
         result.setPassed(addsTeamValue);
+
+        log.debug("Pass determination: adjusted threshold={}%, score={}%, diversity={}%, result={}",
+                String.format("%.1f", passThreshold),
+                String.format("%.1f", adjustedPercentage),
+                String.format("%.1f", diversityRatio * 100),
+                addsTeamValue ? "PASS" : "FAIL");
 
         log.info("Team Fit assessment: {} (score: {}%, diversity: {}%, Big Five traits: {})",
                 addsTeamValue ? "ADDS VALUE" : "LIMITED FIT",
@@ -319,6 +455,73 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                 bigFiveAverages.size());
 
         return result;
+    }
+
+    /**
+     * Calculate personality compatibility between candidate and team using normalized Euclidean distance.
+     * <p>
+     * Candidate Big Five keys use the "BIG_FIVE_" prefix (e.g., "BIG_FIVE_OPENNESS") from
+     * {@link app.skillsoft.assessmentbackend.domain.entities.Competency#getBigFiveCategory()},
+     * while team averagePersonality uses plain trait names (e.g., "OPENNESS").
+     * This method normalizes both to plain trait names before comparison.
+     *
+     * @param candidateProfile candidate's Big Five scores (0-100 scale), keys may be prefixed with "BIG_FIVE_"
+     * @param teamProfile team's average Big Five scores (0-100 scale), plain trait name keys
+     * @return compatibility score (0.0-1.0), where 1.0 = perfectly compatible
+     */
+    private double calculatePersonalityCompatibility(Map<String, Double> candidateProfile,
+                                                      Map<String, Double> teamProfile) {
+        // Normalize candidate keys: strip "BIG_FIVE_" prefix for comparison with team profile
+        Map<String, Double> normalizedCandidate = new HashMap<>();
+        for (var entry : candidateProfile.entrySet()) {
+            String key = entry.getKey();
+            String normalizedKey = key.startsWith("BIG_FIVE_") ? key.substring("BIG_FIVE_".length()) : key;
+            normalizedCandidate.put(normalizedKey, entry.getValue());
+        }
+
+        // Find common traits
+        Set<String> commonTraits = new HashSet<>(normalizedCandidate.keySet());
+        commonTraits.retainAll(teamProfile.keySet());
+
+        if (commonTraits.isEmpty()) {
+            return 0.5; // neutral when no common traits
+        }
+
+        // Calculate Euclidean distance (scores are 0-100)
+        double sumSquared = 0.0;
+        for (String trait : commonTraits) {
+            double diff = normalizedCandidate.get(trait) - teamProfile.get(trait);
+            sumSquared += diff * diff;
+        }
+
+        // Max possible distance = sqrt(n * 100^2) where n = number of traits
+        double maxDistance = Math.sqrt(commonTraits.size() * 10000.0);
+        double distance = Math.sqrt(sumSquared);
+
+        // Convert distance to compatibility (0=far, 1=identical)
+        return 1.0 - (distance / maxDistance);
+    }
+
+    /**
+     * Calculate team fit multiplier using a continuous sigmoid function.
+     *
+     * Maps the diversity-saturation balance to a smooth curve between
+     * the penalty and bonus multiplier values, eliminating arbitrary thresholds.
+     *
+     * @param diversityRatio ratio of diverse competencies (0-1)
+     * @param saturationRatio ratio of saturated competencies (0-1)
+     * @param teamFitConfig configuration with bonus, penalty, and steepness values
+     * @return multiplier in range [saturationPenalty, diversityBonus]
+     */
+    private double calculateTeamFitMultiplier(double diversityRatio, double saturationRatio,
+            ScoringConfiguration.Thresholds.TeamFit teamFitConfig) {
+        double balance = diversityRatio - saturationRatio; // range [-1, 1]
+        double steepness = teamFitConfig.getSigmoidSteepness();
+        double penalty = teamFitConfig.getSaturationPenalty();
+        double bonus = teamFitConfig.getDiversityBonus();
+
+        double sigmoid = 1.0 / (1.0 + Math.exp(-steepness * balance));
+        return penalty + (bonus - penalty) * sigmoid;
     }
 
     /**
@@ -354,6 +557,28 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             Object threshold = blueprint.get("saturationThreshold");
             if (threshold instanceof Number) {
                 teamFitBlueprint.setSaturationThreshold(((Number) threshold).doubleValue());
+            }
+
+            Object targetRoleObj = blueprint.get("targetRole");
+            if (targetRoleObj instanceof String) {
+                teamFitBlueprint.setTargetRole((String) targetRoleObj);
+            }
+
+            Object roleWeightsObj = blueprint.get("roleCompetencyWeights");
+            if (roleWeightsObj instanceof Map) {
+                Map<UUID, Double> weights = new HashMap<>();
+                ((Map<?, ?>) roleWeightsObj).forEach((key, value) -> {
+                    try {
+                        UUID compId = UUID.fromString(key.toString());
+                        double w = value instanceof Number ? ((Number) value).doubleValue() : 1.0;
+                        weights.put(compId, Math.max(0.5, Math.min(2.0, w))); // clamp to valid range
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Invalid competency ID in roleCompetencyWeights: {}", key);
+                    }
+                });
+                if (!weights.isEmpty()) {
+                    teamFitBlueprint.setRoleCompetencyWeights(weights);
+                }
             }
 
             return teamFitBlueprint;

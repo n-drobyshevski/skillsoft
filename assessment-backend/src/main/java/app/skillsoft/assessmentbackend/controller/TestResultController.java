@@ -4,6 +4,8 @@ import app.skillsoft.assessmentbackend.domain.dto.QuestionScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultSummaryDto;
 import app.skillsoft.assessmentbackend.domain.dto.TrendDataPointDto;
+import app.skillsoft.assessmentbackend.domain.dto.comparison.CandidateComparisonDto;
+import app.skillsoft.assessmentbackend.services.CandidateComparisonService;
 import app.skillsoft.assessmentbackend.services.TestResultService;
 import app.skillsoft.assessmentbackend.services.scoring.QuestionScoreService;
 import org.slf4j.Logger;
@@ -37,11 +39,14 @@ public class TestResultController {
 
     private final TestResultService testResultService;
     private final QuestionScoreService questionScoreService;
+    private final CandidateComparisonService candidateComparisonService;
 
     public TestResultController(TestResultService testResultService,
-                                QuestionScoreService questionScoreService) {
+                                QuestionScoreService questionScoreService,
+                                CandidateComparisonService candidateComparisonService) {
         this.testResultService = testResultService;
         this.questionScoreService = questionScoreService;
+        this.candidateComparisonService = candidateComparisonService;
     }
 
     // ==================== RESULT RETRIEVAL ====================
@@ -312,6 +317,29 @@ public class TestResultController {
     }
 
     // ==================== ADMIN OPERATIONS ====================
+
+    /**
+     * Compare multiple candidate results for the same TEAM_FIT template.
+     * Returns ranked summaries, competency comparisons, gap coverage, and complementarity scores.
+     *
+     * @param templateId The template UUID all results belong to
+     * @param resultIds  List of result UUIDs to compare (2-5)
+     * @return Comparison DTO or 400 if validation fails
+     */
+    @GetMapping("/compare")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public ResponseEntity<CandidateComparisonDto> compareCandidates(
+            @RequestParam UUID templateId,
+            @RequestParam List<UUID> resultIds) {
+        logger.info("GET /api/v1/tests/results/compare?templateId={}&resultIds={}", templateId, resultIds.size());
+        try {
+            CandidateComparisonDto comparison = candidateComparisonService.compareResults(resultIds, templateId);
+            return ResponseEntity.ok(comparison);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Comparison validation failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
 
     /**
      * Get results within a date range (for reporting).

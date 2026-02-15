@@ -386,6 +386,20 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
             @Param("templateId") UUID templateId,
             @Param("competencyId") String competencyId);
 
+    // ============================================
+    // COMPARISON QUERIES
+    // ============================================
+
+    /**
+     * Fetch multiple results by ID list with session and template eagerly loaded.
+     * Used for candidate comparison mode.
+     *
+     * @param resultIds List of result UUIDs to fetch
+     * @return List of results with session and template eagerly loaded
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template t WHERE r.id IN :resultIds")
+    List<TestResult> findAllByIdInWithSessionAndTemplate(@Param("resultIds") List<UUID> resultIds);
+
     /**
      * Calculate average score for results from a specific share link.
      */

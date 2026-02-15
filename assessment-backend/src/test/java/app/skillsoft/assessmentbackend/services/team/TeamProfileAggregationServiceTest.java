@@ -605,7 +605,7 @@ class TeamProfileAggregationServiceTest extends BaseUnitTest {
             when(teamMemberRepository.findByTeamIdAndIsActiveTrue(teamId)).thenReturn(members);
 
             // Create multiple test results (first is latest due to DESC ordering)
-            List<TestResultWithRecordScores> results = new ArrayList<>();
+            List<TestResult> results = new ArrayList<>();
             results.add(createTestResult(leader.getClerkId(),
                     List.of(createCompetencyScore(competency1Id, "Latest / Последний", 90.0)),
                     LocalDateTime.now()));
@@ -726,7 +726,7 @@ class TeamProfileAggregationServiceTest extends BaseUnitTest {
             when(teamMemberRepository.findByTeamIdAndIsActiveTrue(teamId)).thenReturn(members);
 
             // Create result with null competency scores
-            TestResultWithRecordScores resultWithNull = createTestResult(leader.getClerkId(), null, LocalDateTime.now());
+            TestResult resultWithNull = createTestResult(leader.getClerkId(), null, LocalDateTime.now());
             when(testResultRepository.findByClerkUserIdOrderByCompletedAtDesc(leader.getClerkId()))
                     .thenReturn(List.of(resultWithNull));
 
@@ -821,7 +821,7 @@ class TeamProfileAggregationServiceTest extends BaseUnitTest {
 
             // First result (latest) has comp1 and comp2
             // Second result (older) has comp2 and comp3
-            List<TestResultWithRecordScores> results = new ArrayList<>();
+            List<TestResult> results = new ArrayList<>();
             results.add(createTestResult(leader.getClerkId(),
                     List.of(
                             createCompetencyScore(competency1Id, "New1 / Новый1", 90.0),
@@ -982,15 +982,12 @@ class TeamProfileAggregationServiceTest extends BaseUnitTest {
         return List.of(leaderMember);
     }
 
-    /**
-     * Record-style competency score that matches the reflection-based extraction in
-     * TeamProfileAggregationService. The service calls competencyId() and percentage()
-     * methods using reflection, so this record provides those accessor methods.
-     */
-    record CompetencyScoreRecord(UUID competencyId, String competencyName, Double percentage) {}
-
-    private CompetencyScoreRecord createCompetencyScore(UUID competencyId, String name, Double percentage) {
-        return new CompetencyScoreRecord(competencyId, name, percentage);
+    private CompetencyScoreDto createCompetencyScore(UUID competencyId, String name, Double percentage) {
+        CompetencyScoreDto dto = new CompetencyScoreDto();
+        dto.setCompetencyId(competencyId);
+        dto.setCompetencyName(name);
+        dto.setPercentage(percentage);
+        return dto;
     }
 
     private Map<String, Double> createBigFiveProfile(Double openness, Double conscientiousness,
@@ -1005,66 +1002,23 @@ class TeamProfileAggregationServiceTest extends BaseUnitTest {
         return profile;
     }
 
-    private void setupTestResultsForMember(String clerkUserId, List<CompetencyScoreRecord> competencyScores,
+    private void setupTestResultsForMember(String clerkUserId, List<CompetencyScoreDto> competencyScores,
                                            Map<String, Double> bigFiveProfile) {
-        TestResultWithRecordScores result = createTestResult(clerkUserId, competencyScores, LocalDateTime.now());
+        TestResult result = createTestResult(clerkUserId, competencyScores, LocalDateTime.now());
         result.setBigFiveProfile(bigFiveProfile);
         when(testResultRepository.findByClerkUserIdOrderByCompletedAtDesc(clerkUserId))
                 .thenReturn(List.of(result));
     }
 
-    private TestResultWithRecordScores createTestResult(String clerkUserId, List<CompetencyScoreRecord> competencyScores,
-                                                         LocalDateTime completedAt) {
-        TestResultWithRecordScores result = new TestResultWithRecordScores();
+    private TestResult createTestResult(String clerkUserId, List<CompetencyScoreDto> competencyScores,
+                                        LocalDateTime completedAt) {
+        TestResult result = new TestResult();
         result.setId(UUID.randomUUID());
         result.setClerkUserId(clerkUserId);
-        result.setRecordScores(competencyScores != null ? competencyScores : new ArrayList<>());
+        result.setCompetencyScores(competencyScores != null ? new ArrayList<>(competencyScores) : new ArrayList<>());
         result.setCompletedAt(completedAt);
         result.setOverallPercentage(75.0);
         result.setPassed(true);
         return result;
-    }
-
-    /**
-     * Test-specific extension of TestResult that holds CompetencyScoreRecord objects
-     * for compatibility with the service's reflection-based extraction.
-     *
-     * The service uses reflection to:
-     * 1. Call getCompetencyScores() on TestResult
-     * 2. Call competencyId() and percentage() on each score object
-     *
-     * Since getCompetencyScores() is declared to return List<CompetencyScoreDto>,
-     * but CompetencyScoreDto uses getter methods (getCompetencyId()) not record methods,
-     * the reflection fails. This class returns records disguised as raw objects.
-     */
-    static class TestResultWithRecordScores extends TestResult {
-        private List<CompetencyScoreRecord> recordScores = new ArrayList<>();
-        private Map<String, Double> bigFive;
-
-        public void setRecordScores(List<CompetencyScoreRecord> scores) {
-            this.recordScores = scores != null ? scores : new ArrayList<>();
-        }
-
-        /**
-         * Override to return the record-based scores for reflection.
-         * Note: Returns Object list cast for reflection compatibility.
-         * The actual return type erasure allows the records to be accessed
-         * via reflection calls to competencyId() and percentage().
-         */
-        @Override
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        public List getCompetencyScores() {
-            return (List) recordScores;
-        }
-
-        @Override
-        public void setBigFiveProfile(Map<String, Double> bigFiveProfile) {
-            this.bigFive = bigFiveProfile;
-        }
-
-        @Override
-        public Map<String, Double> getBigFiveProfile() {
-            return bigFive;
-        }
     }
 }

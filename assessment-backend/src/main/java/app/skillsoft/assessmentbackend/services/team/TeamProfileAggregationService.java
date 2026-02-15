@@ -1,8 +1,10 @@
 package app.skillsoft.assessmentbackend.services.team;
 
+import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.Team;
 import app.skillsoft.assessmentbackend.domain.entities.TeamMember;
 import app.skillsoft.assessmentbackend.domain.entities.TeamStatus;
+import app.skillsoft.assessmentbackend.domain.entities.TestResult;
 import app.skillsoft.assessmentbackend.domain.entities.User;
 import app.skillsoft.assessmentbackend.repository.TeamMemberRepository;
 import app.skillsoft.assessmentbackend.repository.TeamRepository;
@@ -137,31 +139,21 @@ public class TeamProfileAggregationService {
         );
     }
 
-    private Map<UUID, Double> aggregateCompetencyScores(List<?> results) {
+    private Map<UUID, Double> aggregateCompetencyScores(List<TestResult> results) {
         Map<UUID, List<Double>> scoresByCompetency = new HashMap<>();
 
-        for (var result : results) {
-            // Use reflection or cast to access competency scores
-            // This is simplified - actual implementation would access getCompetencyScores()
-            try {
-                var method = result.getClass().getMethod("getCompetencyScores");
-                @SuppressWarnings("unchecked")
-                var scores = (List<Object>) method.invoke(result);
-                if (scores != null) {
-                    for (var score : scores) {
-                        var compIdMethod = score.getClass().getMethod("competencyId");
-                        var percentageMethod = score.getClass().getMethod("percentage");
-                        UUID compId = (UUID) compIdMethod.invoke(score);
-                        Double percentage = (Double) percentageMethod.invoke(score);
-                        if (compId != null && percentage != null) {
-                            scoresByCompetency
-                                    .computeIfAbsent(compId, k -> new ArrayList<>())
-                                    .add(percentage);
-                        }
+        for (TestResult result : results) {
+            List<CompetencyScoreDto> scores = result.getCompetencyScores();
+            if (scores != null) {
+                for (CompetencyScoreDto score : scores) {
+                    UUID compId = score.getCompetencyId();
+                    Double percentage = score.getPercentage();
+                    if (compId != null && percentage != null) {
+                        scoresByCompetency
+                                .computeIfAbsent(compId, k -> new ArrayList<>())
+                                .add(percentage);
                     }
                 }
-            } catch (Exception e) {
-                log.debug("Could not extract competency scores: {}", e.getMessage());
             }
         }
 
@@ -173,18 +165,12 @@ public class TeamProfileAggregationService {
                 ));
     }
 
-    private Map<String, Double> extractPersonalityTraits(List<?> results) {
+    private Map<String, Double> extractPersonalityTraits(List<TestResult> results) {
         // Find first result with Big Five profile
-        for (var result : results) {
-            try {
-                var method = result.getClass().getMethod("getBigFiveProfile");
-                @SuppressWarnings("unchecked")
-                var profile = (Map<String, Double>) method.invoke(result);
-                if (profile != null && !profile.isEmpty()) {
-                    return profile;
-                }
-            } catch (Exception e) {
-                log.debug("Could not extract personality traits: {}", e.getMessage());
+        for (TestResult result : results) {
+            Map<String, Double> profile = result.getBigFiveProfile();
+            if (profile != null && !profile.isEmpty()) {
+                return profile;
             }
         }
         return Map.of();

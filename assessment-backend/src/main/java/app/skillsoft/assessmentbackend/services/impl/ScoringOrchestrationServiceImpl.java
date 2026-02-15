@@ -527,6 +527,9 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         map.put("diversityCount", metrics.getDiversityCount());
         map.put("saturationCount", metrics.getSaturationCount());
         map.put("gapCount", metrics.getGapCount());
+        map.put("competencySaturation", metrics.getCompetencySaturation());
+        map.put("teamSize", metrics.getTeamSize());
+        map.put("personalityCompatibility", metrics.getPersonalityCompatibility());
         return map;
     }
 }
