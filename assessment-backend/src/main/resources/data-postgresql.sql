@@ -1,6 +1,18 @@
+-- Schema fixes that Hibernate's ddl-auto=update cannot handle
+-- Executed on every startup via spring.sql.init.mode=always
+
+-- Fix: exposure_count column cannot be added by ddl-auto=update because
+-- existing rows would have NULL values, violating NOT NULL constraint.
+-- Must use DEFAULT 0 to backfill existing rows.
+ALTER TABLE assessment_questions
+ADD COLUMN IF NOT EXISTS exposure_count INTEGER NOT NULL DEFAULT 0;
+
+-- Index for efficient sorting by exposure count during question selection
+CREATE INDEX IF NOT EXISTS idx_assessment_questions_exposure
+    ON assessment_questions (exposure_count);
+
 -- GIN indexes for JSONB columns
 -- These cannot be created by Hibernate's ddl-auto=update
--- Executed on every startup via spring.sql.init.mode=always
 
 -- Assessment questions: speeds up JSONB containment queries on answer_options
 -- Used during test assembly for option filtering

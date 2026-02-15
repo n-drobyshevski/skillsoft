@@ -8,6 +8,8 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +62,28 @@ public class PsychometricAuditJob {
         this.answerRepository = answerRepository;
         this.questionRepository = questionRepository;
         this.competencyRepository = competencyRepository;
+    }
+
+    /**
+     * Initialize item statistics on application startup.
+     * Creates ItemStatistics records for any questions that don't have one yet.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void onApplicationReady() {
+        if (!psychometricsEnabled) {
+            log.debug("Psychometric analysis is disabled, skipping startup initialization");
+            return;
+        }
+
+        try {
+            int initialized = initializeNewQuestions();
+            if (initialized > 0) {
+                log.info("Startup: initialized {} new question statistics records", initialized);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to initialize psychometric statistics on startup: {}", e.getMessage());
+        }
     }
 
     /**
@@ -155,6 +179,9 @@ public class PsychometricAuditJob {
 
         log.info("Manual psychometric audit triggered");
         var startTime = System.currentTimeMillis();
+
+        // Ensure all questions have statistics records before recalculating
+        initializeNewQuestions();
 
         int itemsRecalculated = recalculateItemsWithNewResponses();
         int competenciesRecalculated = recalculateCompetencyReliability();

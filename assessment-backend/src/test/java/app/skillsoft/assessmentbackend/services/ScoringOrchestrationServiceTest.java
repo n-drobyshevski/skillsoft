@@ -8,8 +8,10 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.services.impl.ScoringOrchestrationServiceImpl;
+import app.skillsoft.assessmentbackend.services.scoring.ConfidenceIntervalCalculator;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
+import app.skillsoft.assessmentbackend.services.scoring.SubscalePercentileCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -55,6 +57,12 @@ class ScoringOrchestrationServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private ConfidenceIntervalCalculator confidenceIntervalCalculator;
+
+    @Mock
+    private SubscalePercentileCalculator subscalePercentileCalculator;
+
     private ScoringOrchestrationServiceImpl scoringOrchestrationService;
 
     private UUID sessionId;
@@ -72,7 +80,9 @@ class ScoringOrchestrationServiceTest {
                 answerRepository,
                 resultRepository,
                 strategies,
-                eventPublisher
+                eventPublisher,
+                confidenceIntervalCalculator,
+                subscalePercentileCalculator
         );
 
         sessionId = UUID.randomUUID();
