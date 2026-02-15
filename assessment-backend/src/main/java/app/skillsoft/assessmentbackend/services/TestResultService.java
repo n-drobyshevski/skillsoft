@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultSummaryDto;
+import app.skillsoft.assessmentbackend.domain.dto.TrendDataPointDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -49,6 +50,12 @@ public interface TestResultService {
      * Get passed results for a user.
      */
     List<TestResultSummaryDto> findPassedByUser(String clerkUserId);
+
+    /**
+     * Get historical trend data for a user, optionally filtered by template.
+     * Returns lightweight data points optimized for time-series visualization.
+     */
+    List<TrendDataPointDto> getUserHistory(String clerkUserId, UUID templateId);
 
     /**
      * Get user statistics.

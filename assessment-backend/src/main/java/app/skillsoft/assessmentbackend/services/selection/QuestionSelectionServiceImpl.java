@@ -94,10 +94,96 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                 .map(AssessmentQuestion::getId)
                 .collect(Collectors.toList());
 
+        // Three-tier fallback if insufficient questions found
+        if (selected.size() < maxQuestions) {
+            selected = applyExhaustionFallback(
+                    indicatorId, maxQuestions, preferredDifficulty,
+                    excludeQuestionIds, selected);
+        }
+
         log.debug("Selected {} questions for indicator {} (requested: {})",
                 selected.size(), indicatorId, maxQuestions);
 
         return selected;
+    }
+
+    /**
+     * Three-tier fallback strategy when an indicator has insufficient questions:
+     * Tier 1: Exact difficulty match (already applied above)
+     * Tier 2: Any difficulty, same indicator (broaden difficulty search)
+     * Tier 3: Cross-indicator, same competency (with log warning for psychometric review)
+     *
+     * @return Enhanced list of question IDs
+     */
+    private List<UUID> applyExhaustionFallback(
+            UUID indicatorId,
+            int maxQuestions,
+            DifficultyLevel preferredDifficulty,
+            Set<UUID> excludeQuestionIds,
+            List<UUID> alreadySelected) {
+
+        List<UUID> result = new ArrayList<>(alreadySelected);
+        Set<UUID> allExcluded = new HashSet<>(excludeQuestionIds);
+        allExcluded.addAll(result);
+        int remaining = maxQuestions - result.size();
+
+        // Tier 2: Any difficulty, same indicator
+        if (remaining > 0 && preferredDifficulty != null) {
+            log.debug("Fallback Tier 2: Selecting {} questions for indicator {} with ANY difficulty",
+                    remaining, indicatorId);
+
+            List<AssessmentQuestion> allDifficultyQuestions = questionRepository
+                    .findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId);
+            List<AssessmentQuestion> eligibleAnyDifficulty = filterByValidity(allDifficultyQuestions)
+                    .stream()
+                    .filter(q -> !allExcluded.contains(q.getId()))
+                    .collect(Collectors.toList());
+            Collections.shuffle(eligibleAnyDifficulty);
+
+            for (AssessmentQuestion q : eligibleAnyDifficulty) {
+                if (remaining <= 0) break;
+                result.add(q.getId());
+                allExcluded.add(q.getId());
+                remaining--;
+            }
+        }
+
+        // Tier 3: Cross-indicator, same competency
+        if (remaining > 0) {
+            BehavioralIndicator indicator = indicatorRepository.findById(indicatorId).orElse(null);
+            if (indicator != null && indicator.getCompetency() != null) {
+                UUID competencyId = indicator.getCompetency().getId();
+                log.warn("Fallback Tier 3: Indicator {} exhausted, selecting {} questions " +
+                         "from sibling indicators of competency {} (flagged for psychometric review)",
+                        indicatorId, remaining, competencyId);
+
+                List<BehavioralIndicator> siblings = indicatorRepository.findByCompetencyId(competencyId)
+                        .stream()
+                        .filter(i -> !i.getId().equals(indicatorId) && i.isActive())
+                        .toList();
+
+                for (BehavioralIndicator sibling : siblings) {
+                    if (remaining <= 0) break;
+
+                    List<AssessmentQuestion> siblingQuestions = questionRepository
+                            .findByBehavioralIndicator_IdAndIsActiveTrue(sibling.getId());
+                    List<AssessmentQuestion> eligibleSibling = filterByValidity(siblingQuestions)
+                            .stream()
+                            .filter(q -> !allExcluded.contains(q.getId()))
+                            .collect(Collectors.toList());
+                    Collections.shuffle(eligibleSibling);
+
+                    for (AssessmentQuestion q : eligibleSibling) {
+                        if (remaining <= 0) break;
+                        result.add(q.getId());
+                        allExcluded.add(q.getId());
+                        remaining--;
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     // ========== MULTI-INDICATOR DISTRIBUTION ==========
@@ -481,7 +567,8 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
     // ========== HELPER METHODS ==========
 
     /**
-     * Get a pool of eligible question IDs for an indicator, sorted by difficulty preference.
+     * Get a pool of eligible question IDs for an indicator, sorted by difficulty preference
+     * and exposure count (less-exposed items preferred at equal difficulty).
      */
     private List<UUID> getEligibleQuestionPool(UUID indicatorId, DifficultyLevel preferredDifficulty) {
         List<AssessmentQuestion> candidates = questionRepository
@@ -490,15 +577,52 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
         // Filter by validity
         List<AssessmentQuestion> eligible = filterByValidity(candidates);
 
-        // Apply difficulty preference
+        // Apply difficulty preference with exposure-aware tiebreaking
         if (preferredDifficulty != null) {
-            eligible = applyDifficultyPreference(eligible, preferredDifficulty);
+            eligible = applyDifficultyPreferenceWithExposureControl(eligible, preferredDifficulty);
         } else {
-            Collections.shuffle(eligible);
+            // Sort by exposure count (less-exposed first), then shuffle within same count
+            eligible = new ArrayList<>(eligible);
+            eligible.sort(Comparator.comparingInt(AssessmentQuestion::getExposureCount));
         }
 
         return eligible.stream()
                 .map(AssessmentQuestion::getId)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Apply difficulty preference with exposure control.
+     * Questions are sorted by: (1) difficulty priority, (2) exposure count (ascending).
+     * At equal difficulty and exposure, order is randomized.
+     */
+    private List<AssessmentQuestion> applyDifficultyPreferenceWithExposureControl(
+            List<AssessmentQuestion> questions, DifficultyLevel preferred) {
+
+        if (questions == null || questions.isEmpty()) return List.of();
+
+        return questions.stream()
+                .sorted(Comparator
+                        .comparingInt((AssessmentQuestion q) ->
+                                getDifficultyPriority(q.getDifficultyLevel(), preferred))
+                        .thenComparingInt(AssessmentQuestion::getExposureCount))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Increment exposure count for selected questions.
+     * Should be called after questions are finalized for a test assembly.
+     *
+     * @param questionIds The IDs of questions selected for the test
+     */
+    public void trackExposure(List<UUID> questionIds) {
+        if (questionIds == null || questionIds.isEmpty()) return;
+
+        List<AssessmentQuestion> questions = questionRepository.findAllById(questionIds);
+        for (AssessmentQuestion q : questions) {
+            q.incrementExposureCount();
+        }
+        questionRepository.saveAll(questions);
+        log.debug("Incremented exposure count for {} questions", questions.size());
     }
 }

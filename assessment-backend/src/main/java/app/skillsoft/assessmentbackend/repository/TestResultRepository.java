@@ -336,6 +336,56 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
            "WHERE r.id = :resultId AND s.clerkUserId IS NULL")
     Optional<TestResult> findAnonymousByIdWithSessionAndTemplate(@Param("resultId") UUID resultId);
 
+    // ============================================
+    // SUBSCALE PERCENTILE QUERIES (JSONB)
+    // ============================================
+
+    /**
+     * Count results where a specific competency's percentage score is below a threshold.
+     * Uses JSONB array element extraction to query nested competency_scores.
+     *
+     * @param templateId   The template to filter by
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @param score        The score threshold
+     * @return Count of results with lower competency percentage
+     */
+    @Query(value = """
+        SELECT COUNT(*) FROM test_results tr
+        JOIN test_sessions ts ON tr.session_id = ts.id
+        WHERE ts.template_id = :templateId
+        AND tr.competency_scores IS NOT NULL
+        AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(tr.competency_scores) elem
+            WHERE elem->>'competencyId' = :competencyId
+            AND (elem->>'percentage')::numeric < :score
+        )
+        """, nativeQuery = true)
+    Long countCompetencyScoresBelow(
+            @Param("templateId") UUID templateId,
+            @Param("competencyId") String competencyId,
+            @Param("score") double score);
+
+    /**
+     * Count total results that have a score for a specific competency.
+     *
+     * @param templateId   The template to filter by
+     * @param competencyId The competency UUID as string
+     * @return Total count of results containing this competency score
+     */
+    @Query(value = """
+        SELECT COUNT(*) FROM test_results tr
+        JOIN test_sessions ts ON tr.session_id = ts.id
+        WHERE ts.template_id = :templateId
+        AND tr.competency_scores IS NOT NULL
+        AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(tr.competency_scores) elem
+            WHERE elem->>'competencyId' = :competencyId
+        )
+        """, nativeQuery = true)
+    Long countCompetencyScoresTotal(
+            @Param("templateId") UUID templateId,
+            @Param("competencyId") String competencyId);
+
     /**
      * Calculate average score for results from a specific share link.
      */

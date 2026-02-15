@@ -26,7 +26,17 @@ public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralI
         @Query("SELECT bi FROM BehavioralIndicator bi LEFT JOIN FETCH bi.competency WHERE bi.id IN :ids")
         List<BehavioralIndicator> findAllByIdWithCompetency(@Param("ids") Set<UUID> ids);
         public List<BehavioralIndicator> findByCompetencyId(UUID competencyId);
-        
+
+        /**
+         * Batch load indicators by competency IDs with their competency eagerly fetched.
+         * Used by JobFitAssembler to prevent N+1 queries during gap-based question selection.
+         *
+         * @param competencyIds Set of competency IDs to fetch indicators for
+         * @return List of indicators with competency pre-loaded
+         */
+        @Query("SELECT bi FROM BehavioralIndicator bi LEFT JOIN FETCH bi.competency WHERE bi.competency.id IN :competencyIds")
+        List<BehavioralIndicator> findByCompetencyIdIn(@Param("competencyIds") Set<UUID> competencyIds);
+
         public Optional<BehavioralIndicator> findByIdAndCompetencyId(UUID id, UUID competencyId);
         
         /**

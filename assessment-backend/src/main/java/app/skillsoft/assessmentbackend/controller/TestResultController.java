@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.controller;
 import app.skillsoft.assessmentbackend.domain.dto.QuestionScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultSummaryDto;
+import app.skillsoft.assessmentbackend.domain.dto.TrendDataPointDto;
 import app.skillsoft.assessmentbackend.services.TestResultService;
 import app.skillsoft.assessmentbackend.services.scoring.QuestionScoreService;
 import org.slf4j.Logger;
@@ -229,6 +230,28 @@ public class TestResultController {
                     logger.info("No results found for user {} on template {}", clerkUserId, templateId);
                     return ResponseEntity.notFound().build();
                 });
+    }
+
+    /**
+     * Get historical trend data for a user.
+     * Returns lightweight time-series data points with competency-level scores.
+     * Optionally filter by template to see progress on a specific assessment.
+     *
+     * @param clerkUserId User's Clerk ID
+     * @param templateId Optional template UUID filter
+     * @return List of trend data points ordered by date
+     */
+    @GetMapping("/user/{clerkUserId}/history")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
+    public ResponseEntity<List<TrendDataPointDto>> getUserHistory(
+            @PathVariable String clerkUserId,
+            @RequestParam(required = false) UUID templateId) {
+        logger.info("GET /api/v1/tests/results/user/{}/history?templateId={}", clerkUserId, templateId);
+
+        List<TrendDataPointDto> history = testResultService.getUserHistory(clerkUserId, templateId);
+        logger.info("Found {} history data points for user {}", history.size(), clerkUserId);
+
+        return ResponseEntity.ok(history);
     }
 
     /**

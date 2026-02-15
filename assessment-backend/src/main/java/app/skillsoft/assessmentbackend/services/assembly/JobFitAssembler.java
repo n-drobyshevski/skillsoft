@@ -205,6 +205,8 @@ public class JobFitAssembler implements TestAssembler {
      * This method maps internal competency UUIDs to their names so we can
      * match them against O*NET benchmark competency names.
      *
+     * Uses batch loading to avoid N+1 queries (single findAllById call).
+     *
      * @param passportScores Map of competency UUIDs to scores from passport
      * @return Map of competency names to scores
      */
@@ -213,31 +215,36 @@ public class JobFitAssembler implements TestAssembler {
             return Map.of();
         }
 
+        // Batch load all competencies at once instead of one-by-one
+        List<Competency> competencies = competencyRepository.findAllById(passportScores.keySet());
+        Map<UUID, Competency> competencyMap = competencies.stream()
+            .collect(Collectors.toMap(Competency::getId, c -> c));
+
         var lookup = new HashMap<String, Double>();
 
         for (var entry : passportScores.entrySet()) {
             var competencyId = entry.getKey();
             var score = entry.getValue();
 
-            // Look up the competency name from the repository
-            competencyRepository.findById(competencyId).ifPresent(competency -> {
-                // Use the competency name for matching
-                lookup.put(competency.getName(), score);
+            Competency competency = competencyMap.get(competencyId);
+            if (competency == null) continue;
 
-                // Also check standard_codes for O*NET code mapping if available
-                var standardCodes = competency.getStandardCodes();
-                if (standardCodes != null && standardCodes.hasOnetMapping()) {
-                    var onetCode = standardCodes.onetRef().code();
-                    if (onetCode != null && !onetCode.isBlank()) {
-                        lookup.put(onetCode, score);
-                    }
-                    // Also add by O*NET title if available
-                    var onetTitle = standardCodes.onetRef().title();
-                    if (onetTitle != null && !onetTitle.isBlank()) {
-                        lookup.put(onetTitle, score);
-                    }
+            // Use the competency name for matching
+            lookup.put(competency.getName(), score);
+
+            // Also check standard_codes for O*NET code mapping if available
+            var standardCodes = competency.getStandardCodes();
+            if (standardCodes != null && standardCodes.hasOnetMapping()) {
+                var onetCode = standardCodes.onetRef().code();
+                if (onetCode != null && !onetCode.isBlank()) {
+                    lookup.put(onetCode, score);
                 }
-            });
+                // Also add by O*NET title if available
+                var onetTitle = standardCodes.onetRef().title();
+                if (onetTitle != null && !onetTitle.isBlank()) {
+                    lookup.put(onetTitle, score);
+                }
+            }
         }
 
         log.debug("Built passport score lookup with {} entries", lookup.size());
@@ -249,8 +256,25 @@ public class JobFitAssembler implements TestAssembler {
      *
      * Uses WEIGHTED distribution with gap magnitude as weight.
      * Larger gaps receive more questions.
+     *
+     * Loads all competencies and their indicators in batch upfront to avoid N+1 queries.
      */
     private List<UUID> selectQuestionsForGaps(Map<String, GapInfo> gapAnalysis, int strictnessLevel) {
+        // Batch load all competencies and build lookup maps upfront (N+1 fix)
+        List<Competency> allCompetencies = competencyRepository.findAll();
+        Map<String, List<Competency>> competencyByName = buildCompetencyLookupMaps(allCompetencies);
+
+        // Batch load indicators for all competencies at once
+        Set<UUID> allCompetencyIds = allCompetencies.stream()
+            .map(Competency::getId)
+            .collect(Collectors.toSet());
+        List<BehavioralIndicator> allIndicators = indicatorRepository.findByCompetencyIdIn(allCompetencyIds);
+
+        // Build indicator lookup by competency ID
+        Map<UUID, List<BehavioralIndicator>> indicatorsByCompetencyId = allIndicators.stream()
+            .filter(BehavioralIndicator::isActive)
+            .collect(Collectors.groupingBy(i -> i.getCompetency().getId()));
+
         // Build weighted indicator map based on gaps
         Map<UUID, Double> indicatorWeights = new LinkedHashMap<>();
         Map<UUID, DifficultyLevel> indicatorDifficulties = new HashMap<>();
@@ -266,8 +290,9 @@ public class JobFitAssembler implements TestAssembler {
                 ? DifficultyLevel.ADVANCED
                 : DifficultyLevel.INTERMEDIATE;
 
-            // Find competency and its indicators by name
-            var indicatorsForGap = findIndicatorsForCompetencyName(gapInfo.competencyName());
+            // Find competency and its indicators by name using preloaded data
+            var indicatorsForGap = findIndicatorsForCompetencyNameCached(
+                gapInfo.competencyName(), competencyByName, indicatorsByCompetencyId);
 
             for (var indicator : indicatorsForGap) {
                 // Weight = gap magnitude (0.0 - 1.0), minimum 0.1 to ensure at least some questions
@@ -327,37 +352,50 @@ public class JobFitAssembler implements TestAssembler {
     }
 
     /**
-     * Find behavioral indicators matching a competency name.
-     * Matches by competency name or O*NET standard code mappings.
+     * Build lookup maps from competency name/O*NET code/title to competency list.
+     * Called once per assembly to avoid repeated findAll() calls.
      */
-    private List<BehavioralIndicator> findIndicatorsForCompetencyName(String competencyName) {
-        // First try to find competency by name
-        List<Competency> matchingCompetencies = competencyRepository.findAll().stream()
-            .filter(c -> {
-                // Match by name
-                if (c.getName().equalsIgnoreCase(competencyName)) {
-                    return true;
+    private Map<String, List<Competency>> buildCompetencyLookupMaps(List<Competency> competencies) {
+        Map<String, List<Competency>> lookup = new HashMap<>();
+        for (var c : competencies) {
+            // Index by name (case-insensitive)
+            lookup.computeIfAbsent(c.getName().toLowerCase(), k -> new ArrayList<>()).add(c);
+
+            // Index by O*NET code and title
+            var standardCodes = c.getStandardCodes();
+            if (standardCodes != null && standardCodes.hasOnetMapping()) {
+                var onetRef = standardCodes.onetRef();
+                if (onetRef.code() != null && !onetRef.code().isBlank()) {
+                    lookup.computeIfAbsent(onetRef.code().toLowerCase(), k -> new ArrayList<>()).add(c);
                 }
-                // Match by O*NET code or title
-                var standardCodes = c.getStandardCodes();
-                if (standardCodes != null && standardCodes.hasOnetMapping()) {
-                    var onetRef = standardCodes.onetRef();
-                    return competencyName.equalsIgnoreCase(onetRef.code()) ||
-                           competencyName.equalsIgnoreCase(onetRef.title());
+                if (onetRef.title() != null && !onetRef.title().isBlank()) {
+                    lookup.computeIfAbsent(onetRef.title().toLowerCase(), k -> new ArrayList<>()).add(c);
                 }
-                return false;
-            })
-            .toList();
+            }
+        }
+        return lookup;
+    }
+
+    /**
+     * Find behavioral indicators matching a competency name using preloaded data.
+     * Matches by competency name or O*NET standard code mappings.
+     * Uses preloaded lookup maps to avoid N+1 queries.
+     */
+    private List<BehavioralIndicator> findIndicatorsForCompetencyNameCached(
+            String competencyName,
+            Map<String, List<Competency>> competencyByName,
+            Map<UUID, List<BehavioralIndicator>> indicatorsByCompetencyId) {
+
+        List<Competency> matchingCompetencies = competencyByName.getOrDefault(
+            competencyName.toLowerCase(), List.of());
 
         if (matchingCompetencies.isEmpty()) {
             log.debug("No competency found matching name: {}", competencyName);
             return List.of();
         }
 
-        // Get indicators for matching competencies
         return matchingCompetencies.stream()
-            .flatMap(c -> indicatorRepository.findByCompetencyId(c.getId()).stream())
-            .filter(BehavioralIndicator::isActive)
+            .flatMap(c -> indicatorsByCompetencyId.getOrDefault(c.getId(), List.of()).stream())
             .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
             .collect(Collectors.toList());
     }

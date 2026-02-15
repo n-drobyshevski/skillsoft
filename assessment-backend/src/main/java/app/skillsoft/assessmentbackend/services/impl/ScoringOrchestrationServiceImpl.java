@@ -4,6 +4,7 @@ import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.events.resilience.ResilienceFallbackEvent;
+import app.skillsoft.assessmentbackend.events.scoring.ScoringAuditEvent;
 import app.skillsoft.assessmentbackend.events.scoring.ScoringCompletedEvent;
 import app.skillsoft.assessmentbackend.events.scoring.ScoringFailedEvent;
 import app.skillsoft.assessmentbackend.events.scoring.ScoringStartedEvent;
@@ -12,8 +13,10 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
+import app.skillsoft.assessmentbackend.services.scoring.ConfidenceIntervalCalculator;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
+import app.skillsoft.assessmentbackend.services.scoring.SubscalePercentileCalculator;
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
@@ -53,18 +56,24 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
     private final TestResultRepository resultRepository;
     private final List<ScoringStrategy> scoringStrategies;
     private final ApplicationEventPublisher eventPublisher;
+    private final ConfidenceIntervalCalculator confidenceIntervalCalculator;
+    private final SubscalePercentileCalculator subscalePercentileCalculator;
 
     public ScoringOrchestrationServiceImpl(
             TestSessionRepository sessionRepository,
             TestAnswerRepository answerRepository,
             TestResultRepository resultRepository,
             List<ScoringStrategy> scoringStrategies,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ConfidenceIntervalCalculator confidenceIntervalCalculator,
+            SubscalePercentileCalculator subscalePercentileCalculator) {
         this.sessionRepository = sessionRepository;
         this.answerRepository = answerRepository;
         this.resultRepository = resultRepository;
         this.scoringStrategies = scoringStrategies;
         this.eventPublisher = eventPublisher;
+        this.confidenceIntervalCalculator = confidenceIntervalCalculator;
+        this.subscalePercentileCalculator = subscalePercentileCalculator;
     }
 
     @Override
@@ -128,6 +137,13 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
             scoringResult = calculateLegacyScore(session, answers);
         }
 
+        // Enrich competency scores with confidence intervals (post-processing)
+        confidenceIntervalCalculator.enrichWithConfidenceIntervals(scoringResult.getCompetencyScores());
+
+        // Enrich competency scores with per-competency percentile ranks
+        subscalePercentileCalculator.enrichWithPercentiles(
+                scoringResult.getCompetencyScores(), session.getTemplate().getId());
+
         // Create result entity
         TestResult result = new TestResult(session, session.getClerkUserId());
         result.setOverallScore(scoringResult.getOverallScore());
@@ -166,6 +182,10 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
                 Boolean.TRUE.equals(saved.getPassed()),
                 scoringStartTime
         ));
+
+        // Publish scoring audit event for traceability (persisted asynchronously)
+        publishAuditEvent(session, saved, goal, strategy, scoringResult,
+                answers.size(), (int) answered, (int) skipped, scoringStartTime);
 
         log.info("Scoring completed successfully for session={} resultId={} score={}%",
                 sessionId, saved.getId(), saved.getOverallPercentage());
@@ -413,6 +433,57 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
 
         log.debug("Calculated {} competency scores in legacy mode", competencyScores.size());
         return competencyScores;
+    }
+
+    /**
+     * Publish audit event with scoring snapshot for traceability.
+     * Extracts indicator weights from competency score DTOs.
+     */
+    private void publishAuditEvent(TestSession session, TestResult saved,
+                                    AssessmentGoal goal, ScoringStrategy strategy,
+                                    ScoringResult scoringResult,
+                                    int totalAnswers, int answeredCount, int skippedCount,
+                                    Instant scoringStartTime) {
+        try {
+            // Extract indicator weights from the scoring result
+            Map<String, Double> indicatorWeights = new LinkedHashMap<>();
+            if (scoringResult.getCompetencyScores() != null) {
+                for (var cs : scoringResult.getCompetencyScores()) {
+                    if (cs.getIndicatorScores() != null) {
+                        for (var is : cs.getIndicatorScores()) {
+                            if (is.getIndicatorId() != null) {
+                                indicatorWeights.put(is.getIndicatorId().toString(),
+                                        is.getWeight() != null ? is.getWeight() : 1.0);
+                            }
+                        }
+                    }
+                }
+            }
+
+            eventPublisher.publishEvent(ScoringAuditEvent.from(
+                    session.getId(),
+                    saved.getId(),
+                    session.getClerkUserId(),
+                    session.getTemplate().getId(),
+                    goal,
+                    strategy != null ? strategy.getClass().getSimpleName() : "LegacyScoring",
+                    saved.getOverallScore(),
+                    saved.getOverallPercentage(),
+                    saved.getPassed(),
+                    saved.getPercentile(),
+                    scoringResult.getCompetencyScores(),
+                    indicatorWeights,
+                    null, // config snapshot - can be enriched later
+                    totalAnswers,
+                    answeredCount,
+                    skippedCount,
+                    scoringStartTime
+            ));
+        } catch (Exception e) {
+            // Audit event failure should never prevent scoring from completing
+            log.warn("Failed to publish scoring audit event for session={}: {}",
+                    session.getId(), e.getMessage());
+        }
     }
 
     /**

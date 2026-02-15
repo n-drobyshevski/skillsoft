@@ -6,7 +6,9 @@ import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
@@ -54,62 +56,6 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         this.indicatorBatchLoader = indicatorBatchLoader;
         this.scoringConfig = scoringConfig;
         this.scoreNormalizer = scoreNormalizer;
-    }
-
-    /**
-     * Internal helper class to aggregate scores at the indicator level.
-     */
-    private static class IndicatorAggregation {
-        UUID indicatorId;
-        double totalScore = 0;
-        double totalMaxScore = 0;
-        int questionCount = 0;
-
-        IndicatorAggregation(UUID indicatorId) {
-            this.indicatorId = indicatorId;
-        }
-
-        void addAnswer(double normalizedScore) {
-            totalScore += normalizedScore;
-            totalMaxScore += 1.0;
-            questionCount++;
-        }
-
-        IndicatorScoreDto toDto(BehavioralIndicator indicator) {
-            double percentage = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100.0 : 0.0;
-
-            IndicatorScoreDto dto = new IndicatorScoreDto();
-            dto.setIndicatorId(indicatorId);
-            dto.setIndicatorTitle(indicator != null ? indicator.getTitle() : "Unknown Indicator");
-            dto.setWeight(indicator != null ? indicator.getWeight() : 1.0);
-            dto.setScore(totalScore);
-            dto.setMaxScore(totalMaxScore);
-            dto.setPercentage(percentage);
-            dto.setQuestionsAnswered(questionCount);
-            return dto;
-        }
-    }
-
-    /**
-     * Internal helper class to aggregate indicator scores at the competency level.
-     */
-    private static class CompetencyAggregation {
-        UUID competencyId;
-        double totalScore = 0;
-        double totalMaxScore = 0;
-        int questionCount = 0;
-        List<IndicatorScoreDto> indicatorScores = new ArrayList<>();
-
-        CompetencyAggregation(UUID competencyId) {
-            this.competencyId = competencyId;
-        }
-
-        void addIndicator(IndicatorScoreDto indicatorDto, IndicatorAggregation agg) {
-            totalScore += agg.totalScore;
-            totalMaxScore += agg.totalMaxScore;
-            questionCount += agg.questionCount;
-            indicatorScores.add(indicatorDto);
-        }
     }
 
     @Override
@@ -224,24 +170,22 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             String onetCode = competency != null ? competency.getOnetCode() : null;
             String escoUri = competency != null ? competency.getEscoUri() : null;
 
-            double percentage = compAgg.totalMaxScore > 0
-                    ? (compAgg.totalScore / compAgg.totalMaxScore) * 100.0 : 0.0;
-            double average = compAgg.totalMaxScore > 0
-                    ? compAgg.totalScore / compAgg.totalMaxScore : 0.0;
+            double percentage = compAgg.getWeightedPercentage();
+            double average = percentage / 100.0;
 
             // For Team Fit, track questions that demonstrate competency
-            int questionsCorrect = (int) Math.round(average * compAgg.questionCount);
+            int questionsCorrect = (int) Math.round(average * compAgg.getQuestionCount());
 
             CompetencyScoreDto scoreDto = new CompetencyScoreDto();
             scoreDto.setCompetencyId(competencyId);
             scoreDto.setCompetencyName(competencyName);
-            scoreDto.setScore(compAgg.totalScore);
-            scoreDto.setMaxScore(compAgg.totalMaxScore);
+            scoreDto.setScore(compAgg.getTotalScore());
+            scoreDto.setMaxScore(compAgg.getTotalMaxScore());
             scoreDto.setPercentage(percentage);
-            scoreDto.setQuestionsAnswered(compAgg.questionCount);
+            scoreDto.setQuestionsAnswered(compAgg.getQuestionCount());
             scoreDto.setQuestionsCorrect(questionsCorrect);
             scoreDto.setOnetCode(onetCode);
-            scoreDto.setIndicatorScores(compAgg.indicatorScores);
+            scoreDto.setIndicatorScores(compAgg.getIndicatorScores());
 
             finalScores.add(scoreDto);
 
@@ -265,7 +209,7 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             totalWeightedScore += (percentage * weight);
 
             log.debug("Competency {} (ESCO: {}, Big Five: {}): {} indicators, score {}%, contribution: {}",
-                    competencyName, escoUri, bigFive, compAgg.indicatorScores.size(),
+                    competencyName, escoUri, bigFive, compAgg.getIndicatorScores().size(),
                     String.format("%.2f", percentage),
                     average >= saturationThreshold ? "SATURATION" : (average >= diversityThreshold ? "DIVERSITY" : "GAP"));
         }

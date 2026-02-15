@@ -3,7 +3,9 @@ package app.skillsoft.assessmentbackend.services.scoring.impl;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
@@ -50,77 +52,6 @@ public class OverviewScoringStrategy implements ScoringStrategy {
         this.scoreNormalizer = scoreNormalizer;
     }
 
-    /**
-     * Internal helper class to aggregate scores at the indicator level.
-     */
-    private static class IndicatorAggregation {
-        UUID indicatorId;
-        double totalScore = 0;
-        double totalMaxScore = 0;
-        int questionCount = 0;
-
-        IndicatorAggregation(UUID indicatorId) {
-            this.indicatorId = indicatorId;
-        }
-
-        void addAnswer(double normalizedScore) {
-            totalScore += normalizedScore;
-            totalMaxScore += 1.0; // Each normalized answer has max 1.0
-            questionCount++;
-        }
-
-        IndicatorScoreDto toDto(BehavioralIndicator indicator) {
-            double percentage = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100.0 : 0.0;
-
-            IndicatorScoreDto dto = new IndicatorScoreDto();
-            dto.setIndicatorId(indicatorId);
-            dto.setIndicatorTitle(indicator != null ? indicator.getTitle() : "Unknown Indicator");
-            dto.setWeight(indicator != null ? indicator.getWeight() : 1.0);
-            dto.setScore(totalScore);
-            dto.setMaxScore(totalMaxScore);
-            dto.setPercentage(percentage);
-            dto.setQuestionsAnswered(questionCount);
-            return dto;
-        }
-    }
-
-    /**
-     * Internal helper class to aggregate indicator scores at the competency level.
-     */
-    private static class CompetencyAggregation {
-        UUID competencyId;
-        double totalScore = 0;
-        double totalMaxScore = 0;
-        int questionCount = 0;
-        List<IndicatorScoreDto> indicatorScores = new ArrayList<>();
-
-        CompetencyAggregation(UUID competencyId) {
-            this.competencyId = competencyId;
-        }
-
-        void addIndicator(IndicatorScoreDto indicatorDto, IndicatorAggregation agg) {
-            totalScore += agg.totalScore;
-            totalMaxScore += agg.totalMaxScore;
-            questionCount += agg.questionCount;
-            indicatorScores.add(indicatorDto);
-        }
-
-        CompetencyScoreDto toDto(Competency competency) {
-            double percentage = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100.0 : 0.0;
-
-            CompetencyScoreDto dto = new CompetencyScoreDto();
-            dto.setCompetencyId(competencyId);
-            dto.setCompetencyName(competency != null ? competency.getName() : "Unknown Competency");
-            dto.setScore(totalScore);
-            dto.setMaxScore(totalMaxScore);
-            dto.setPercentage(percentage);
-            dto.setQuestionsAnswered(questionCount);
-            dto.setOnetCode(competency != null ? competency.getOnetCode() : null);
-            dto.setIndicatorScores(indicatorScores);
-            return dto;
-        }
-    }
-    
     @Override
     public ScoringResult calculate(TestSession session, List<TestAnswer> answers) {
         // Set session context for all scoring log messages
@@ -178,8 +109,8 @@ public class OverviewScoringStrategy implements ScoringStrategy {
                     .addIndicator(indicatorDto, indAgg);
 
             log.debug("Indicator {}: {} questions, score {}/{} ({}%)",
-                    indicator.getTitle(), indAgg.questionCount, indAgg.totalScore,
-                    indAgg.totalMaxScore, String.format("%.2f", indicatorDto.getPercentage()));
+                    indicator.getTitle(), indAgg.getQuestionCount(), indAgg.getTotalScore(),
+                    indAgg.getTotalMaxScore(), String.format("%.2f", indicatorDto.getPercentage()));
         }
 
         // Step 3: Create final CompetencyScoreDto list with nested indicators

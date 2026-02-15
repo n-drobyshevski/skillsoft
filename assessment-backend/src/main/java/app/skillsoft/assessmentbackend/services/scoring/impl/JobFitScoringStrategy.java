@@ -6,7 +6,9 @@ import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
@@ -54,62 +56,6 @@ public class JobFitScoringStrategy implements ScoringStrategy {
         this.indicatorBatchLoader = indicatorBatchLoader;
         this.scoringConfig = scoringConfig;
         this.scoreNormalizer = scoreNormalizer;
-    }
-
-    /**
-     * Internal helper class to aggregate scores at the indicator level.
-     */
-    private static class IndicatorAggregation {
-        UUID indicatorId;
-        double totalScore = 0;
-        double totalMaxScore = 0;
-        int questionCount = 0;
-
-        IndicatorAggregation(UUID indicatorId) {
-            this.indicatorId = indicatorId;
-        }
-
-        void addAnswer(double normalizedScore) {
-            totalScore += normalizedScore;
-            totalMaxScore += 1.0;
-            questionCount++;
-        }
-
-        IndicatorScoreDto toDto(BehavioralIndicator indicator) {
-            double percentage = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100.0 : 0.0;
-
-            IndicatorScoreDto dto = new IndicatorScoreDto();
-            dto.setIndicatorId(indicatorId);
-            dto.setIndicatorTitle(indicator != null ? indicator.getTitle() : "Unknown Indicator");
-            dto.setWeight(indicator != null ? indicator.getWeight() : 1.0);
-            dto.setScore(totalScore);
-            dto.setMaxScore(totalMaxScore);
-            dto.setPercentage(percentage);
-            dto.setQuestionsAnswered(questionCount);
-            return dto;
-        }
-    }
-
-    /**
-     * Internal helper class to aggregate indicator scores at the competency level.
-     */
-    private static class CompetencyAggregation {
-        UUID competencyId;
-        double totalScore = 0;
-        double totalMaxScore = 0;
-        int questionCount = 0;
-        List<IndicatorScoreDto> indicatorScores = new ArrayList<>();
-
-        CompetencyAggregation(UUID competencyId) {
-            this.competencyId = competencyId;
-        }
-
-        void addIndicator(IndicatorScoreDto indicatorDto, IndicatorAggregation agg) {
-            totalScore += agg.totalScore;
-            totalMaxScore += agg.totalMaxScore;
-            questionCount += agg.questionCount;
-            indicatorScores.add(indicatorDto);
-        }
     }
 
     @Override
@@ -193,22 +139,22 @@ public class JobFitScoringStrategy implements ScoringStrategy {
             String competencyName = competency != null ? competency.getName() : "Unknown Competency";
             String onetCode = competency != null ? competency.getOnetCode() : null;
 
-            double percentage = compAgg.totalMaxScore > 0
-                    ? (compAgg.totalScore / compAgg.totalMaxScore) * 100.0 : 0.0;
+            double percentage = compAgg.getWeightedPercentage();
 
             // For Job Fit, we track how well the score meets the threshold
-            int questionsCorrect = (int) Math.round((compAgg.totalScore / compAgg.totalMaxScore) * compAgg.questionCount);
+            int questionsCorrect = compAgg.getTotalMaxScore() > 0
+                    ? (int) Math.round((percentage / 100.0) * compAgg.getQuestionCount()) : 0;
 
             CompetencyScoreDto scoreDto = new CompetencyScoreDto();
             scoreDto.setCompetencyId(competencyId);
             scoreDto.setCompetencyName(competencyName);
-            scoreDto.setScore(compAgg.totalScore);
-            scoreDto.setMaxScore(compAgg.totalMaxScore);
+            scoreDto.setScore(compAgg.getTotalScore());
+            scoreDto.setMaxScore(compAgg.getTotalMaxScore());
             scoreDto.setPercentage(percentage);
-            scoreDto.setQuestionsAnswered(compAgg.questionCount);
+            scoreDto.setQuestionsAnswered(compAgg.getQuestionCount());
             scoreDto.setQuestionsCorrect(questionsCorrect);
             scoreDto.setOnetCode(onetCode);
-            scoreDto.setIndicatorScores(compAgg.indicatorScores);
+            scoreDto.setIndicatorScores(compAgg.getIndicatorScores());
 
             finalScores.add(scoreDto);
 
@@ -218,8 +164,8 @@ public class JobFitScoringStrategy implements ScoringStrategy {
             totalWeightedScore += (percentage * weight);
 
             log.debug("Competency {} (O*NET: {}): {} indicators, {} questions, score {}/{} ({}%), threshold met: {}",
-                    competencyName, onetCode, compAgg.indicatorScores.size(), compAgg.questionCount,
-                    compAgg.totalScore, compAgg.totalMaxScore, String.format("%.2f", percentage),
+                    competencyName, onetCode, compAgg.getIndicatorScores().size(), compAgg.getQuestionCount(),
+                    compAgg.getTotalScore(), compAgg.getTotalMaxScore(), String.format("%.2f", percentage),
                     (percentage / 100.0) >= effectiveThreshold);
         }
 

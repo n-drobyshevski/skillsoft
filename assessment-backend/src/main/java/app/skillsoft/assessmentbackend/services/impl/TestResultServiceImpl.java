@@ -1,7 +1,9 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
+import app.skillsoft.assessmentbackend.domain.dto.CompetencyTrendPointDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultSummaryDto;
+import app.skillsoft.assessmentbackend.domain.dto.TrendDataPointDto;
 import app.skillsoft.assessmentbackend.domain.entities.TestResult;
 import app.skillsoft.assessmentbackend.domain.entities.TestSession;
 import app.skillsoft.assessmentbackend.domain.projections.TemplateStatisticsProjection;
@@ -201,6 +203,20 @@ public class TestResultServiceImpl implements TestResultService {
         return percentile;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<TrendDataPointDto> getUserHistory(String clerkUserId, UUID templateId) {
+        List<TestResult> results;
+        if (templateId != null) {
+            results = resultRepository.findByUserAndTemplateWithSession(clerkUserId, templateId);
+        } else {
+            results = resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId);
+        }
+        return results.stream()
+                .map(this::toTrendDto)
+                .toList();
+    }
+
     // Mapping methods
     private TestResultDto toDto(TestResult result) {
         TestSession session = result.getSession();
@@ -223,6 +239,31 @@ public class TestResultServiceImpl implements TestResultService {
                 result.getStatus(),
                 result.getBigFiveProfile(),
                 result.getExtendedMetrics()
+        );
+    }
+
+    private TrendDataPointDto toTrendDto(TestResult result) {
+        TestSession session = result.getSession();
+        List<CompetencyTrendPointDto> competencyPoints = List.of();
+        if (result.getCompetencyScores() != null) {
+            competencyPoints = result.getCompetencyScores().stream()
+                    .map(cs -> new CompetencyTrendPointDto(
+                            cs.getCompetencyId(),
+                            cs.getCompetencyName(),
+                            cs.getPercentage(),
+                            cs.getCiLower(),
+                            cs.getCiUpper()
+                    ))
+                    .toList();
+        }
+        return new TrendDataPointDto(
+                result.getId(),
+                session.getTemplate().getId(),
+                session.getTemplate().getName(),
+                result.getOverallPercentage(),
+                result.getPassed(),
+                result.getCompletedAt(),
+                competencyPoints
         );
     }
 

@@ -21,6 +21,15 @@ public class CompetencyScoreDto {
     private String onetCode; // O*NET code for Big Five projection
     private List<IndicatorScoreDto> indicatorScores; // Nested indicator breakdown
 
+    // Confidence interval fields (populated by ConfidenceIntervalCalculator)
+    private Double sem;           // Standard Error of Measurement
+    private Double ciLower;       // 95% CI lower bound
+    private Double ciUpper;       // 95% CI upper bound
+    private Double cronbachAlpha; // Cronbach's alpha used for calculation
+
+    // Per-competency percentile (populated by SubscalePercentileCalculator)
+    private Integer percentile;   // Percentile rank within this competency across all takers
+
     // Constructors
     public CompetencyScoreDto() {
     }
@@ -105,6 +114,46 @@ public class CompetencyScoreDto {
 
     public void setIndicatorScores(List<IndicatorScoreDto> indicatorScores) {
         this.indicatorScores = indicatorScores;
+    }
+
+    public Double getSem() {
+        return sem;
+    }
+
+    public void setSem(Double sem) {
+        this.sem = sem;
+    }
+
+    public Double getCiLower() {
+        return ciLower;
+    }
+
+    public void setCiLower(Double ciLower) {
+        this.ciLower = ciLower;
+    }
+
+    public Double getCiUpper() {
+        return ciUpper;
+    }
+
+    public void setCiUpper(Double ciUpper) {
+        this.ciUpper = ciUpper;
+    }
+
+    public Double getCronbachAlpha() {
+        return cronbachAlpha;
+    }
+
+    public void setCronbachAlpha(Double cronbachAlpha) {
+        this.cronbachAlpha = cronbachAlpha;
+    }
+
+    public Integer getPercentile() {
+        return percentile;
+    }
+
+    public void setPercentile(Integer percentile) {
+        this.percentile = percentile;
     }
 
     @Override
