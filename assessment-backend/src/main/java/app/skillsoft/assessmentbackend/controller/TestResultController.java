@@ -49,6 +49,72 @@ public class TestResultController {
         this.candidateComparisonService = candidateComparisonService;
     }
 
+    // ==================== ADMIN OPERATIONS ====================
+    // NOTE: Literal path mappings (/compare, /report, /recent) MUST be declared
+    // before the wildcard /{resultId} to prevent Spring from matching "compare"
+    // as a resultId path variable.
+
+    /**
+     * Compare multiple candidate results for the same TEAM_FIT template.
+     * Returns ranked summaries, competency comparisons, gap coverage, and complementarity scores.
+     *
+     * @param templateId The template UUID all results belong to
+     * @param resultIds  List of result UUIDs to compare (2-5)
+     * @return Comparison DTO or 400 if validation fails
+     */
+    @GetMapping("/compare")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public ResponseEntity<CandidateComparisonDto> compareCandidates(
+            @RequestParam UUID templateId,
+            @RequestParam List<UUID> resultIds) {
+        logger.info("GET /api/v1/tests/results/compare?templateId={}&resultIds={}", templateId, resultIds.size());
+        try {
+            CandidateComparisonDto comparison = candidateComparisonService.compareResults(resultIds, templateId);
+            return ResponseEntity.ok(comparison);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Comparison validation failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Get results within a date range (for reporting).
+     *
+     * @param startDate Start of date range
+     * @param endDate End of date range
+     * @return List of results in the range
+     */
+    @GetMapping("/report")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public ResponseEntity<List<TestResultSummaryDto>> getResultsByDateRange(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+        logger.info("GET /api/v1/tests/results/report?startDate={}&endDate={}", startDate, endDate);
+
+        List<TestResultSummaryDto> results = testResultService.findByDateRange(startDate, endDate);
+        logger.info("Found {} results between {} and {}", results.size(), startDate, endDate);
+
+        return ResponseEntity.ok(results);
+    }
+
+    /**
+     * Get recent results (for admin dashboard).
+     *
+     * @param limit Maximum number of results to return
+     * @return List of recent results
+     */
+    @GetMapping("/recent")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public ResponseEntity<List<TestResultSummaryDto>> getRecentResults(
+            @RequestParam(defaultValue = "10") int limit) {
+        logger.info("GET /api/v1/tests/results/recent?limit={}", limit);
+
+        List<TestResultSummaryDto> results = testResultService.getRecentResults(limit);
+        logger.info("Returning {} recent results", results.size());
+
+        return ResponseEntity.ok(results);
+    }
+
     // ==================== RESULT RETRIEVAL ====================
 
     /**
@@ -57,7 +123,7 @@ public class TestResultController {
      * @param resultId Result UUID
      * @return Result details or 404 if not found
      */
-    @GetMapping("/{resultId}")
+    @GetMapping("/{resultId:[0-9a-f\\-]{36}}")
     @PreAuthorize("@sessionSecurity.isResultOwner(#resultId)")
     public ResponseEntity<TestResultDto> getResultById(@PathVariable UUID resultId) {
         logger.info("GET /api/v1/tests/results/{}", resultId);
@@ -104,7 +170,7 @@ public class TestResultController {
      * @param resultId Result UUID
      * @return Percentile value (0-100)
      */
-    @GetMapping("/{resultId}/percentile")
+    @GetMapping("/{resultId:[0-9a-f\\-]{36}}/percentile")
     @PreAuthorize("@sessionSecurity.isResultOwner(#resultId)")
     public ResponseEntity<Integer> getPercentile(@PathVariable UUID resultId) {
         logger.info("GET /api/v1/tests/results/{}/percentile", resultId);
@@ -133,7 +199,7 @@ public class TestResultController {
      * @param indicatorId Behavioral indicator UUID
      * @return List of question scores with correct answers
      */
-    @GetMapping("/{resultId}/indicators/{indicatorId}/questions")
+    @GetMapping("/{resultId:[0-9a-f\\-]{36}}/indicators/{indicatorId}/questions")
     @PreAuthorize("@sessionSecurity.isResultOwner(#resultId)")
     public ResponseEntity<List<QuestionScoreDto>> getIndicatorQuestionScores(
             @PathVariable UUID resultId,
@@ -316,66 +382,4 @@ public class TestResultController {
         return ResponseEntity.ok(stats);
     }
 
-    // ==================== ADMIN OPERATIONS ====================
-
-    /**
-     * Compare multiple candidate results for the same TEAM_FIT template.
-     * Returns ranked summaries, competency comparisons, gap coverage, and complementarity scores.
-     *
-     * @param templateId The template UUID all results belong to
-     * @param resultIds  List of result UUIDs to compare (2-5)
-     * @return Comparison DTO or 400 if validation fails
-     */
-    @GetMapping("/compare")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
-    public ResponseEntity<CandidateComparisonDto> compareCandidates(
-            @RequestParam UUID templateId,
-            @RequestParam List<UUID> resultIds) {
-        logger.info("GET /api/v1/tests/results/compare?templateId={}&resultIds={}", templateId, resultIds.size());
-        try {
-            CandidateComparisonDto comparison = candidateComparisonService.compareResults(resultIds, templateId);
-            return ResponseEntity.ok(comparison);
-        } catch (IllegalArgumentException e) {
-            logger.warn("Comparison validation failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    /**
-     * Get results within a date range (for reporting).
-     * 
-     * @param startDate Start of date range
-     * @param endDate End of date range
-     * @return List of results in the range
-     */
-    @GetMapping("/report")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
-    public ResponseEntity<List<TestResultSummaryDto>> getResultsByDateRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
-        logger.info("GET /api/v1/tests/results/report?startDate={}&endDate={}", startDate, endDate);
-        
-        List<TestResultSummaryDto> results = testResultService.findByDateRange(startDate, endDate);
-        logger.info("Found {} results between {} and {}", results.size(), startDate, endDate);
-        
-        return ResponseEntity.ok(results);
-    }
-
-    /**
-     * Get recent results (for admin dashboard).
-     * 
-     * @param limit Maximum number of results to return
-     * @return List of recent results
-     */
-    @GetMapping("/recent")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
-    public ResponseEntity<List<TestResultSummaryDto>> getRecentResults(
-            @RequestParam(defaultValue = "10") int limit) {
-        logger.info("GET /api/v1/tests/results/recent?limit={}", limit);
-        
-        List<TestResultSummaryDto> results = testResultService.getRecentResults(limit);
-        logger.info("Returning {} recent results", results.size());
-        
-        return ResponseEntity.ok(results);
-    }
 }

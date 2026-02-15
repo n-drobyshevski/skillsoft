@@ -91,10 +91,14 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         TeamProfile teamProfile = null;
         if (teamId != null) {
             teamProfile = teamService.getTeamProfile(teamId).orElse(null);
+            if (teamProfile == null) {
+                log.info("Team {} not found or inactive — comparison will proceed without team context", teamId);
+            }
         }
 
-        int teamSize = teamProfile != null ? teamProfile.members().size() : 0;
-        Map<UUID, Double> teamCompetencySaturationById = teamProfile != null
+        boolean teamAvailable = teamProfile != null;
+        int teamSize = teamAvailable ? teamProfile.members().size() : 0;
+        Map<UUID, Double> teamCompetencySaturationById = teamAvailable
             ? teamProfile.competencySaturation()
             : Collections.emptyMap();
 
@@ -131,6 +135,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
             teamId,
             targetRole,
             teamSize,
+            teamAvailable,
             candidates,
             competencyComparison,
             gapCoverageMatrix,

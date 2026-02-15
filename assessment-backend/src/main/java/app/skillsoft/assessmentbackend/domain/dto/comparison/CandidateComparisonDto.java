@@ -15,6 +15,7 @@ public record CandidateComparisonDto(
     UUID teamId,
     String targetRole,
     int teamSize,
+    boolean teamAvailable,
     List<CandidateSummaryDto> candidates,
     List<CompetencyComparisonDto> competencyComparison,
     List<GapCoverageEntryDto> gapCoverageMatrix,
