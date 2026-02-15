@@ -105,6 +105,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/behavioral-indicators/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/questions/**").permitAll()
 
+                // Allow public read access for active templates catalog (used by server-side cache)
+                .requestMatchers(HttpMethod.GET, "/api/v1/tests/templates/active").permitAll()
+
                 // Allow public access for share link validation (anonymous access support)
                 .requestMatchers(HttpMethod.GET, "/api/v1/tests/templates/validate-link").permitAll()
 
