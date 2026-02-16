@@ -89,6 +89,7 @@ public class OverviewAssembler implements TestAssembler {
         // Use QuestionSelectionService for centralized selection logic
         // This applies:
         // - Psychometric validation (excludes RETIRED items)
+        // - Context neutrality filtering (OVERVIEW requires context-neutral items)
         // - WATERFALL distribution across indicators
         // - Difficulty preference with fallback
         // - Optional shuffling
@@ -96,7 +97,8 @@ public class OverviewAssembler implements TestAssembler {
                 competencyIds,
                 questionsPerIndicator,
                 preferredDifficulty,
-                shuffle
+                shuffle,
+                true // contextNeutralOnly: OVERVIEW assessments require context-neutral items
         );
 
         log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {})",

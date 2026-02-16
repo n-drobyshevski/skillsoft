@@ -170,28 +170,61 @@ class JobFitScoringStrategyTest {
     }
 
     /**
-     * Sets up the CompetencyBatchLoader and ScoreNormalizer mocks.
+     * Sets up all batch loader mocks for two-level aggregation (indicator -> competency).
+     *
+     * The implementation uses:
+     * 1. indicatorBatchLoader.loadIndicatorsForAnswers() - batch load indicators
+     * 2. indicatorBatchLoader.extractIndicatorIdSafe() - extract indicator ID from answer chain
+     * 3. indicatorBatchLoader.getFromCache() - look up indicator from preloaded cache
+     * 4. competencyBatchLoader.loadCompetenciesForAnswers() - batch load competencies
+     * 5. competencyBatchLoader.getFromCache() - look up competency from preloaded cache
+     * 6. scoreNormalizer.normalize() - normalize raw answer scores
+     * 7. onetService.getProfile() - load O*NET benchmarks
+     *
+     * Note: extractCompetencyIdSafe is no longer called by JobFitScoringStrategy
+     * (replaced by indicator-level aggregation with indicatorBatchLoader).
      */
     private void setupBatchLoaderMock(Map<UUID, Competency> competencyMap) {
+        // Competency batch loader mocks
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
             .thenReturn(competencyMap);
-
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenAnswer(invocation -> {
-                TestAnswer answer = invocation.getArgument(0);
-                if (answer == null || answer.getQuestion() == null
-                    || answer.getQuestion().getBehavioralIndicator() == null
-                    || answer.getQuestion().getBehavioralIndicator().getCompetency() == null) {
-                    return Optional.empty();
-                }
-                return Optional.of(answer.getQuestion().getBehavioralIndicator().getCompetency().getId());
-            });
 
         when(competencyBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, Competency> cache = invocation.getArgument(0);
-                UUID competencyId = invocation.getArgument(1);
-                return cache != null ? cache.get(competencyId) : null;
+                UUID id = invocation.getArgument(1);
+                return cache != null ? cache.get(id) : null;
+            });
+
+        // Indicator batch loader mocks - extract dynamically from the answer chain
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> map = new HashMap<>();
+                for (TestAnswer a : answers) {
+                    if (a != null && a.getQuestion() != null && a.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = a.getQuestion().getBehavioralIndicator();
+                        map.put(ind.getId(), ind);
+                    }
+                }
+                return map;
+            });
+
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID id = invocation.getArgument(1);
+                return cache != null ? cache.get(id) : null;
             });
 
         // Set up score normalizer to delegate to real normalization logic
@@ -212,17 +245,50 @@ class JobFitScoringStrategyTest {
                 }
                 return 0.0;
             });
+
+        // O*NET service mock - return empty profile by default
+        // Lenient because it's only called when blueprint has a valid SOC code
+        lenient().when(onetService.getProfile(anyString()))
+            .thenReturn(Optional.empty());
     }
 
     private void setupBatchLoaderMockWithEmptyCache(UUID competencyId) {
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
-            .thenReturn(Map.of());
+            .thenReturn(Map.of()); // Empty cache
 
-        when(competencyBatchLoader.extractCompetencyIdSafe(any(TestAnswer.class)))
-            .thenReturn(Optional.of(competencyId));
-
-        when(competencyBatchLoader.getFromCache(any(), eq(competencyId)))
+        when(competencyBatchLoader.getFromCache(any(), any()))
             .thenReturn(null);
+
+        // Indicator batch loader mocks - dynamically extract indicators
+        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+            .thenAnswer(invocation -> {
+                List<TestAnswer> answers = invocation.getArgument(0);
+                Map<UUID, BehavioralIndicator> map = new HashMap<>();
+                for (TestAnswer a : answers) {
+                    if (a != null && a.getQuestion() != null && a.getQuestion().getBehavioralIndicator() != null) {
+                        BehavioralIndicator ind = a.getQuestion().getBehavioralIndicator();
+                        map.put(ind.getId(), ind);
+                    }
+                }
+                return map;
+            });
+
+        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+            .thenAnswer(invocation -> {
+                TestAnswer answer = invocation.getArgument(0);
+                if (answer == null || answer.getQuestion() == null
+                    || answer.getQuestion().getBehavioralIndicator() == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
+            });
+
+        when(indicatorBatchLoader.getFromCache(any(), any()))
+            .thenAnswer(invocation -> {
+                Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
+                UUID id = invocation.getArgument(1);
+                return cache != null ? cache.get(id) : null;
+            });
 
         // Set up score normalizer
         when(scoreNormalizer.normalize(any(TestAnswer.class)))
@@ -240,6 +306,11 @@ class JobFitScoringStrategyTest {
                 }
                 return 0.0;
             });
+
+        // O*NET service mock - return empty profile by default
+        // Lenient because it's only called when blueprint has a valid SOC code
+        lenient().when(onetService.getProfile(anyString()))
+            .thenReturn(Optional.empty());
     }
 
     @Nested

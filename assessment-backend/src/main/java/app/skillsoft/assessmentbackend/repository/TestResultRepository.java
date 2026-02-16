@@ -410,6 +410,45 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
         """, nativeQuery = true)
     Double calculateCompetencyScoreSD(@Param("competencyId") String competencyId);
 
+    /**
+     * Count the number of results that have a score for a specific competency.
+     * Used by ConfidenceIntervalCalculator to determine sample size for SD estimation.
+     *
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @return Number of results containing this competency score
+     */
+    @Query(value = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT 1
+            FROM test_results tr
+            CROSS JOIN LATERAL jsonb_array_elements(tr.competency_scores) elem
+            WHERE tr.competency_scores IS NOT NULL
+            AND elem->>'competencyId' = :competencyId
+        ) sub
+        """, nativeQuery = true)
+    Long countCompetencyScoreSamples(@Param("competencyId") String competencyId);
+
+    /**
+     * Calculate standard deviation of percentage scores for a specific competency,
+     * regardless of sample size. Returns null only if no data exists.
+     * Used with countCompetencyScoreSamples() for bootstrap SD estimation.
+     *
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @return Population standard deviation, or null if no data
+     */
+    @Query(value = """
+        SELECT STDDEV_POP(score)
+        FROM (
+            SELECT (elem->>'percentage')::numeric AS score
+            FROM test_results tr
+            CROSS JOIN LATERAL jsonb_array_elements(tr.competency_scores) elem
+            WHERE tr.competency_scores IS NOT NULL
+            AND elem->>'competencyId' = :competencyId
+        ) sub
+        """, nativeQuery = true)
+    Double calculateCompetencyScoreSDUnbounded(@Param("competencyId") String competencyId);
+
     // ============================================
     // COMPARISON QUERIES
     // ============================================

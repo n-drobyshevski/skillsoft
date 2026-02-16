@@ -91,6 +91,24 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
 
         log.info("Starting scoring calculation in new transaction for session={}", sessionId);
 
+        // Idempotency check: return existing result if scoring was already completed for this session
+        Optional<TestResult> existingResult = resultRepository.findBySession_Id(sessionId);
+        if (existingResult.isPresent()) {
+            TestResult existing = existingResult.get();
+            if (existing.getStatus() == ResultStatus.COMPLETED) {
+                log.info("Scoring already completed for session={}, returning existing result={}",
+                        sessionId, existing.getId());
+                TestSession existingSession = sessionRepository.findByIdWithTemplate(sessionId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+                return toResultDto(existing, existingSession);
+            }
+            // If existing result is PENDING, delete it and re-score
+            log.info("Found PENDING result={} for session={}, deleting and re-scoring",
+                    existing.getId(), sessionId);
+            resultRepository.delete(existing);
+            resultRepository.flush();
+        }
+
         // Fetch session with template for scoring
         TestSession session = sessionRepository.findByIdWithTemplate(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
@@ -309,6 +327,10 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
      * Calculate the percentile rank for a given score based on historical results.
      * Percentile indicates what percentage of test takers scored below this score.
      *
+     * IMPORTANT: This method is called BEFORE the current result is saved to the database.
+     * Therefore, totalCount does NOT include the current result, and we use totalCount
+     * directly as the denominator (no need for totalCount - 1).
+     *
      * @param templateId The template ID to compare against
      * @param score The current score to calculate percentile for
      * @return Percentile rank (0-100), or 50 if no historical data exists
@@ -320,29 +342,21 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         }
 
         try {
-            // Get count of results below this score
+            // Get count of results below this score (current result NOT yet saved)
             long belowCount = resultRepository.countResultsBelowScore(templateId, score);
 
-            // Get total count of results for this template
+            // Get total count of existing results for this template (excludes current unsaved result)
             long totalCount = resultRepository.countResultsByTemplateId(templateId);
 
-            // Handle edge cases
+            // Handle edge case: no historical results yet (this is the first result)
             if (totalCount == 0) {
-                // First result for this template - default to 50th percentile
                 log.debug("First result for template {}, defaulting to 50th percentile", templateId);
                 return 50;
             }
 
-            if (totalCount == 1) {
-                // Only one result (the current one being saved)
-                // Return 50 as baseline
-                log.debug("Only one result for template {}, defaulting to 50th percentile", templateId);
-                return 50;
-            }
-
-            // Calculate percentile: (count below / total) * 100
-            // Using (totalCount - 1) to exclude the current result from denominator
-            double percentile = ((double) belowCount / (totalCount - 1)) * 100;
+            // Calculate percentile: (count below / total existing results) * 100
+            // totalCount is the correct denominator because the current result is not yet saved
+            double percentile = ((double) belowCount / totalCount) * 100;
 
             // Round and clamp to 0-100 range
             int result = (int) Math.round(percentile);

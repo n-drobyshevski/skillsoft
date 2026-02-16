@@ -287,6 +287,91 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
     }
 
     /**
+     * Waterfall distribution with context neutrality filtering.
+     * Only selects questions that pass the context neutrality check (GENERAL tag,
+     * UNIVERSAL tag, or no narrow domain tags).
+     *
+     * Used exclusively by OVERVIEW assessments for Competency Passport generation
+     * where construct validity requires context-neutral items.
+     */
+    private List<UUID> selectWithWaterfallContextNeutral(
+            List<UUID> indicatorIds,
+            int totalQuestions,
+            int questionsPerRound,
+            DifficultyLevel preferredDifficulty) {
+
+        List<UUID> selectedQuestions = new ArrayList<>();
+        Set<UUID> usedQuestions = new HashSet<>();
+        Map<UUID, List<UUID>> indicatorQuestionPool = new HashMap<>();
+        Map<UUID, Integer> indicatorCursors = new HashMap<>();
+
+        // Prepare context-neutral question pools for each indicator
+        for (UUID indicatorId : indicatorIds) {
+            List<UUID> pool = getContextNeutralQuestionPool(indicatorId, preferredDifficulty);
+            indicatorQuestionPool.put(indicatorId, pool);
+            indicatorCursors.put(indicatorId, 0);
+        }
+
+        int maxRounds = questionsPerRound > 0
+                ? (totalQuestions / indicatorIds.size() / questionsPerRound) + 1
+                : totalQuestions;
+
+        for (int round = 0; round < maxRounds && selectedQuestions.size() < totalQuestions; round++) {
+            for (UUID indicatorId : indicatorIds) {
+                if (selectedQuestions.size() >= totalQuestions) break;
+
+                List<UUID> pool = indicatorQuestionPool.get(indicatorId);
+                int cursor = indicatorCursors.get(indicatorId);
+                int questionsThisRound = 0;
+
+                while (cursor < pool.size() && questionsThisRound < Math.max(1, questionsPerRound)) {
+                    UUID questionId = pool.get(cursor);
+                    cursor++;
+
+                    if (!usedQuestions.contains(questionId)) {
+                        selectedQuestions.add(questionId);
+                        usedQuestions.add(questionId);
+                        questionsThisRound++;
+
+                        if (selectedQuestions.size() >= totalQuestions) break;
+                    }
+                }
+
+                indicatorCursors.put(indicatorId, cursor);
+            }
+        }
+
+        log.debug("Context-neutral waterfall selected {} questions across {} indicators",
+                selectedQuestions.size(), indicatorIds.size());
+
+        return selectedQuestions;
+    }
+
+    /**
+     * Get a pool of eligible, context-neutral question IDs for an indicator.
+     * Filters by validity AND context neutrality (GENERAL/UNIVERSAL tags only).
+     */
+    private List<UUID> getContextNeutralQuestionPool(UUID indicatorId, DifficultyLevel preferredDifficulty) {
+        List<AssessmentQuestion> candidates = questionRepository
+                .findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId);
+
+        // Filter by validity, then by context neutrality
+        List<AssessmentQuestion> eligible = filterByValidity(candidates);
+        eligible = filterByContextNeutrality(eligible);
+
+        if (preferredDifficulty != null) {
+            eligible = applyDifficultyPreferenceWithExposureControl(eligible, preferredDifficulty);
+        } else {
+            eligible = new ArrayList<>(eligible);
+            eligible.sort(Comparator.comparingInt(AssessmentQuestion::getExposureCount));
+        }
+
+        return eligible.stream()
+                .map(AssessmentQuestion::getId)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Priority-first distribution: fill highest-priority indicators first.
      *
      * Each indicator gets its full allocation before moving to the next.
@@ -424,18 +509,30 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
             int questionsPerIndicator,
             DifficultyLevel preferredDifficulty,
             boolean shuffle) {
+        return selectQuestionsForCompetencies(
+                competencyIds, questionsPerIndicator, preferredDifficulty, shuffle, false);
+    }
+
+    @Override
+    public List<UUID> selectQuestionsForCompetencies(
+            List<UUID> competencyIds,
+            int questionsPerIndicator,
+            DifficultyLevel preferredDifficulty,
+            boolean shuffle,
+            boolean contextNeutralOnly) {
 
         if (competencyIds == null || competencyIds.isEmpty()) {
             log.warn("No competency IDs provided");
             return List.of();
         }
 
-        log.info("Selecting questions for {} competencies ({} per indicator, difficulty: {})",
-                competencyIds.size(), questionsPerIndicator, preferredDifficulty);
+        log.info("Selecting questions for {} competencies ({} per indicator, difficulty: {}, contextNeutral: {})",
+                competencyIds.size(), questionsPerIndicator, preferredDifficulty, contextNeutralOnly);
 
-        // Gather all indicators from all competencies, sorted by weight
-        List<BehavioralIndicator> allIndicators = competencyIds.stream()
-                .flatMap(compId -> indicatorRepository.findByCompetencyId(compId).stream())
+        // Batch-load all indicators for all competencies in a single query (N+1 fix)
+        List<BehavioralIndicator> allIndicators = indicatorRepository
+                .findByCompetencyIdIn(new HashSet<>(competencyIds))
+                .stream()
                 .filter(BehavioralIndicator::isActive)
                 .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
                 .toList();
@@ -452,13 +549,25 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
         // Calculate total questions: indicators * questionsPerIndicator
         int totalQuestions = indicatorIds.size() * questionsPerIndicator;
 
-        List<UUID> selectedQuestions = selectQuestionsWithDistribution(
-                indicatorIds,
-                totalQuestions,
-                questionsPerIndicator,
-                DistributionStrategy.WATERFALL,
-                preferredDifficulty
-        );
+        List<UUID> selectedQuestions;
+        if (contextNeutralOnly) {
+            // For OVERVIEW assessments: apply context neutrality filtering in waterfall selection
+            selectedQuestions = selectWithWaterfallContextNeutral(
+                    indicatorIds, totalQuestions, questionsPerIndicator, preferredDifficulty);
+        } else {
+            selectedQuestions = selectQuestionsWithDistribution(
+                    indicatorIds,
+                    totalQuestions,
+                    questionsPerIndicator,
+                    DistributionStrategy.WATERFALL,
+                    preferredDifficulty
+            );
+        }
+
+        // Auto-track exposure for all selected questions
+        if (!selectedQuestions.isEmpty()) {
+            trackExposure(selectedQuestions);
+        }
 
         // Shuffle if requested (prevents clustering by competency)
         if (shuffle && !selectedQuestions.isEmpty()) {
@@ -647,10 +756,15 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
 
     /**
      * Increment exposure count for selected questions.
-     * Should be called after questions are finalized for a test assembly.
+     * Called automatically at the end of selectQuestionsForCompetencies() after
+     * questions are finalized for a test assembly.
+     *
+     * Uses @Transactional to override the class-level readOnly = true,
+     * since this method performs write operations.
      *
      * @param questionIds The IDs of questions selected for the test
      */
+    @Transactional
     public void trackExposure(List<UUID> questionIds) {
         if (questionIds == null || questionIds.isEmpty()) return;
 

@@ -154,6 +154,29 @@ public interface QuestionSelectionService {
             boolean shuffle
     );
 
+    /**
+     * Select questions for multiple competencies with waterfall distribution
+     * and optional context neutrality filtering.
+     *
+     * When contextNeutralOnly is true, only questions tagged as GENERAL/UNIVERSAL
+     * (or without narrow domain tags) are selected. This is critical for OVERVIEW
+     * assessments generating a Competency Passport with construct validity.
+     *
+     * @param competencyIds        List of competency UUIDs
+     * @param questionsPerIndicator Questions per indicator
+     * @param preferredDifficulty  Preferred difficulty (null for any)
+     * @param shuffle              Whether to shuffle the final selection
+     * @param contextNeutralOnly   If true, apply context neutrality filter
+     * @return List of selected question UUIDs
+     */
+    List<UUID> selectQuestionsForCompetencies(
+            List<UUID> competencyIds,
+            int questionsPerIndicator,
+            DifficultyLevel preferredDifficulty,
+            boolean shuffle,
+            boolean contextNeutralOnly
+    );
+
     // ========== FILTERING UTILITIES ==========
 
     /**

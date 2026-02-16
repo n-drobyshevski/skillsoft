@@ -22,7 +22,7 @@ import java.util.UUID;
 @DynamicUpdate
 public class Competency {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Column(name="name", nullable = false, unique = true)

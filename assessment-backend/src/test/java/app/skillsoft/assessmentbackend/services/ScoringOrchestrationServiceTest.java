@@ -11,6 +11,7 @@ import app.skillsoft.assessmentbackend.services.impl.ScoringOrchestrationService
 import app.skillsoft.assessmentbackend.services.scoring.ConfidenceIntervalCalculator;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
+import app.skillsoft.assessmentbackend.services.scoring.ResponseConsistencyAnalyzer;
 import app.skillsoft.assessmentbackend.services.scoring.SubscalePercentileCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -63,6 +64,9 @@ class ScoringOrchestrationServiceTest {
     @Mock
     private SubscalePercentileCalculator subscalePercentileCalculator;
 
+    @Mock
+    private ResponseConsistencyAnalyzer responseConsistencyAnalyzer;
+
     private ScoringOrchestrationServiceImpl scoringOrchestrationService;
 
     private UUID sessionId;
@@ -82,7 +86,8 @@ class ScoringOrchestrationServiceTest {
                 strategies,
                 eventPublisher,
                 confidenceIntervalCalculator,
-                subscalePercentileCalculator
+                subscalePercentileCalculator,
+                responseConsistencyAnalyzer
         );
 
         sessionId = UUID.randomUUID();
@@ -135,6 +140,10 @@ class ScoringOrchestrationServiceTest {
             // Mock percentile calculation
             when(resultRepository.countResultsBelowScore(eq(templateId), anyDouble())).thenReturn(5L);
             when(resultRepository.countResultsByTemplateId(templateId)).thenReturn(10L);
+
+            // Mock response consistency analyzer
+            when(responseConsistencyAnalyzer.analyze(anyList()))
+                .thenReturn(new ResponseConsistencyAnalyzer.ConsistencyResult(0.95, List.of(), 0.0, 0.0, 0.0));
 
             // When
             TestResultDto result = scoringOrchestrationService.calculateAndSaveResult(sessionId);
@@ -194,6 +203,10 @@ class ScoringOrchestrationServiceTest {
 
             when(resultRepository.countResultsByTemplateId(templateId)).thenReturn(0L);
 
+            // Mock response consistency analyzer
+            when(responseConsistencyAnalyzer.analyze(anyList()))
+                .thenReturn(new ResponseConsistencyAnalyzer.ConsistencyResult(1.0, List.of(), 0.0, 0.0, 0.0));
+
             // When
             TestResultDto result = scoringOrchestrationService.calculateAndSaveResult(sessionId);
 
@@ -228,6 +241,10 @@ class ScoringOrchestrationServiceTest {
                 return result;
             });
             when(resultRepository.countResultsByTemplateId(templateId)).thenReturn(0L);
+
+            // Mock response consistency analyzer
+            when(responseConsistencyAnalyzer.analyze(anyList()))
+                .thenReturn(new ResponseConsistencyAnalyzer.ConsistencyResult(0.95, List.of(), 0.0, 0.0, 0.0));
 
             // When
             TestResultDto result = scoringOrchestrationService.calculateAndSaveResult(sessionId);

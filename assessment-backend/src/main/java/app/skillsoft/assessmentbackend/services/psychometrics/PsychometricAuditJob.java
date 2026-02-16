@@ -67,9 +67,14 @@ public class PsychometricAuditJob {
     /**
      * Initialize item statistics on application startup.
      * Creates ItemStatistics records for any questions that don't have one yet.
+     *
+     * Note: This method is intentionally NOT @Transactional. The inner
+     * initializeNewQuestions() method manages its own transaction. If the inner
+     * transaction fails, we catch the exception here without the outer transaction
+     * being marked rollback-only, which previously caused context load failures
+     * (especially with H2 in integration tests).
      */
     @EventListener(ApplicationReadyEvent.class)
-    @Transactional
     public void onApplicationReady() {
         if (!psychometricsEnabled) {
             log.debug("Psychometric analysis is disabled, skipping startup initialization");

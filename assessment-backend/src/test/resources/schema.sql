@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS assessment_questions (
     metadata JSON,
     is_active BOOLEAN DEFAULT true,
     order_index INTEGER DEFAULT 1,
+    exposure_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     FOREIGN KEY (behavioral_indicator_id) REFERENCES behavioral_indicators(id)
 );
@@ -245,4 +246,95 @@ CREATE TABLE IF NOT EXISTS test_results (
     PRIMARY KEY (id),
     FOREIGN KEY (session_id) REFERENCES test_sessions(id),
     FOREIGN KEY (template_id) REFERENCES test_templates(id)
+);
+
+-- Create item_statistics table for psychometric tracking
+CREATE TABLE IF NOT EXISTS item_statistics (
+    id UUID NOT NULL,
+    question_id UUID NOT NULL UNIQUE,
+    difficulty_index DECIMAL(5,4),
+    discrimination_index DECIMAL(5,4),
+    distractor_efficiency JSON,
+    response_count INTEGER NOT NULL DEFAULT 0,
+    last_calculated_at TIMESTAMP,
+    validity_status VARCHAR(30) NOT NULL DEFAULT 'PROBATION',
+    difficulty_flag VARCHAR(30),
+    discrimination_flag VARCHAR(30),
+    previous_discrimination_index DECIMAL(5,4),
+    status_change_history JSON,
+    PRIMARY KEY (id),
+    FOREIGN KEY (question_id) REFERENCES assessment_questions(id)
+);
+
+-- Create competency_reliability table for Cronbach's Alpha metrics
+CREATE TABLE IF NOT EXISTS competency_reliability (
+    id UUID NOT NULL,
+    competency_id UUID NOT NULL UNIQUE,
+    cronbach_alpha DECIMAL(5,4),
+    sample_size INTEGER,
+    item_count INTEGER,
+    reliability_status VARCHAR(30),
+    alpha_if_deleted JSON,
+    last_calculated_at TIMESTAMP,
+    PRIMARY KEY (id),
+    FOREIGN KEY (competency_id) REFERENCES competencies(id)
+);
+
+-- Create big_five_reliability table for trait-level reliability tracking
+CREATE TABLE IF NOT EXISTS big_five_reliability (
+    id UUID NOT NULL,
+    trait VARCHAR(30) NOT NULL UNIQUE,
+    cronbach_alpha DECIMAL(5,4),
+    contributing_competencies INTEGER,
+    total_items INTEGER,
+    sample_size INTEGER,
+    reliability_status VARCHAR(30),
+    last_calculated_at TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+-- Create scoring_audit_logs table for scoring traceability
+CREATE TABLE IF NOT EXISTS scoring_audit_logs (
+    id UUID NOT NULL,
+    session_id UUID NOT NULL,
+    result_id UUID NOT NULL,
+    clerk_user_id VARCHAR(255),
+    template_id UUID NOT NULL,
+    goal VARCHAR(50) NOT NULL,
+    strategy_class VARCHAR(255) NOT NULL,
+    overall_score DOUBLE,
+    overall_percentage DOUBLE,
+    passed BOOLEAN,
+    percentile INTEGER,
+    indicator_weights JSON,
+    competency_breakdown JSON,
+    config_snapshot JSON,
+    total_answers INTEGER,
+    answered_count INTEGER,
+    skipped_count INTEGER,
+    scoring_duration_ms BIGINT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+-- Create test_activity_events table for audit trail
+CREATE TABLE IF NOT EXISTS test_activity_events (
+    id UUID NOT NULL,
+    session_id UUID NOT NULL,
+    event_type VARCHAR(30) NOT NULL,
+    clerk_user_id VARCHAR(100) NOT NULL,
+    template_id UUID NOT NULL,
+    event_timestamp TIMESTAMP NOT NULL,
+    metadata JSON,
+    PRIMARY KEY (id)
+);
+
+-- Create anonymous_session_rate_limits table for rate limiting
+CREATE TABLE IF NOT EXISTS anonymous_session_rate_limits (
+    id UUID NOT NULL,
+    ip_address VARCHAR(45) NOT NULL UNIQUE,
+    session_count INTEGER NOT NULL DEFAULT 1,
+    window_start TIMESTAMP NOT NULL,
+    blocked_until TIMESTAMP,
+    PRIMARY KEY (id)
 );

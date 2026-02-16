@@ -157,7 +157,7 @@ class OverviewAssemblerTest {
 
             List<UUID> expectedQuestions = List.of(questionId1, questionId2, questionId3);
             when(questionSelectionService.selectQuestionsForCompetencies(
-                anyList(), anyInt(), any(DifficultyLevel.class), anyBoolean()))
+                anyList(), anyInt(), any(DifficultyLevel.class), anyBoolean(), anyBoolean()))
                 .thenReturn(expectedQuestions);
 
             // When
@@ -169,7 +169,8 @@ class OverviewAssemblerTest {
                 List.of(competencyId1),
                 5,
                 DifficultyLevel.ADVANCED,
-                false
+                false,
+                true // contextNeutralOnly is always true for OVERVIEW
             );
         }
 
@@ -181,7 +182,7 @@ class OverviewAssemblerTest {
             blueprint.setQuestionsPerIndicator(0); // Will trigger default
 
             when(questionSelectionService.selectQuestionsForCompetencies(
-                anyList(), anyInt(), any(), anyBoolean()))
+                anyList(), anyInt(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of(questionId1));
 
             // When
@@ -192,7 +193,8 @@ class OverviewAssemblerTest {
                 anyList(),
                 eq(3),
                 any(),
-                anyBoolean()
+                anyBoolean(),
+                eq(true) // contextNeutralOnly
             );
         }
 
@@ -204,7 +206,7 @@ class OverviewAssemblerTest {
             blueprint.setPreferredDifficulty(null);
 
             when(questionSelectionService.selectQuestionsForCompetencies(
-                anyList(), anyInt(), any(), anyBoolean()))
+                anyList(), anyInt(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of(questionId1));
 
             // When
@@ -215,7 +217,8 @@ class OverviewAssemblerTest {
                 anyList(),
                 anyInt(),
                 eq(DifficultyLevel.INTERMEDIATE),
-                anyBoolean()
+                anyBoolean(),
+                eq(true) // contextNeutralOnly
             );
         }
 
@@ -227,7 +230,7 @@ class OverviewAssemblerTest {
             blueprint.setShuffleQuestions(true);
 
             when(questionSelectionService.selectQuestionsForCompetencies(
-                anyList(), anyInt(), any(), anyBoolean()))
+                anyList(), anyInt(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of(questionId1));
 
             // When
@@ -238,7 +241,8 @@ class OverviewAssemblerTest {
                 anyList(),
                 anyInt(),
                 any(),
-                eq(true)
+                eq(true),
+                eq(true) // contextNeutralOnly
             );
         }
 
@@ -249,7 +253,7 @@ class OverviewAssemblerTest {
             OverviewBlueprint blueprint = createBlueprint(competencyId1, competencyId2);
 
             when(questionSelectionService.selectQuestionsForCompetencies(
-                anyList(), anyInt(), any(), anyBoolean()))
+                anyList(), anyInt(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of(questionId1, questionId2, questionId3));
 
             // When
@@ -261,7 +265,8 @@ class OverviewAssemblerTest {
                 eq(List.of(competencyId1, competencyId2)),
                 anyInt(),
                 any(),
-                anyBoolean()
+                anyBoolean(),
+                eq(true) // contextNeutralOnly
             );
         }
     }
@@ -276,7 +281,7 @@ class OverviewAssemblerTest {
             // Given
             OverviewBlueprint blueprint = createBlueprint(competencyId1);
             when(questionSelectionService.selectQuestionsForCompetencies(
-                anyList(), anyInt(), any(), anyBoolean()))
+                anyList(), anyInt(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of());
 
             // When
@@ -293,7 +298,7 @@ class OverviewAssemblerTest {
             OverviewBlueprint blueprint = createBlueprint(competencyId1);
             List<UUID> expectedQuestions = List.of(questionId1, questionId2, questionId3);
             when(questionSelectionService.selectQuestionsForCompetencies(
-                anyList(), anyInt(), any(), anyBoolean()))
+                anyList(), anyInt(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(expectedQuestions);
 
             // When
