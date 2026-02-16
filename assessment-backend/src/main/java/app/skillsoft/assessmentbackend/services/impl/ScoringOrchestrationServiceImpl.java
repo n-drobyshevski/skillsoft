@@ -158,9 +158,21 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         // Set Big Five profile (only populated for TEAM_FIT goal)
         result.setBigFiveProfile(scoringResult.getBigFiveProfile());
 
-        // Set extended metrics (e.g., TeamFitMetrics for TEAM_FIT goal)
+        // Set extended metrics (e.g., TeamFitMetrics for TEAM_FIT goal, confidence for JOB_FIT)
+        Map<String, Object> extendedMetrics = new LinkedHashMap<>();
+
         if (scoringResult.getTeamFitMetrics() != null) {
-            Map<String, Object> extendedMetrics = convertTeamFitMetricsToMap(scoringResult.getTeamFitMetrics());
+            extendedMetrics.putAll(convertTeamFitMetricsToMap(scoringResult.getTeamFitMetrics()));
+        }
+
+        // Propagate decision confidence metrics (populated by JOB_FIT scoring)
+        if (scoringResult.getDecisionConfidence() != null) {
+            extendedMetrics.put("decisionConfidence", scoringResult.getDecisionConfidence());
+            extendedMetrics.put("confidenceLevel", scoringResult.getConfidenceLevel());
+            extendedMetrics.put("confidenceMessage", scoringResult.getConfidenceMessage());
+        }
+
+        if (!extendedMetrics.isEmpty()) {
             result.setExtendedMetrics(extendedMetrics);
         }
 

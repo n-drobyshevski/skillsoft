@@ -232,10 +232,44 @@ public class JobFitScoringStrategy implements ScoringStrategy {
         boolean meetsJobRequirements = (overallPercentage / 100.0) >= effectiveThreshold;
         result.setPassed(meetsJobRequirements);
 
-        log.info("Job Fit assessment {} (score: {}%, required: {}%)",
+        // S2: Calculate decision confidence score
+        // Factor 1 - Margin: how far the score is from the threshold (>15% away = max confidence)
+        double margin = Math.abs((overallPercentage / 100.0) - effectiveThreshold);
+        double marginFactor = Math.min(1.0, margin / 0.15);
+
+        // Factor 2 - Evidence: proportion of competencies with sufficient evidence
+        long sufficientCount = finalScores.stream()
+            .filter(s -> s.getInsufficientEvidence() == null || !s.getInsufficientEvidence())
+            .count();
+        double evidenceFactor = competencyCount > 0 ? (double) sufficientCount / competencyCount : 0.0;
+
+        // Factor 3 - Coverage: how many competencies were assessed vs benchmarks
+        double coverageFactor = benchmarkLookup.isEmpty()
+            ? 1.0
+            : Math.min(1.0, (double) competencyCount / benchmarkLookup.size());
+
+        // Weighted combination: margin 50%, evidence 30%, coverage 20%
+        double confidence = (marginFactor * 0.5) + (evidenceFactor * 0.3) + (coverageFactor * 0.2);
+        confidence = Math.round(confidence * 100.0) / 100.0; // Round to 2 decimal places
+
+        String confidenceLevel = confidence >= 0.7 ? "HIGH" : confidence >= 0.4 ? "MEDIUM" : "LOW";
+
+        result.setDecisionConfidence(confidence);
+        result.setConfidenceLevel(confidenceLevel);
+
+        // S7: Generate human-readable confidence message
+        long insufficientCount = competencyCount - sufficientCount;
+        String confidenceMessage = generateConfidenceMessage(
+            meetsJobRequirements, confidence, confidenceLevel,
+            sufficientCount, competencyCount, insufficientCount, margin);
+        result.setConfidenceMessage(confidenceMessage);
+
+        log.info("Job Fit assessment {} (score: {}%, required: {}%, confidence: {} [{}])",
                 meetsJobRequirements ? "PASSED" : "FAILED",
                 String.format("%.2f", overallPercentage),
-                String.format("%.2f", effectiveThreshold * 100));
+                String.format("%.2f", effectiveThreshold * 100),
+                String.format("%.2f", confidence),
+                confidenceLevel);
 
         return result;
     }
@@ -295,6 +329,43 @@ public class JobFitScoringStrategy implements ScoringStrategy {
         }
 
         return null;
+    }
+
+    /**
+     * Generate a human-readable confidence message for hiring managers.
+     *
+     * The message varies based on the confidence level (HIGH/MEDIUM/LOW)
+     * and the pass/fail outcome, providing actionable context for decision-making.
+     *
+     * @param passed            Whether the candidate passed the assessment
+     * @param confidence        Raw confidence score (0.0-1.0)
+     * @param confidenceLevel   "HIGH", "MEDIUM", or "LOW"
+     * @param sufficientCount   Number of competencies with sufficient evidence
+     * @param competencyCount   Total number of competencies assessed
+     * @param insufficientCount Number of competencies lacking sufficient evidence
+     * @param margin            Distance from the pass/fail threshold
+     * @return Human-readable confidence message
+     */
+    private String generateConfidenceMessage(
+            boolean passed, double confidence, String confidenceLevel,
+            long sufficientCount, int competencyCount,
+            long insufficientCount, double margin) {
+
+        return switch (confidenceLevel) {
+            case "HIGH" -> passed
+                ? String.format("High confidence: Candidate clearly meets job requirements across %d competencies.",
+                    sufficientCount)
+                : String.format("High confidence: Candidate does not meet the minimum requirements. Key gaps identified in %d areas.",
+                    insufficientCount > 0 ? insufficientCount : competencyCount);
+            case "MEDIUM" -> passed
+                ? "Moderate confidence: Candidate meets requirements but results are close to the threshold."
+                : "Moderate confidence: Candidate falls slightly below requirements. Consider retesting in gap areas.";
+            case "LOW" -> passed
+                ? String.format("Low confidence: Candidate appears to meet requirements but evidence is limited (%d competencies lack sufficient data).",
+                    insufficientCount)
+                : "Low confidence: Insufficient evidence to make a definitive assessment. Recommend full retest.";
+            default -> String.format("Decision confidence: %.0f%%", confidence * 100);
+        };
     }
 
     @Override

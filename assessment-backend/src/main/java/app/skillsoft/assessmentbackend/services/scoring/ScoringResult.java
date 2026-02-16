@@ -21,6 +21,30 @@ public class ScoringResult {
     private List<CompetencyScoreDto> competencyScores = new ArrayList<>();
 
     /**
+     * Decision confidence score (0.0-1.0) indicating how confident the system
+     * is in the pass/fail decision. Only populated for JOB_FIT goal.
+     *
+     * Computed from three weighted factors:
+     * - Margin factor (50%): distance from pass/fail threshold
+     * - Evidence factor (30%): proportion of competencies with sufficient evidence
+     * - Coverage factor (20%): competencies assessed vs benchmarks required
+     */
+    private Double decisionConfidence;
+
+    /**
+     * Human-readable confidence level: "HIGH", "MEDIUM", or "LOW".
+     * Derived from decisionConfidence thresholds (>=0.7, >=0.4, <0.4).
+     */
+    private String confidenceLevel;
+
+    /**
+     * Human-readable explanation of the confidence assessment.
+     * Provides context-specific messaging for hiring managers based on
+     * the confidence level and pass/fail outcome.
+     */
+    private String confidenceMessage;
+
+    /**
      * Big Five personality profile (only populated for TEAM_FIT goal).
      * Maps trait names (e.g., "Openness", "Conscientiousness") to percentage scores (0-100).
      */
@@ -81,6 +105,30 @@ public class ScoringResult {
     
     public void setCompetencyScores(List<CompetencyScoreDto> competencyScores) {
         this.competencyScores = competencyScores;
+    }
+
+    public Double getDecisionConfidence() {
+        return decisionConfidence;
+    }
+
+    public void setDecisionConfidence(Double decisionConfidence) {
+        this.decisionConfidence = decisionConfidence;
+    }
+
+    public String getConfidenceLevel() {
+        return confidenceLevel;
+    }
+
+    public void setConfidenceLevel(String confidenceLevel) {
+        this.confidenceLevel = confidenceLevel;
+    }
+
+    public String getConfidenceMessage() {
+        return confidenceMessage;
+    }
+
+    public void setConfidenceMessage(String confidenceMessage) {
+        this.confidenceMessage = confidenceMessage;
     }
 
     public Map<String, Double> getBigFiveProfile() {

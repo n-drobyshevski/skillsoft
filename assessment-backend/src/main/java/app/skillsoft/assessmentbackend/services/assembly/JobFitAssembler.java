@@ -194,7 +194,21 @@ public class JobFitAssembler implements TestAssembler {
 
             // Look up candidate's existing score for this competency
             // Default to 0.0 if no passport or competency not assessed
-            var candidateScore = passportScoresByName.getOrDefault(competencyName, 0.0);
+            Double candidateScoreOrNull = passportScoresByName.get(competencyName);
+
+            // Fuzzy fallback: if exact match fails, try token-based similarity matching
+            if (candidateScoreOrNull == null && !passportScoresByName.isEmpty()) {
+                Optional<String> fuzzyMatch = CompetencyNameMatcher.findBestMatch(
+                    competencyName, passportScoresByName.keySet());
+                if (fuzzyMatch.isPresent()) {
+                    log.warn("Fuzzy match used for passport lookup: benchmark competency '{}' matched to passport key '{}'. " +
+                             "Consider aligning competency names for exact matching.",
+                        competencyName, fuzzyMatch.get());
+                    candidateScoreOrNull = passportScoresByName.get(fuzzyMatch.get());
+                }
+            }
+
+            var candidateScore = candidateScoreOrNull != null ? candidateScoreOrNull : 0.0;
 
             // Calculate gap: how much the candidate falls short of the benchmark
             var gap = Math.max(0.0, benchmark - candidateScore);
@@ -414,6 +428,9 @@ public class JobFitAssembler implements TestAssembler {
      * Find behavioral indicators matching a competency name using preloaded data.
      * Matches by competency name or O*NET standard code mappings.
      * Uses preloaded lookup maps to avoid N+1 queries.
+     *
+     * If exact match (case-insensitive) fails, falls back to fuzzy matching
+     * using token-based Jaccard similarity via CompetencyNameMatcher.
      */
     private List<BehavioralIndicator> findIndicatorsForCompetencyNameCached(
             String competencyName,
@@ -423,8 +440,21 @@ public class JobFitAssembler implements TestAssembler {
         List<Competency> matchingCompetencies = competencyByName.getOrDefault(
             competencyName.toLowerCase(), List.of());
 
+        // Fuzzy fallback: if exact match fails, try token-based similarity matching
         if (matchingCompetencies.isEmpty()) {
-            log.debug("No competency found matching name: {}", competencyName);
+            Optional<String> fuzzyMatch = CompetencyNameMatcher.findBestMatch(
+                competencyName, competencyByName.keySet());
+
+            if (fuzzyMatch.isPresent()) {
+                log.warn("Fuzzy match used: O*NET competency '{}' matched to internal competency key '{}'. " +
+                         "Consider aligning competency names for exact matching.",
+                    competencyName, fuzzyMatch.get());
+                matchingCompetencies = competencyByName.getOrDefault(fuzzyMatch.get(), List.of());
+            }
+        }
+
+        if (matchingCompetencies.isEmpty()) {
+            log.debug("No competency found matching name (exact or fuzzy): {}", competencyName);
             return List.of();
         }
 
