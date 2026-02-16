@@ -5,6 +5,7 @@ import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
@@ -52,6 +53,9 @@ class JobFitScoringStrategyTest {
     @Mock
     private ScoreNormalizer scoreNormalizer;
 
+    @Mock
+    private OnetService onetService;
+
     private ScoringConfiguration scoringConfig;
     private JobFitScoringStrategy scoringStrategy;
 
@@ -72,7 +76,8 @@ class JobFitScoringStrategyTest {
                 competencyBatchLoader,
                 indicatorBatchLoader,
                 scoringConfig,
-                scoreNormalizer
+                scoreNormalizer,
+                onetService
         );
 
         // Set up UUIDs

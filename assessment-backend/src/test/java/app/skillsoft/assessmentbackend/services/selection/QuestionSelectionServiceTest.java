@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.services.selection;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.ItemStatisticsRepository;
 import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +51,9 @@ class QuestionSelectionServiceTest {
 
     @Mock
     private PsychometricBlueprintValidator psychometricValidator;
+
+    @Mock
+    private ItemStatisticsRepository itemStatisticsRepository;
 
     @InjectMocks
     private QuestionSelectionServiceImpl service;

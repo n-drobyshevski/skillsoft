@@ -49,9 +49,19 @@ public class JobFitAssembler implements TestAssembler {
     private static final double SIGNIFICANT_GAP_THRESHOLD = 0.2;
 
     /**
-     * Default questions per competency gap area.
+     * Minimum questions allocated per competency gap area.
      */
-    private static final int DEFAULT_QUESTIONS_PER_GAP = 5;
+    private static final int MIN_QUESTIONS_PER_GAP = 2;
+
+    /**
+     * Maximum questions allocated per competency gap area.
+     */
+    private static final int MAX_QUESTIONS_PER_GAP = 8;
+
+    /**
+     * Maximum total questions for a single Job Fit assessment.
+     */
+    private static final int MAX_TOTAL_QUESTIONS = 50;
 
     @Override
     public AssessmentGoal getSupportedGoal() {
@@ -302,10 +312,8 @@ public class JobFitAssembler implements TestAssembler {
             .toList();
 
         for (var gapInfo : sortedGaps) {
-            // Determine target difficulty based on gap significance
-            var targetDifficulty = gapInfo.isSignificant()
-                ? DifficultyLevel.ADVANCED
-                : DifficultyLevel.INTERMEDIATE;
+            // Determine target difficulty using graduated mapping based on gap magnitude
+            var targetDifficulty = mapGapToDifficulty(gapInfo.gap(), strictnessLevel);
 
             // Find competency and its indicators by name using preloaded data
             var indicatorsForGap = findIndicatorsForCompetencyNameCached(
@@ -324,10 +332,20 @@ public class JobFitAssembler implements TestAssembler {
             return List.of();
         }
 
-        // Calculate total questions based on gap count
+        // Pre-compute per-indicator allocation based on gap magnitude
+        // questionsForGap = MIN + (gap * (MAX - MIN)), clamped to [MIN, MAX]
+        Map<UUID, Integer> indicatorAllocations = new LinkedHashMap<>();
+        for (var entry : indicatorWeights.entrySet()) {
+            double gap = entry.getValue();
+            int allocation = (int) Math.round(MIN_QUESTIONS_PER_GAP + gap * (MAX_QUESTIONS_PER_GAP - MIN_QUESTIONS_PER_GAP));
+            allocation = Math.max(MIN_QUESTIONS_PER_GAP, Math.min(MAX_QUESTIONS_PER_GAP, allocation));
+            indicatorAllocations.put(entry.getKey(), allocation);
+        }
+
+        // Total questions = sum of per-indicator allocations, capped at MAX_TOTAL_QUESTIONS
         int totalQuestions = Math.min(
-            gapAnalysis.size() * DEFAULT_QUESTIONS_PER_GAP,
-            50  // Cap at 50 questions for reasonable test length
+            indicatorAllocations.values().stream().mapToInt(Integer::intValue).sum(),
+            MAX_TOTAL_QUESTIONS
         );
 
         // Select questions with weighted distribution
@@ -345,10 +363,9 @@ public class JobFitAssembler implements TestAssembler {
             if (selectedQuestions.size() >= totalQuestions) break;
 
             DifficultyLevel difficulty = indicatorDifficulties.get(indicatorId);
-            double weight = indicatorWeights.get(indicatorId);
 
-            // Questions per indicator proportional to weight
-            int questionsForIndicator = Math.max(1, (int) Math.round(weight * DEFAULT_QUESTIONS_PER_GAP));
+            // Use pre-computed per-indicator allocation instead of flat DEFAULT
+            int questionsForIndicator = indicatorAllocations.getOrDefault(indicatorId, MIN_QUESTIONS_PER_GAP);
             questionsForIndicator = Math.min(questionsForIndicator, totalQuestions - selectedQuestions.size());
 
             List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
@@ -415,6 +432,33 @@ public class JobFitAssembler implements TestAssembler {
             .flatMap(c -> indicatorsByCompetencyId.getOrDefault(c.getId(), List.of()).stream())
             .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
             .collect(Collectors.toList());
+    }
+
+    /**
+     * Map gap magnitude to a DifficultyLevel using graduated thresholds.
+     *
+     * Higher gaps warrant more discriminating (harder) questions:
+     * - gap >= 0.8: EXPERT (massive gap, need most discriminating items)
+     * - gap >= 0.5: ADVANCED
+     * - gap >= 0.2: INTERMEDIATE
+     * - gap < 0.2: FOUNDATIONAL (small/nearly-met gap, basic verification)
+     *
+     * Higher strictnessLevel shifts all thresholds down, making selection harder.
+     * At strictnessLevel=0, thresholds are nominal. At strictnessLevel=100,
+     * thresholds are halved (e.g., gap >= 0.4 triggers EXPERT instead of 0.8).
+     *
+     * @param gap The gap magnitude (0.0 - 1.0+)
+     * @param strictnessLevel Strictness level (0-100)
+     * @return The target DifficultyLevel for question selection
+     */
+    private DifficultyLevel mapGapToDifficulty(double gap, int strictnessLevel) {
+        // Strictness factor: 1.0 at strictness=0, 0.5 at strictness=100
+        double strictnessFactor = 1.0 - (strictnessLevel / 200.0);
+
+        if (gap >= 0.8 * strictnessFactor) return DifficultyLevel.EXPERT;
+        if (gap >= 0.5 * strictnessFactor) return DifficultyLevel.ADVANCED;
+        if (gap >= 0.2 * strictnessFactor) return DifficultyLevel.INTERMEDIATE;
+        return DifficultyLevel.FOUNDATIONAL;
     }
 
     /**

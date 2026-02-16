@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -108,6 +109,13 @@ public interface ItemStatisticsRepository extends JpaRepository<ItemStatistics, 
         AND i.validityStatus = 'PROBATION'
         """)
     List<ItemStatistics> findProbationByIndicatorId(@Param("indicatorId") UUID indicatorId);
+
+    /**
+     * Batch-load statistics for multiple questions at once (avoids N+1 queries).
+     * Used by quality-aware question selection.
+     */
+    @Query("SELECT i FROM ItemStatistics i WHERE i.question.id IN :questionIds")
+    List<ItemStatistics> findByQuestionIdIn(@Param("questionIds") Collection<UUID> questionIds);
 
     /**
      * Check if statistics exist for a question.

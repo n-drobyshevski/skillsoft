@@ -19,6 +19,7 @@ public class CompetencyScoreDto {
     private Integer questionsAnswered;
     private Integer questionsCorrect;
     private String onetCode; // O*NET code for Big Five projection
+    private Double benchmarkScore; // O*NET benchmark score for this competency (if available)
     private String escoUri;  // ESCO URI for skill normalization (Team Fit weighting)
     private String bigFiveCategory; // Big Five personality trait mapping (e.g., CONSCIENTIOUSNESS)
     private List<IndicatorScoreDto> indicatorScores; // Nested indicator breakdown
@@ -112,6 +113,14 @@ public class CompetencyScoreDto {
 
     public void setOnetCode(String onetCode) {
         this.onetCode = onetCode;
+    }
+
+    public Double getBenchmarkScore() {
+        return benchmarkScore;
+    }
+
+    public void setBenchmarkScore(Double benchmarkScore) {
+        this.benchmarkScore = benchmarkScore;
     }
 
     public String getEscoUri() {

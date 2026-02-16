@@ -3,15 +3,18 @@ package app.skillsoft.assessmentbackend.services.selection;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import app.skillsoft.assessmentbackend.domain.entities.ItemStatistics;
 import app.skillsoft.assessmentbackend.domain.entities.ItemValidityStatus;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.ItemStatisticsRepository;
 import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -39,14 +42,17 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
     private final AssessmentQuestionRepository questionRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
     private final PsychometricBlueprintValidator psychometricValidator;
+    private final ItemStatisticsRepository itemStatisticsRepository;
 
     public QuestionSelectionServiceImpl(
             AssessmentQuestionRepository questionRepository,
             BehavioralIndicatorRepository indicatorRepository,
-            PsychometricBlueprintValidator psychometricValidator) {
+            PsychometricBlueprintValidator psychometricValidator,
+            ItemStatisticsRepository itemStatisticsRepository) {
         this.questionRepository = questionRepository;
         this.indicatorRepository = indicatorRepository;
         this.psychometricValidator = psychometricValidator;
+        this.itemStatisticsRepository = itemStatisticsRepository;
     }
 
     // ========== SINGLE INDICATOR SELECTION ==========
@@ -592,21 +598,51 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
     }
 
     /**
-     * Apply difficulty preference with exposure control.
-     * Questions are sorted by: (1) difficulty priority, (2) exposure count (ascending).
-     * At equal difficulty and exposure, order is randomized.
+     * Apply difficulty preference with exposure control and quality-aware sorting.
+     * Questions are sorted by:
+     *   (1) difficulty priority (exact match first, then adjacent)
+     *   (2) discrimination index DESC (prefer high-discrimination items)
+     *   (3) exposure count ASC (prefer less-exposed items)
+     *
+     * Batch-loads ItemStatistics to avoid N+1 queries when sorting by discrimination.
      */
     private List<AssessmentQuestion> applyDifficultyPreferenceWithExposureControl(
             List<AssessmentQuestion> questions, DifficultyLevel preferred) {
 
         if (questions == null || questions.isEmpty()) return List.of();
 
+        // Batch-load item statistics for discrimination index sorting
+        Set<UUID> questionIds = questions.stream()
+                .map(AssessmentQuestion::getId)
+                .collect(Collectors.toSet());
+        Map<UUID, BigDecimal> discriminationByQuestionId = loadDiscriminationIndex(questionIds);
+
         return questions.stream()
                 .sorted(Comparator
                         .comparingInt((AssessmentQuestion q) ->
                                 getDifficultyPriority(q.getDifficultyLevel(), preferred))
+                        .thenComparing((AssessmentQuestion q) ->
+                                discriminationByQuestionId.getOrDefault(q.getId(), BigDecimal.ZERO),
+                                Comparator.reverseOrder())
                         .thenComparingInt(AssessmentQuestion::getExposureCount))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Batch-load discrimination index values for a set of question IDs.
+     * Returns a map of questionId -> discriminationIndex (defaults to ZERO if no stats).
+     */
+    private Map<UUID, BigDecimal> loadDiscriminationIndex(Set<UUID> questionIds) {
+        if (questionIds.isEmpty()) return Map.of();
+
+        List<ItemStatistics> statsList = itemStatisticsRepository.findByQuestionIdIn(questionIds);
+        return statsList.stream()
+                .filter(s -> s.getDiscriminationIndex() != null)
+                .collect(Collectors.toMap(
+                        ItemStatistics::getQuestionId,
+                        ItemStatistics::getDiscriminationIndex,
+                        (a, b) -> a  // in case of duplicates, keep first
+                ));
     }
 
     /**

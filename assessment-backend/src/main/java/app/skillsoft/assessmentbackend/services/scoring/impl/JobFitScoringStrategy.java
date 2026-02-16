@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
@@ -46,16 +47,19 @@ public class JobFitScoringStrategy implements ScoringStrategy {
     private final IndicatorBatchLoader indicatorBatchLoader;
     private final ScoringConfiguration scoringConfig;
     private final ScoreNormalizer scoreNormalizer;
+    private final OnetService onetService;
 
     public JobFitScoringStrategy(
             CompetencyBatchLoader competencyBatchLoader,
             IndicatorBatchLoader indicatorBatchLoader,
             ScoringConfiguration scoringConfig,
-            ScoreNormalizer scoreNormalizer) {
+            ScoreNormalizer scoreNormalizer,
+            OnetService onetService) {
         this.competencyBatchLoader = competencyBatchLoader;
         this.indicatorBatchLoader = indicatorBatchLoader;
         this.scoringConfig = scoringConfig;
         this.scoreNormalizer = scoreNormalizer;
+        this.onetService = onetService;
     }
 
     @Override
@@ -69,6 +73,9 @@ public class JobFitScoringStrategy implements ScoringStrategy {
         int strictnessLevel = blueprint != null ? blueprint.getStrictnessLevel() : 50;
 
         log.debug("Job Fit parameters - O*NET SOC: {}, Strictness: {}", onetSocCode, strictnessLevel);
+
+        // S1: Load O*NET benchmark lookup for propagation to CompetencyScoreDto
+        Map<String, Double> benchmarkLookup = buildBenchmarkLookup(onetSocCode);
 
         // Batch load all competencies and indicators upfront to prevent N+1 queries
         Map<UUID, Competency> competencyCache = competencyBatchLoader.loadCompetenciesForAnswers(answers);
@@ -154,6 +161,15 @@ public class JobFitScoringStrategy implements ScoringStrategy {
             scoreDto.setQuestionsAnswered(compAgg.getQuestionCount());
             scoreDto.setQuestionsCorrect(questionsCorrect);
             scoreDto.setOnetCode(onetCode);
+
+            // S1: Propagate O*NET benchmark to DTO
+            if (onetSocCode != null && !benchmarkLookup.isEmpty()) {
+                Double benchmark = benchmarkLookup.get(competencyName);
+                if (benchmark != null) {
+                    scoreDto.setBenchmarkScore(benchmark * 20); // Convert 1-5 scale to 0-100 percentage
+                }
+            }
+
             scoreDto.setIndicatorScores(compAgg.getIndicatorScores());
 
             // Check minimum evidence threshold
@@ -222,6 +238,26 @@ public class JobFitScoringStrategy implements ScoringStrategy {
                 String.format("%.2f", effectiveThreshold * 100));
 
         return result;
+    }
+
+    /**
+     * Build a benchmark lookup map from competency name to O*NET benchmark value.
+     * Returns an empty map if the SOC code is null or no profile is found.
+     *
+     * @param onetSocCode The O*NET Standard Occupational Classification code
+     * @return Map of competency name to benchmark score (1-5 scale)
+     */
+    private Map<String, Double> buildBenchmarkLookup(String onetSocCode) {
+        if (onetSocCode == null || onetSocCode.isBlank()) {
+            return Map.of();
+        }
+
+        return onetService.getProfile(onetSocCode)
+                .map(OnetService.OnetProfile::benchmarks)
+                .orElseGet(() -> {
+                    log.debug("No O*NET profile found for SOC code: {} - skipping benchmark propagation", onetSocCode);
+                    return Map.of();
+                });
     }
 
     /**
