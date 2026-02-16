@@ -45,6 +45,24 @@ public class ScoringResult {
     private String confidenceMessage;
 
     /**
+     * Response consistency score (0.0-1.0) indicating how consistent
+     * the candidate's response patterns were across the assessment.
+     * Populated for all assessment goals by ResponseConsistencyAnalyzer.
+     *
+     * Computed from three weighted factors:
+     * - Speed anomaly rate (30%): proportion of unusually fast responses
+     * - Straight-lining rate (30%): proportion of repeated Likert values
+     * - Intra-competency variance factor (40%): normal vs abnormal variance within competencies
+     */
+    private Double consistencyScore;
+
+    /**
+     * Human-readable flags describing response consistency concerns.
+     * Empty list if no issues detected. Populated for all assessment goals.
+     */
+    private List<String> consistencyFlags;
+
+    /**
      * Big Five personality profile (only populated for TEAM_FIT goal).
      * Maps trait names (e.g., "Openness", "Conscientiousness") to percentage scores (0-100).
      */
@@ -129,6 +147,22 @@ public class ScoringResult {
 
     public void setConfidenceMessage(String confidenceMessage) {
         this.confidenceMessage = confidenceMessage;
+    }
+
+    public Double getConsistencyScore() {
+        return consistencyScore;
+    }
+
+    public void setConsistencyScore(Double consistencyScore) {
+        this.consistencyScore = consistencyScore;
+    }
+
+    public List<String> getConsistencyFlags() {
+        return consistencyFlags;
+    }
+
+    public void setConsistencyFlags(List<String> consistencyFlags) {
+        this.consistencyFlags = consistencyFlags;
     }
 
     public Map<String, Double> getBigFiveProfile() {

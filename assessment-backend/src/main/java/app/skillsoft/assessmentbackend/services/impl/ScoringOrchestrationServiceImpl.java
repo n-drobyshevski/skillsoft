@@ -14,6 +14,7 @@ import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.scoring.ConfidenceIntervalCalculator;
+import app.skillsoft.assessmentbackend.services.scoring.ResponseConsistencyAnalyzer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import app.skillsoft.assessmentbackend.services.scoring.SubscalePercentileCalculator;
@@ -58,6 +59,7 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
     private final ApplicationEventPublisher eventPublisher;
     private final ConfidenceIntervalCalculator confidenceIntervalCalculator;
     private final SubscalePercentileCalculator subscalePercentileCalculator;
+    private final ResponseConsistencyAnalyzer responseConsistencyAnalyzer;
 
     public ScoringOrchestrationServiceImpl(
             TestSessionRepository sessionRepository,
@@ -66,7 +68,8 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
             List<ScoringStrategy> scoringStrategies,
             ApplicationEventPublisher eventPublisher,
             ConfidenceIntervalCalculator confidenceIntervalCalculator,
-            SubscalePercentileCalculator subscalePercentileCalculator) {
+            SubscalePercentileCalculator subscalePercentileCalculator,
+            ResponseConsistencyAnalyzer responseConsistencyAnalyzer) {
         this.sessionRepository = sessionRepository;
         this.answerRepository = answerRepository;
         this.resultRepository = resultRepository;
@@ -74,6 +77,7 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         this.eventPublisher = eventPublisher;
         this.confidenceIntervalCalculator = confidenceIntervalCalculator;
         this.subscalePercentileCalculator = subscalePercentileCalculator;
+        this.responseConsistencyAnalyzer = responseConsistencyAnalyzer;
     }
 
     @Override
@@ -144,6 +148,12 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         subscalePercentileCalculator.enrichWithPercentiles(
                 scoringResult.getCompetencyScores(), session.getTemplate().getId());
 
+        // Run response consistency analysis on all answers (all assessment goals)
+        ResponseConsistencyAnalyzer.ConsistencyResult consistencyResult =
+                responseConsistencyAnalyzer.analyze(answers);
+        scoringResult.setConsistencyScore(consistencyResult.consistencyScore());
+        scoringResult.setConsistencyFlags(consistencyResult.flags());
+
         // Create result entity
         TestResult result = new TestResult(session, session.getClerkUserId());
         result.setOverallScore(scoringResult.getOverallScore());
@@ -170,6 +180,14 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
             extendedMetrics.put("decisionConfidence", scoringResult.getDecisionConfidence());
             extendedMetrics.put("confidenceLevel", scoringResult.getConfidenceLevel());
             extendedMetrics.put("confidenceMessage", scoringResult.getConfidenceMessage());
+        }
+
+        // Propagate response consistency metrics (populated for all goals)
+        if (scoringResult.getConsistencyScore() != null) {
+            extendedMetrics.put("consistencyScore", scoringResult.getConsistencyScore());
+            extendedMetrics.put("consistencyFlags", scoringResult.getConsistencyFlags());
+            extendedMetrics.put("speedAnomalyRate", consistencyResult.speedAnomalyRate());
+            extendedMetrics.put("straightLiningRate", consistencyResult.straightLiningRate());
         }
 
         if (!extendedMetrics.isEmpty()) {

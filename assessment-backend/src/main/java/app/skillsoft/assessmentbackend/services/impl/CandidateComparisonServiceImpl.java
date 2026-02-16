@@ -74,37 +74,49 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
             }
         }
 
-        // 5. Validate template goal is TEAM_FIT
+        // 5. Validate template goal is TEAM_FIT or JOB_FIT
         TestTemplate template = results.get(0).getSession().getTemplate();
-        if (template.getGoal() != AssessmentGoal.TEAM_FIT) {
+        AssessmentGoal goal = template.getGoal();
+        if (goal != AssessmentGoal.TEAM_FIT && goal != AssessmentGoal.JOB_FIT) {
             throw new IllegalArgumentException(
-                "Comparison is only supported for TEAM_FIT templates, got: " + template.getGoal());
+                "Comparison is only supported for TEAM_FIT or JOB_FIT templates, got: " + goal);
         }
 
-        // 6. Extract team context from blueprint
-        TeamFitBlueprint blueprint = extractTeamFitBlueprint(template);
-        UUID teamId = blueprint != null ? blueprint.getTeamId() : null;
-        String targetRole = blueprint != null ? blueprint.getTargetRole() : null;
+        // 6. Extract context from blueprint based on goal
+        UUID teamId = null;
+        String targetRole = null;
         double diversityThreshold = DEFAULT_DIVERSITY_THRESHOLD;
+        boolean teamAvailable = false;
+        int teamSize = 0;
+        Map<UUID, Double> teamCompetencySaturationById = Collections.emptyMap();
+        Map<String, Double> teamCompetencySaturation = Collections.emptyMap();
 
-        // 7. Fetch team profile (graceful fallback if unavailable)
-        TeamProfile teamProfile = null;
-        if (teamId != null) {
-            teamProfile = teamService.getTeamProfile(teamId).orElse(null);
-            if (teamProfile == null) {
-                log.info("Team {} not found or inactive — comparison will proceed without team context", teamId);
+        if (goal == AssessmentGoal.TEAM_FIT) {
+            // TEAM_FIT: extract team context from blueprint
+            TeamFitBlueprint blueprint = extractTeamFitBlueprint(template);
+            teamId = blueprint != null ? blueprint.getTeamId() : null;
+            targetRole = blueprint != null ? blueprint.getTargetRole() : null;
+
+            // 7. Fetch team profile (graceful fallback if unavailable)
+            TeamProfile teamProfile = null;
+            if (teamId != null) {
+                teamProfile = teamService.getTeamProfile(teamId).orElse(null);
+                if (teamProfile == null) {
+                    log.info("Team {} not found or inactive — comparison will proceed without team context", teamId);
+                }
             }
+
+            teamAvailable = teamProfile != null;
+            teamSize = teamAvailable ? teamProfile.members().size() : 0;
+            teamCompetencySaturationById = teamAvailable
+                ? teamProfile.competencySaturation()
+                : Collections.emptyMap();
+
+            // Convert UUID keys to string keys for the response DTO
+            teamCompetencySaturation = teamCompetencySaturationById.entrySet().stream()
+                .collect(Collectors.toMap(e -> e.getKey().toString(), Map.Entry::getValue));
         }
-
-        boolean teamAvailable = teamProfile != null;
-        int teamSize = teamAvailable ? teamProfile.members().size() : 0;
-        Map<UUID, Double> teamCompetencySaturationById = teamAvailable
-            ? teamProfile.competencySaturation()
-            : Collections.emptyMap();
-
-        // Convert UUID keys to string keys for the response DTO
-        Map<String, Double> teamCompetencySaturation = teamCompetencySaturationById.entrySet().stream()
-            .collect(Collectors.toMap(e -> e.getKey().toString(), Map.Entry::getValue));
+        // JOB_FIT: teamAvailable=false, teamId=null, teamSize=0, empty teamCompetencySaturation (defaults above)
 
         // 8. Build candidate summaries (unranked initially)
         List<CandidateSummaryHolder> holders = results.stream()
@@ -116,7 +128,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
 
         // 10. Build competency comparison
         List<CompetencyComparisonDto> competencyComparison = buildCompetencyComparison(
-            results, teamCompetencySaturationById, diversityThreshold);
+            results, teamCompetencySaturationById, diversityThreshold, goal);
 
         // 11. Build gap coverage matrix
         List<GapCoverageEntryDto> gapCoverageMatrix = buildGapCoverageMatrix(competencyComparison, results);
@@ -329,12 +341,15 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
     private List<CompetencyComparisonDto> buildCompetencyComparison(
             List<TestResult> results,
             Map<UUID, Double> teamSaturationMap,
-            double diversityThreshold) {
+            double diversityThreshold,
+            AssessmentGoal goal) {
 
         // Collect all competency scores across all candidates
         // Key: competencyId, Value: map of resultId -> percentage
         Map<UUID, String> competencyNames = new LinkedHashMap<>();
         Map<UUID, Map<UUID, Double>> competencyScoresMap = new LinkedHashMap<>();
+        // For JOB_FIT: collect benchmark scores per competency (same across all candidates)
+        Map<UUID, Double> benchmarkMap = new LinkedHashMap<>();
 
         for (TestResult result : results) {
             List<CompetencyScoreDto> scores = result.getCompetencyScores();
@@ -346,6 +361,11 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
                 competencyScoresMap
                     .computeIfAbsent(compId, k -> new LinkedHashMap<>())
                     .put(result.getId(), score.getPercentage() != null ? score.getPercentage() : 0.0);
+
+                // Capture benchmark score for JOB_FIT (same for all candidates on the same template)
+                if (goal == AssessmentGoal.JOB_FIT && score.getBenchmarkScore() != null) {
+                    benchmarkMap.putIfAbsent(compId, score.getBenchmarkScore());
+                }
             }
         }
 
@@ -355,8 +375,25 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
             Map<UUID, Double> candidateScores = entry.getValue();
             String compName = competencyNames.get(compId);
 
-            Double teamSaturation = teamSaturationMap.getOrDefault(compId, null);
-            boolean isTeamGap = teamSaturation != null && teamSaturation < diversityThreshold;
+            Double saturationOrBenchmark;
+            boolean isGap;
+
+            if (goal == AssessmentGoal.JOB_FIT) {
+                // For JOB_FIT: use benchmark score as the "saturation" target.
+                // A "gap" means at least one candidate scored below the benchmark.
+                Double benchmark = benchmarkMap.get(compId);
+                saturationOrBenchmark = benchmark;
+                if (benchmark != null) {
+                    isGap = candidateScores.values().stream()
+                        .anyMatch(score -> score < benchmark);
+                } else {
+                    isGap = false;
+                }
+            } else {
+                // TEAM_FIT: original logic using team saturation
+                saturationOrBenchmark = teamSaturationMap.getOrDefault(compId, null);
+                isGap = saturationOrBenchmark != null && saturationOrBenchmark < diversityThreshold;
+            }
 
             // Determine best candidate for this competency
             UUID bestCandidateId = candidateScores.entrySet().stream()
@@ -365,7 +402,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
                 .orElse(null);
 
             comparisons.add(new CompetencyComparisonDto(
-                compId, compName, teamSaturation, candidateScores, bestCandidateId, isTeamGap
+                compId, compName, saturationOrBenchmark, candidateScores, bestCandidateId, isGap
             ));
         }
 
