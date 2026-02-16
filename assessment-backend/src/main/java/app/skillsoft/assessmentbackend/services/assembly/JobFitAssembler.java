@@ -88,7 +88,8 @@ public class JobFitAssembler implements TestAssembler {
         log.debug("Found {} benchmark competencies for {}", benchmarks.size(), socCode);
 
         // Step 2: Fetch candidate's Competency Passport if available (Delta Testing)
-        Optional<PassportService.CompetencyPassport> passport = fetchCandidatePassport(candidateClerkUserId);
+        Optional<PassportService.CompetencyPassport> passport = fetchCandidatePassport(
+            candidateClerkUserId, jobFitBlueprint.getPassportMaxAgeDays());
 
         // Step 3: Calculate gaps using passport data (or default to score=0 if no passport)
         var gapAnalysis = analyzeGaps(benchmarks, passport, jobFitBlueprint.getStrictnessLevel());
@@ -104,11 +105,13 @@ public class JobFitAssembler implements TestAssembler {
 
     /**
      * Fetch the candidate's Competency Passport from PassportService.
+     * Validates passport freshness against maxAgeDays threshold.
      *
      * @param candidateClerkUserId The Clerk User ID of the candidate (may be null)
-     * @return The passport if found and valid, empty otherwise
+     * @param maxAgeDays Maximum passport age in days before it's considered stale
+     * @return The passport if found, valid, and fresh enough; empty otherwise
      */
-    private Optional<PassportService.CompetencyPassport> fetchCandidatePassport(String candidateClerkUserId) {
+    private Optional<PassportService.CompetencyPassport> fetchCandidatePassport(String candidateClerkUserId, int maxAgeDays) {
         if (candidateClerkUserId == null || candidateClerkUserId.isBlank()) {
             log.debug("No candidate ID provided - using full assessment mode (all scores = 0)");
             return Optional.empty();
@@ -118,6 +121,17 @@ public class JobFitAssembler implements TestAssembler {
 
         if (passport.isPresent()) {
             var p = passport.get();
+
+            // Check passport freshness
+            if (p.lastAssessed() != null) {
+                long ageDays = java.time.Duration.between(p.lastAssessed(), java.time.LocalDateTime.now()).toDays();
+                if (ageDays > maxAgeDays) {
+                    log.warn("Competency Passport for candidate {} is stale ({} days old, max: {}). Using full assessment mode.",
+                        candidateClerkUserId, ageDays, maxAgeDays);
+                    return Optional.empty();
+                }
+            }
+
             log.info("Found Competency Passport for candidate {}: {} competency scores, last assessed: {}",
                 candidateClerkUserId, p.competencyScores().size(), p.lastAssessed());
         } else {
@@ -260,8 +274,11 @@ public class JobFitAssembler implements TestAssembler {
      * Loads all competencies and their indicators in batch upfront to avoid N+1 queries.
      */
     private List<UUID> selectQuestionsForGaps(Map<String, GapInfo> gapAnalysis, int strictnessLevel) {
-        // Batch load all competencies and build lookup maps upfront (N+1 fix)
-        List<Competency> allCompetencies = competencyRepository.findAll();
+        // Batch load only benchmark-relevant competencies (scoped query instead of findAll)
+        Set<String> benchmarkNames = gapAnalysis.keySet().stream()
+            .map(String::toLowerCase)
+            .collect(Collectors.toSet());
+        List<Competency> allCompetencies = competencyRepository.findByNameInIgnoreCase(benchmarkNames);
         Map<String, List<Competency>> competencyByName = buildCompetencyLookupMaps(allCompetencies);
 
         // Batch load indicators for all competencies at once

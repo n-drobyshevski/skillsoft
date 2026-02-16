@@ -118,6 +118,15 @@ public class ScoringConfiguration {
             @DecimalMin("0.0")
             @DecimalMax("1.0")
             private double strictnessMaxAdjustment = 0.3;
+
+            /**
+             * Minimum questions answered per competency for results to be considered reliable.
+             * Competencies below this threshold are flagged with insufficientEvidence.
+             * Default: 3
+             */
+            @Min(1)
+            @Max(10)
+            private int minQuestionsPerCompetency = 3;
         }
 
         /**

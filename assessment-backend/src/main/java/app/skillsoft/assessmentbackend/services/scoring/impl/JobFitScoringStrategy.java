@@ -156,6 +156,17 @@ public class JobFitScoringStrategy implements ScoringStrategy {
             scoreDto.setOnetCode(onetCode);
             scoreDto.setIndicatorScores(compAgg.getIndicatorScores());
 
+            // Check minimum evidence threshold
+            int minQuestions = scoringConfig.getThresholds().getJobFit().getMinQuestionsPerCompetency();
+            if (compAgg.getQuestionCount() < minQuestions) {
+                scoreDto.setInsufficientEvidence(true);
+                scoreDto.setEvidenceNote(String.format(
+                    "Only %d of %d minimum questions answered",
+                    compAgg.getQuestionCount(), minQuestions));
+                log.warn("Insufficient evidence for competency {}: {} questions (min: {})",
+                    competencyName, compAgg.getQuestionCount(), minQuestions);
+            }
+
             finalScores.add(scoreDto);
 
             // Weight the score based on O*NET alignment (competencies with O*NET codes are prioritized)

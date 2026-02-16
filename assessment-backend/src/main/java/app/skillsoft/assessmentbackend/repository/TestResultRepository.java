@@ -387,6 +387,30 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
             @Param("competencyId") String competencyId);
 
     // ============================================
+    // HISTORICAL STATISTICS QUERIES (for CI calculation)
+    // ============================================
+
+    /**
+     * Calculate standard deviation of percentage scores for a specific competency across all results.
+     * Uses JSONB array element extraction. Returns null if fewer than 30 results exist (insufficient sample).
+     *
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @return Population standard deviation, or null if sample too small
+     */
+    @Query(value = """
+        SELECT CASE WHEN COUNT(*) >= 30 THEN STDDEV_POP(score) ELSE NULL END
+        FROM (
+            SELECT (elem->>'percentage')::numeric AS score
+            FROM test_results tr
+            JOIN test_sessions ts ON tr.session_id = ts.id
+            CROSS JOIN LATERAL jsonb_array_elements(tr.competency_scores) elem
+            WHERE tr.competency_scores IS NOT NULL
+            AND elem->>'competencyId' = :competencyId
+        ) sub
+        """, nativeQuery = true)
+    Double calculateCompetencyScoreSD(@Param("competencyId") String competencyId);
+
+    // ============================================
     // COMPARISON QUERIES
     // ============================================
 

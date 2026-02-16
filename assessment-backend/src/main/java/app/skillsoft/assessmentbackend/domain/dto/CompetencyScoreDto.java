@@ -32,6 +32,10 @@ public class CompetencyScoreDto {
     // Per-competency percentile (populated by SubscalePercentileCalculator)
     private Integer percentile;   // Percentile rank within this competency across all takers
 
+    // Evidence sufficiency (populated by JobFitScoringStrategy)
+    private Boolean insufficientEvidence;  // Whether too few questions were answered
+    private String evidenceNote;           // Human-readable note about evidence sufficiency
+
     // Constructors
     public CompetencyScoreDto() {
     }
@@ -172,6 +176,22 @@ public class CompetencyScoreDto {
 
     public void setPercentile(Integer percentile) {
         this.percentile = percentile;
+    }
+
+    public Boolean getInsufficientEvidence() {
+        return insufficientEvidence;
+    }
+
+    public void setInsufficientEvidence(Boolean insufficientEvidence) {
+        this.insufficientEvidence = insufficientEvidence;
+    }
+
+    public String getEvidenceNote() {
+        return evidenceNote;
+    }
+
+    public void setEvidenceNote(String evidenceNote) {
+        this.evidenceNote = evidenceNote;
     }
 
     @Override

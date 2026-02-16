@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.services.scoring;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyReliability;
 import app.skillsoft.assessmentbackend.repository.CompetencyReliabilityRepository;
+import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,9 +41,12 @@ public class ConfidenceIntervalCalculator {
     private static final double DEFAULT_SD = 15.0;
 
     private final CompetencyReliabilityRepository reliabilityRepository;
+    private final TestResultRepository testResultRepository;
 
-    public ConfidenceIntervalCalculator(CompetencyReliabilityRepository reliabilityRepository) {
+    public ConfidenceIntervalCalculator(CompetencyReliabilityRepository reliabilityRepository,
+                                        TestResultRepository testResultRepository) {
         this.reliabilityRepository = reliabilityRepository;
+        this.testResultRepository = testResultRepository;
     }
 
     /**
@@ -66,6 +70,13 @@ public class ConfidenceIntervalCalculator {
 
         Map<UUID, CompetencyReliability> reliabilityMap = loadReliabilityMap(competencyIds);
 
+        // Batch-compute actual historical SDs per competency (falls back to DEFAULT_SD)
+        Map<UUID, Double> actualSdMap = new HashMap<>();
+        for (UUID compId : competencyIds) {
+            Double sd = testResultRepository.calculateCompetencyScoreSD(compId.toString());
+            actualSdMap.put(compId, sd != null ? sd : DEFAULT_SD);
+        }
+
         int enrichedCount = 0;
         for (CompetencyScoreDto cs : competencyScores) {
             if (cs.getCompetencyId() == null || cs.getPercentage() == null) {
@@ -88,8 +99,9 @@ public class ConfidenceIntervalCalculator {
                 continue;
             }
 
-            // SEM = SD * sqrt(1 - alpha)
-            double sem = DEFAULT_SD * Math.sqrt(1.0 - alpha);
+            // SEM = SD * sqrt(1 - alpha), using actual historical SD when available
+            double sd = actualSdMap.getOrDefault(cs.getCompetencyId(), DEFAULT_SD);
+            double sem = sd * Math.sqrt(1.0 - alpha);
             double score = cs.getPercentage();
 
             // 95% CI = score +/- 1.96 * SEM

@@ -64,6 +64,15 @@ public class JobFitBlueprint extends TestBlueprintDto {
      */
     private String candidateClerkUserId;
 
+    /**
+     * Maximum age in days for a Competency Passport to be considered valid for delta testing.
+     * Passports older than this will be treated as expired (full assessment mode).
+     * Default: 180 days (6 months).
+     */
+    @Min(value = 1, message = "Passport max age must be at least 1 day")
+    @Max(value = 730, message = "Passport max age must not exceed 730 days")
+    private int passportMaxAgeDays = 180;
+
     // Constructors
     public JobFitBlueprint() {
         super();
@@ -107,6 +116,14 @@ public class JobFitBlueprint extends TestBlueprintDto {
         this.candidateClerkUserId = candidateClerkUserId;
     }
 
+    public int getPassportMaxAgeDays() {
+        return passportMaxAgeDays;
+    }
+
+    public void setPassportMaxAgeDays(int passportMaxAgeDays) {
+        this.passportMaxAgeDays = passportMaxAgeDays;
+    }
+
     @Override
     public TestBlueprintDto deepCopy() {
         JobFitBlueprint copy = new JobFitBlueprint();
@@ -114,6 +131,7 @@ public class JobFitBlueprint extends TestBlueprintDto {
         copy.setOnetSocCode(this.onetSocCode);
         copy.setStrictnessLevel(this.strictnessLevel);
         copy.setCandidateClerkUserId(this.candidateClerkUserId);
+        copy.setPassportMaxAgeDays(this.passportMaxAgeDays);
         if (this.getAdaptivity() != null) {
             copy.setAdaptivity(this.getAdaptivity().deepCopy());
         }
@@ -127,13 +145,14 @@ public class JobFitBlueprint extends TestBlueprintDto {
         if (!super.equals(o)) return false;
         JobFitBlueprint that = (JobFitBlueprint) o;
         return strictnessLevel == that.strictnessLevel &&
+               passportMaxAgeDays == that.passportMaxAgeDays &&
                Objects.equals(onetSocCode, that.onetSocCode) &&
                Objects.equals(candidateClerkUserId, that.candidateClerkUserId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), onetSocCode, strictnessLevel, candidateClerkUserId);
+        return Objects.hash(super.hashCode(), onetSocCode, strictnessLevel, candidateClerkUserId, passportMaxAgeDays);
     }
 
     @Override
@@ -143,6 +162,7 @@ public class JobFitBlueprint extends TestBlueprintDto {
                 ", onetSocCode='" + onetSocCode + '\'' +
                 ", strictnessLevel=" + strictnessLevel +
                 ", candidateClerkUserId='" + candidateClerkUserId + '\'' +
+                ", passportMaxAgeDays=" + passportMaxAgeDays +
                 ", adaptivity=" + getAdaptivity() +
                 '}';
     }
