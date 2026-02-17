@@ -363,19 +363,19 @@ class TestTemplateServiceTest {
     class DeleteTemplateTests {
 
         @Test
-        @DisplayName("Should delete existing template")
-        void shouldDeleteExistingTemplate() {
+        @DisplayName("Should soft-delete existing template")
+        void shouldSoftDeleteExistingTemplate() {
             // Given
-            when(templateRepository.existsById(templateId)).thenReturn(true);
-            doNothing().when(templateRepository).deleteById(templateId);
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+            when(templateRepository.save(any())).thenReturn(mockTemplate);
 
             // When
             boolean result = testTemplateService.deleteTemplate(templateId);
 
             // Then
             assertThat(result).isTrue();
-            verify(templateRepository).existsById(templateId);
-            verify(templateRepository).deleteById(templateId);
+            verify(templateRepository).findById(templateId);
+            verify(templateRepository).save(any());
         }
 
         @Test
@@ -383,15 +383,15 @@ class TestTemplateServiceTest {
         void shouldReturnFalseWhenTemplateNotFound() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            when(templateRepository.existsById(nonExistentId)).thenReturn(false);
+            when(templateRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
             // When
             boolean result = testTemplateService.deleteTemplate(nonExistentId);
 
             // Then
             assertThat(result).isFalse();
-            verify(templateRepository).existsById(nonExistentId);
-            verify(templateRepository, never()).deleteById(any());
+            verify(templateRepository).findById(nonExistentId);
+            verify(templateRepository, never()).save(any());
         }
     }
 

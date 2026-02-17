@@ -60,28 +60,18 @@ public class TemplateDeletionServiceImpl implements TemplateDeletionService {
             return DeletionPreviewDto.forSoftDeletedTemplate(templateId, template.getName());
         }
 
-        // Count sessions by status
-        List<TestSession> sessions = sessionRepository.findByTemplate_Id(templateId);
-
-        long activeSessions = sessions.stream()
-                .filter(s -> s.getStatus() == SessionStatus.IN_PROGRESS ||
-                            s.getStatus() == SessionStatus.NOT_STARTED)
-                .count();
-
-        long completedSessions = sessions.stream()
-                .filter(s -> s.getStatus() == SessionStatus.COMPLETED)
-                .count();
-
-        long abandonedSessions = sessions.stream()
-                .filter(s -> s.getStatus() == SessionStatus.ABANDONED ||
-                            s.getStatus() == SessionStatus.TIMED_OUT)
-                .count();
+        // Count sessions by status using efficient COUNT queries (prevents OOM for popular templates)
+        long activeSessions = sessionRepository.countByTemplate_IdAndStatusIn(
+                templateId, List.of(SessionStatus.IN_PROGRESS, SessionStatus.NOT_STARTED));
+        long completedSessions = sessionRepository.countByTemplate_IdAndStatus(
+                templateId, SessionStatus.COMPLETED);
+        long abandonedSessions = sessionRepository.countByTemplate_IdAndStatusIn(
+                templateId, List.of(SessionStatus.ABANDONED, SessionStatus.TIMED_OUT));
+        long totalSessions = activeSessions + completedSessions + abandonedSessions;
 
         // Count related entities
         long totalResults = resultRepository.countResultsByTemplateId(templateId);
-        long totalAnswers = sessions.stream()
-                .mapToLong(s -> s.getAnswers() != null ? s.getAnswers().size() : 0)
-                .sum();
+        long totalAnswers = sessionRepository.countAnswersByTemplateId(templateId);
         long activeShares = shareRepository.countActiveByTemplateId(templateId);
         long activeShareLinks = shareLinkRepository.countActiveByTemplateId(templateId);
         long activityEvents = activityEventRepository.countByTemplateId(templateId);
@@ -92,7 +82,7 @@ public class TemplateDeletionServiceImpl implements TemplateDeletionService {
         boolean canForceDelete = true;
         boolean requiresConfirmation = false;
 
-        if (template.getStatus() == TemplateStatus.DRAFT && sessions.isEmpty()) {
+        if (template.getStatus() == TemplateStatus.DRAFT && totalSessions == 0) {
             recommendedMode = "FORCE_DELETE";
         } else if (completedSessions > 0) {
             recommendedMode = "SOFT_DELETE";
@@ -119,7 +109,7 @@ public class TemplateDeletionServiceImpl implements TemplateDeletionService {
             activeSessions,
             completedSessions,
             abandonedSessions,
-            sessions.size(),
+            totalSessions,
             totalResults,
             totalAnswers,
             activeShares,

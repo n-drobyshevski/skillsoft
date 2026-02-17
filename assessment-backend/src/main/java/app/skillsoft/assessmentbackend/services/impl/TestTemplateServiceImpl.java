@@ -79,7 +79,6 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public TestTemplateDto createTemplate(CreateTestTemplateRequest request) {
         // Validate that template name is unique among non-deleted templates
         if (templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(request.name())) {
@@ -118,10 +117,17 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id")
     public TestTemplateDto updateTemplate(UUID id, UpdateTestTemplateRequest request) {
         TestTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
+
+        // Guard: Only DRAFT templates can be modified
+        if (!template.isEditable()) {
+            throw new IllegalStateException(
+                    String.format("Cannot modify template in %s status. Only DRAFT templates can be edited.",
+                            template.getStatus()));
+        }
 
         // Update only provided fields
         if (request.name() != null) {
@@ -188,21 +194,24 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id")
     public boolean deleteTemplate(UUID id) {
-        if (templateRepository.existsById(id)) {
-            templateRepository.deleteById(id);
-            return true;
-        }
-        return false;
+        return templateRepository.findById(id)
+                .map(template -> {
+                    template.softDelete(null);
+                    templateRepository.save(template);
+                    log.info("Template {} soft-deleted via deleteTemplate()", id);
+                    return true;
+                })
+                .orElse(false);
     }
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id")
     public TestTemplateDto activateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
         template.setIsActive(true);
         return toDto(templateRepository.save(template));
     }
@@ -212,7 +221,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
     public TestTemplateDto deactivateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
         template.setIsActive(false);
         return toDto(templateRepository.save(template));
     }
@@ -244,7 +253,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#templateId")
     public PublishResult publishTemplate(UUID templateId) {
         log.info("Publishing template: {}", templateId);
 

@@ -153,21 +153,34 @@ public class OverviewScoringStrategy implements ScoringStrategy {
             }
         }
 
-        // Step 5: Calculate Overall Score
+        // Step 5: Calculate Overall Score (weighted by question count + evidence sufficiency)
         int competencyCount = finalScores.size();
-        double overallPercentage = competencyCount > 0
-                ? totalPercentage / competencyCount
-                : 0.0;
+        double lowEvidenceWeight = config.getThresholds().getOverview().getLowEvidenceWeightFactor();
 
-        double overallScore = competencyCount > 0
-                ? finalScores.stream()
-                .mapToDouble(CompetencyScoreDto::getScore)
-                .sum() / competencyCount
-                : 0.0;
+        double weightedPercentageSum = 0.0;
+        double weightedScoreSum = 0.0;
+        double totalWeight = 0.0;
 
-        log.info("Overall score calculated: {} ({}/100) with {} competencies, {} indicators",
+        for (CompetencyScoreDto cs : finalScores) {
+            // Base weight = number of questions answered for this competency
+            double weight = Math.max(cs.getQuestionsAnswered(), 1);
+
+            // Reduce weight for competencies with insufficient evidence
+            if (Boolean.TRUE.equals(cs.getInsufficientEvidence())) {
+                weight *= lowEvidenceWeight;
+            }
+
+            weightedPercentageSum += cs.getPercentage() * weight;
+            weightedScoreSum += cs.getScore() * weight;
+            totalWeight += weight;
+        }
+
+        double overallPercentage = totalWeight > 0 ? weightedPercentageSum / totalWeight : 0.0;
+        double overallScore = totalWeight > 0 ? weightedScoreSum / totalWeight : 0.0;
+
+        log.info("Overall score calculated: {} ({}/100) with {} competencies, {} indicators (weighted, lowEvidenceFactor={})",
                 String.format("%.2f", overallScore), String.format("%.2f", overallPercentage),
-                competencyCount, indicatorAggs.size());
+                competencyCount, indicatorAggs.size(), lowEvidenceWeight);
 
         // Step 6: Profile pattern analysis and proficiency labels
         ScoringConfiguration.Thresholds.Overview overviewConfig = config.getThresholds().getOverview();

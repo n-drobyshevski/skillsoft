@@ -6,8 +6,10 @@ import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
+import app.skillsoft.assessmentbackend.config.CacheConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +50,9 @@ public class TestSimulatorService {
      * @return Simulation results with composition, sample questions, and warnings
      */
     @Transactional(readOnly = true)
+    @Cacheable(value = CacheConfig.SIMULATION_RESULTS_CACHE,
+               key = "#blueprint.hashCode() + '_' + #profile.name()",
+               condition = "#blueprint != null && #profile != null")
     public SimulationResultDto simulate(TestBlueprintDto blueprint, SimulationProfile profile) {
         if (blueprint == null) {
             return SimulationResultDto.failed(List.of(

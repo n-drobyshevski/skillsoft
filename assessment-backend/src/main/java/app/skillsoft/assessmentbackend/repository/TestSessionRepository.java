@@ -69,6 +69,24 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
     long countByTemplate_IdAndStatus(UUID templateId, SessionStatus status);
 
     /**
+     * Count sessions for a template filtered by multiple statuses.
+     * Used by deletion preview to avoid loading all sessions into memory.
+     */
+    long countByTemplate_IdAndStatusIn(UUID templateId, java.util.Collection<SessionStatus> statuses);
+
+    /**
+     * Count total sessions for a template.
+     */
+    long countByTemplate_Id(UUID templateId);
+
+    /**
+     * Count total answers across all sessions for a template.
+     * Avoids loading sessions into memory for deletion preview.
+     */
+    @Query("SELECT COALESCE(SUM(SIZE(s.answers)), 0) FROM TestSession s WHERE s.template.id = :templateId")
+    long countAnswersByTemplateId(@Param("templateId") UUID templateId);
+
+    /**
      * Count sessions by user and status
      */
     long countByClerkUserIdAndStatus(String clerkUserId, SessionStatus status);
