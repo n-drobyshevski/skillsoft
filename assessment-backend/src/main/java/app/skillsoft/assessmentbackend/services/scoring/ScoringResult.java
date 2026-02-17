@@ -73,6 +73,12 @@ public class ScoringResult {
      * Contains diversity/saturation analysis results.
      */
     private TeamFitMetrics teamFitMetrics;
+
+    /**
+     * Extended metrics map for strategy-specific data that flows through to TestResult.
+     * Used by OverviewScoringStrategy for profile pattern analysis, etc.
+     */
+    private Map<String, Object> extendedMetrics;
     
     // Constructors
     public ScoringResult() {
@@ -179,6 +185,14 @@ public class ScoringResult {
 
     public void setTeamFitMetrics(TeamFitMetrics teamFitMetrics) {
         this.teamFitMetrics = teamFitMetrics;
+    }
+
+    public Map<String, Object> getExtendedMetrics() {
+        return extendedMetrics;
+    }
+
+    public void setExtendedMetrics(Map<String, Object> extendedMetrics) {
+        this.extendedMetrics = extendedMetrics;
     }
 
     /**

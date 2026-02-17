@@ -97,6 +97,16 @@ public class ScoringConfiguration {
         private TeamFit teamFit = new TeamFit();
 
         /**
+         * Overview (Scenario A / Competency Passport) specific thresholds.
+         */
+        @Valid
+        private Overview overview = new Overview();
+
+        public Overview getOverview() {
+            return overview;
+        }
+
+        /**
          * Thresholds for Job Fit (Targeted Fit / O*NET Benchmark) scoring.
          */
         @Data
@@ -260,6 +270,73 @@ public class ScoringConfiguration {
             @DecimalMin("0.0")
             @DecimalMax("0.5")
             private double personalityWeight = 0.1;
+        }
+
+        /**
+         * Thresholds for Overview (Universal Baseline / Competency Passport) scoring.
+         *
+         * Controls evidence sufficiency, proficiency classification, and profile pattern analysis.
+         *
+         * Usage in application.properties:
+         * <pre>
+         * scoring.thresholds.overview.min-questions-per-competency=3
+         * scoring.thresholds.overview.strength-threshold=75.0
+         * </pre>
+         */
+        @Data
+        public static class Overview {
+            /**
+             * Minimum questions answered per competency for evidence to be considered sufficient.
+             * Competencies below this threshold are flagged with insufficientEvidence.
+             * Default: 3
+             */
+            @Min(1)
+            @Max(10)
+            private int minQuestionsPerCompetency = 3;
+
+            /**
+             * Weight factor applied to competency scores with insufficient evidence.
+             * Reduces the influence of low-evidence scores in overall calculations.
+             * Default: 0.5 (50% weight)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("1.0")
+            private double lowEvidenceWeightFactor = 0.5;
+
+            /**
+             * Minimum percentage required to classify a competency as a strength.
+             * Default: 75.0 (75%)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("100.0")
+            private double strengthThreshold = 75.0;
+
+            /**
+             * Minimum percentage required to classify a competency as developing (not a gap).
+             * Competencies below this are candidates for critical gap classification.
+             * Default: 40.0 (40%)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("100.0")
+            private double developmentThreshold = 40.0;
+
+            /**
+             * Maximum percentage below which a competency is classified as a critical gap.
+             * Default: 30.0 (30%)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("100.0")
+            private double criticalGapThreshold = 30.0;
+
+            /**
+             * Bandwidth (in percentage points) above overall score to qualify as a signature strength.
+             * A competency is a SIGNATURE_STRENGTH when its percentage >= overallPercentage + profileBandWidth
+             * AND percentage >= strengthThreshold.
+             * Default: 10.0 (10 percentage points above overall)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("50.0")
+            private double profileBandWidth = 10.0;
         }
     }
 }

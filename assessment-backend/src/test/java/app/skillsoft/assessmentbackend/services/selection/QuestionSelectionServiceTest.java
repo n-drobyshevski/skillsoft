@@ -55,6 +55,9 @@ class QuestionSelectionServiceTest {
     @Mock
     private ItemStatisticsRepository itemStatisticsRepository;
 
+    @Mock
+    private ExposureTrackingService exposureTrackingService;
+
     @InjectMocks
     private QuestionSelectionServiceImpl service;
 
@@ -866,10 +869,8 @@ class QuestionSelectionServiceTest {
             List<AssessmentQuestion> questionsI1 = createQuestionsForIndicator(indicatorId1, 3);
             List<AssessmentQuestion> questionsI2 = createQuestionsForIndicator(indicatorId2, 3);
 
-            when(indicatorRepository.findByCompetencyId(competencyId1))
-                    .thenReturn(List.of(indicator1));
-            when(indicatorRepository.findByCompetencyId(competencyId2))
-                    .thenReturn(List.of(indicator2));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator1, indicator2));
             mockIndicatorQuestions(indicatorId1, questionsI1);
             mockIndicatorQuestions(indicatorId2, questionsI2);
             mockAllQuestionsEligible(questionsI1);
@@ -891,7 +892,7 @@ class QuestionSelectionServiceTest {
             BehavioralIndicator indicator1 = createIndicator(indicatorId1, competencyId1, 1.0f);
             List<AssessmentQuestion> questionsI1 = createQuestionsForIndicator(indicatorId1, 10);
 
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                     .thenReturn(List.of(indicator1));
             mockIndicatorQuestions(indicatorId1, questionsI1);
             mockAllQuestionsEligible(questionsI1);
@@ -928,6 +929,178 @@ class QuestionSelectionServiceTest {
                     false);
 
             assertThat(result).isEmpty();
+        }
+    }
+
+    // =====================================================================
+    // EXPOSURE TRACKING VIA ExposureTrackingService TESTS
+    // =====================================================================
+
+    @Nested
+    @DisplayName("ExposureTrackingService Delegation Tests")
+    class ExposureTrackingDelegationTests {
+
+        @Test
+        @DisplayName("should delegate exposure tracking to ExposureTrackingService")
+        void shouldDelegateToExposureTrackingService() {
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+            List<AssessmentQuestion> questions = createContextNeutralQuestionsForIndicator(indicatorId1, 3);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, questions);
+            mockAllQuestionsEligible(questions);
+
+            service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // Verify ExposureTrackingService.trackExposure was called (not this.trackExposure)
+            verify(exposureTrackingService).trackExposure(anyList());
+        }
+
+        @Test
+        @DisplayName("should not call exposure tracking when no questions selected")
+        void shouldNotCallExposureTrackingWhenEmpty() {
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            verifyNoInteractions(exposureTrackingService);
+        }
+    }
+
+    // =====================================================================
+    // GRADUATED DIFFICULTY DISTRIBUTION TESTS
+    // =====================================================================
+
+    @Nested
+    @DisplayName("Graduated Difficulty Distribution Tests")
+    class GraduatedDifficultyDistributionTests {
+
+        @Test
+        @DisplayName("should select across FOUNDATIONAL, INTERMEDIATE, ADVANCED when questionsPerIndicator >= 3")
+        void shouldSelectAcrossDifficultyBandsWhenThreeOrMore() {
+            // Setup indicator with questions at each difficulty
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+
+            AssessmentQuestion foundational = createContextNeutralQuestion(DifficultyLevel.FOUNDATIONAL);
+            foundational.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion intermediate = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            intermediate.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion advanced = createContextNeutralQuestion(DifficultyLevel.ADVANCED);
+            advanced.setBehavioralIndicatorId(indicatorId1);
+
+            List<AssessmentQuestion> allQuestions = List.of(foundational, intermediate, advanced);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, allQuestions);
+            mockAllQuestionsEligible(allQuestions);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            // questionsPerIndicator = 3 -> triggers graduated difficulty
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // Should get all 3 questions (one per difficulty band)
+            assertThat(result).hasSize(3);
+            assertThat(result).containsExactlyInAnyOrder(
+                    foundational.getId(), intermediate.getId(), advanced.getId());
+        }
+
+        @Test
+        @DisplayName("should fallback to any difficulty when a band has no questions")
+        void shouldFallbackWhenBandHasNoQuestions() {
+            // Setup indicator with only INTERMEDIATE questions (no FOUNDATIONAL or ADVANCED)
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+
+            AssessmentQuestion q1 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q1.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion q2 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q2.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion q3 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q3.setBehavioralIndicatorId(indicatorId1);
+
+            List<AssessmentQuestion> allQuestions = List.of(q1, q2, q3);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, allQuestions);
+            mockAllQuestionsEligible(allQuestions);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            // questionsPerIndicator = 3 -> graduated difficulty, but only INTERMEDIATE available
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // Should still get 3 questions via fallback
+            assertThat(result).hasSize(3);
+            assertThat(result).doesNotHaveDuplicates();
+        }
+
+        @Test
+        @DisplayName("should use single difficulty when questionsPerIndicator < 3")
+        void shouldUseSingleDifficultyWhenLessThanThree() {
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+
+            AssessmentQuestion q1 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q1.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion q2 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q2.setBehavioralIndicatorId(indicatorId1);
+
+            List<AssessmentQuestion> allQuestions = List.of(q1, q2);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, allQuestions);
+            mockAllQuestionsEligible(allQuestions);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            // questionsPerIndicator = 2 -> single-difficulty path
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 2, DifficultyLevel.INTERMEDIATE, false, true);
+
+            assertThat(result).hasSize(2);
+            assertThat(result).doesNotHaveDuplicates();
+        }
+
+        @Test
+        @DisplayName("should produce no duplicates with graduated difficulty across multiple indicators")
+        void shouldProduceNoDuplicatesAcrossIndicators() {
+            BehavioralIndicator indicator1 = createIndicator(indicatorId1, competencyId1, 1.0f);
+            BehavioralIndicator indicator2 = createIndicator(indicatorId2, competencyId1, 0.8f);
+
+            // 3 questions per indicator at different difficulties
+            List<AssessmentQuestion> questionsI1 = List.of(
+                    createContextNeutralQuestionForIndicator(indicatorId1, DifficultyLevel.FOUNDATIONAL),
+                    createContextNeutralQuestionForIndicator(indicatorId1, DifficultyLevel.INTERMEDIATE),
+                    createContextNeutralQuestionForIndicator(indicatorId1, DifficultyLevel.ADVANCED));
+
+            List<AssessmentQuestion> questionsI2 = List.of(
+                    createContextNeutralQuestionForIndicator(indicatorId2, DifficultyLevel.FOUNDATIONAL),
+                    createContextNeutralQuestionForIndicator(indicatorId2, DifficultyLevel.INTERMEDIATE),
+                    createContextNeutralQuestionForIndicator(indicatorId2, DifficultyLevel.ADVANCED));
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator1, indicator2));
+            mockIndicatorQuestions(indicatorId1, questionsI1);
+            mockIndicatorQuestions(indicatorId2, questionsI2);
+            mockAllQuestionsEligible(questionsI1);
+            mockAllQuestionsEligible(questionsI2);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // 2 indicators * 3 questions = 6
+            assertThat(result).hasSize(6);
+            assertThat(result).doesNotHaveDuplicates();
         }
     }
 
@@ -1132,6 +1305,33 @@ class QuestionSelectionServiceTest {
         competency.setId(competencyId);
         indicator.setCompetency(competency);
         return indicator;
+    }
+
+    private AssessmentQuestion createContextNeutralQuestion(DifficultyLevel difficulty) {
+        AssessmentQuestion question = createQuestion(difficulty);
+        question.setMetadata(Map.of("tags", List.of("GENERAL")));
+        return question;
+    }
+
+    private AssessmentQuestion createContextNeutralQuestionForIndicator(UUID indicatorId, DifficultyLevel difficulty) {
+        AssessmentQuestion question = createContextNeutralQuestion(difficulty);
+        BehavioralIndicator indicator = new BehavioralIndicator();
+        indicator.setId(indicatorId);
+        question.setBehavioralIndicator(indicator);
+        return question;
+    }
+
+    private List<AssessmentQuestion> createContextNeutralQuestionsForIndicator(UUID indicatorId, int count) {
+        BehavioralIndicator indicator = new BehavioralIndicator();
+        indicator.setId(indicatorId);
+
+        return IntStream.range(0, count)
+                .mapToObj(i -> {
+                    AssessmentQuestion q = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+                    q.setBehavioralIndicator(indicator);
+                    return q;
+                })
+                .toList();
     }
 
     private void mockIndicatorQuestions(UUID indicatorId, List<AssessmentQuestion> questions) {

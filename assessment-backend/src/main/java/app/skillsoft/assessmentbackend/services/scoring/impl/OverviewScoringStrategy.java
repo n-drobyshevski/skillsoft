@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services.scoring.impl;
 
+import app.skillsoft.assessmentbackend.config.ScoringConfiguration;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
@@ -7,6 +8,7 @@ import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.ScoreInterpreter;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
@@ -43,13 +45,19 @@ public class OverviewScoringStrategy implements ScoringStrategy {
     private final CompetencyBatchLoader competencyBatchLoader;
     private final IndicatorBatchLoader indicatorBatchLoader;
     private final ScoreNormalizer scoreNormalizer;
+    private final ScoringConfiguration config;
+    private final ScoreInterpreter scoreInterpreter;
 
     public OverviewScoringStrategy(CompetencyBatchLoader competencyBatchLoader,
                                    IndicatorBatchLoader indicatorBatchLoader,
-                                   ScoreNormalizer scoreNormalizer) {
+                                   ScoreNormalizer scoreNormalizer,
+                                   ScoringConfiguration config,
+                                   ScoreInterpreter scoreInterpreter) {
         this.competencyBatchLoader = competencyBatchLoader;
         this.indicatorBatchLoader = indicatorBatchLoader;
         this.scoreNormalizer = scoreNormalizer;
+        this.config = config;
+        this.scoreInterpreter = scoreInterpreter;
     }
 
     @Override
@@ -133,7 +141,19 @@ public class OverviewScoringStrategy implements ScoringStrategy {
                     scoreDto.getMaxScore(), String.format("%.2f", scoreDto.getPercentage()));
         }
 
-        // Step 4: Calculate Overall Score
+        // Step 4: Evidence sufficiency check
+        int minQ = config.getThresholds().getOverview().getMinQuestionsPerCompetency();
+        for (CompetencyScoreDto cs : finalScores) {
+            if (cs.getQuestionsAnswered() < minQ) {
+                cs.setInsufficientEvidence(true);
+                cs.setEvidenceNote("Score based on " + cs.getQuestionsAnswered()
+                        + " question(s); minimum " + minQ + " required");
+                log.debug("Insufficient evidence for competency {}: {} questions (min {})",
+                        cs.getCompetencyName(), cs.getQuestionsAnswered(), minQ);
+            }
+        }
+
+        // Step 5: Calculate Overall Score
         int competencyCount = finalScores.size();
         double overallPercentage = competencyCount > 0
                 ? totalPercentage / competencyCount
@@ -149,12 +169,68 @@ public class OverviewScoringStrategy implements ScoringStrategy {
                 String.format("%.2f", overallScore), String.format("%.2f", overallPercentage),
                 competencyCount, indicatorAggs.size());
 
-        // Step 5: Create Result
+        // Step 6: Profile pattern analysis and proficiency labels
+        ScoringConfiguration.Thresholds.Overview overviewConfig = config.getThresholds().getOverview();
+        Map<String, List<String>> profilePattern = new LinkedHashMap<>();
+        profilePattern.put("SIGNATURE_STRENGTH", new ArrayList<>());
+        profilePattern.put("STRENGTH", new ArrayList<>());
+        profilePattern.put("DEVELOPING", new ArrayList<>());
+        profilePattern.put("CRITICAL_GAP", new ArrayList<>());
+        profilePattern.put("AVERAGE", new ArrayList<>());
+
+        for (CompetencyScoreDto cs : finalScores) {
+            double pct = cs.getPercentage() != null ? cs.getPercentage() : 0.0;
+
+            // Assign proficiency label to competency
+            ScoreInterpreter.ScoreInterpretation interpretation = scoreInterpreter.interpret(pct, "en");
+            cs.setProficiencyLabel(interpretation.label());
+
+            // Assign proficiency labels to indicators
+            if (cs.getIndicatorScores() != null) {
+                for (IndicatorScoreDto is : cs.getIndicatorScores()) {
+                    double indPct = is.getPercentage() != null ? is.getPercentage() : 0.0;
+                    ScoreInterpreter.ScoreInterpretation indInterpretation = scoreInterpreter.interpret(indPct, "en");
+                    is.setProficiencyLabel(indInterpretation.label());
+                }
+            }
+
+            // Classify into profile pattern categories
+            String category;
+            if (pct >= overallPercentage + overviewConfig.getProfileBandWidth()
+                    && pct >= overviewConfig.getStrengthThreshold()) {
+                category = "SIGNATURE_STRENGTH";
+            } else if (pct >= overviewConfig.getStrengthThreshold()) {
+                category = "STRENGTH";
+            } else if (pct < overviewConfig.getCriticalGapThreshold()) {
+                category = "CRITICAL_GAP";
+            } else if (pct >= overviewConfig.getDevelopmentThreshold()) {
+                category = "DEVELOPING";
+            } else {
+                category = "AVERAGE";
+            }
+
+            profilePattern.get(category).add(cs.getCompetencyName());
+            log.debug("Profile pattern: {} -> {} (pct={}, overall={})",
+                    cs.getCompetencyName(), category,
+                    String.format("%.1f", pct), String.format("%.1f", overallPercentage));
+        }
+
+        // Remove empty categories for cleaner output
+        profilePattern.values().removeIf(List::isEmpty);
+
+        // Step 7: Create Result
         ScoringResult result = new ScoringResult();
         result.setOverallScore(overallScore);
         result.setOverallPercentage(overallPercentage);
         result.setCompetencyScores(finalScores);
         result.setGoal(AssessmentGoal.OVERVIEW);
+
+        // Store profile pattern in extended metrics
+        Map<String, Object> extendedMetrics = new LinkedHashMap<>();
+        extendedMetrics.put("profilePattern", profilePattern);
+        result.setExtendedMetrics(extendedMetrics);
+
+        log.info("Profile pattern analysis complete: {}", profilePattern.keySet());
 
         // Pass/fail will be set by service layer based on template passing score
 

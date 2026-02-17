@@ -117,7 +117,10 @@ class ScoringOrchestrationServiceTest {
         @Test
         @DisplayName("Should calculate and save result successfully with scoring strategy")
         void shouldCalculateAndSaveResultSuccessfully() {
-            // Given
+            // Given: No existing result for this session
+            when(resultRepository.findBySession_IdAndStatus(sessionId, ResultStatus.COMPLETED))
+                    .thenReturn(Optional.empty());
+            when(resultRepository.findBySession_Id(sessionId)).thenReturn(Optional.empty());
             when(sessionRepository.findByIdWithTemplate(sessionId)).thenReturn(Optional.of(mockSession));
             when(answerRepository.findBySession_Id(sessionId)).thenReturn(createMockAnswers(3));
 
@@ -170,10 +173,99 @@ class ScoringOrchestrationServiceTest {
         }
 
         @Test
+        @DisplayName("Should return existing COMPLETED result without re-scoring (idempotency guard)")
+        void shouldReturnExistingCompletedResultWithoutReScoring() {
+            // Given: An existing COMPLETED result for this session
+            TestResult existingResult = new TestResult(mockSession, clerkUserId);
+            existingResult.setId(UUID.randomUUID());
+            existingResult.setStatus(ResultStatus.COMPLETED);
+            existingResult.setOverallScore(90.0);
+            existingResult.setOverallPercentage(90.0);
+            existingResult.setPassed(true);
+            existingResult.setQuestionsAnswered(5);
+            existingResult.setQuestionsSkipped(0);
+            existingResult.setTotalTimeSeconds(120);
+            existingResult.setCompletedAt(LocalDateTime.now());
+
+            when(resultRepository.findBySession_IdAndStatus(sessionId, ResultStatus.COMPLETED))
+                    .thenReturn(Optional.of(existingResult));
+            when(sessionRepository.findByIdWithTemplate(sessionId))
+                    .thenReturn(Optional.of(mockSession));
+
+            // When
+            TestResultDto result = scoringOrchestrationService.calculateAndSaveResult(sessionId);
+
+            // Then: Should return existing result
+            assertThat(result).isNotNull();
+            assertThat(result.overallScore()).isEqualTo(90.0);
+            assertThat(result.overallPercentage()).isEqualTo(90.0);
+            assertThat(result.status()).isEqualTo(ResultStatus.COMPLETED);
+
+            // Verify no scoring strategy was invoked (idempotent return)
+            verify(overviewStrategy, never()).calculate(any(), any());
+
+            // Verify no new result was saved
+            verify(resultRepository, never()).save(any(TestResult.class));
+
+            // Verify no answers were fetched (no scoring needed)
+            verify(answerRepository, never()).findBySession_Id(any());
+        }
+
+        @Test
+        @DisplayName("Should delete PENDING result and re-score when no COMPLETED result exists")
+        void shouldDeletePendingResultAndReScore() {
+            // Given: A PENDING result exists, but no COMPLETED result
+            TestResult pendingResult = new TestResult(mockSession, clerkUserId);
+            pendingResult.setId(UUID.randomUUID());
+            pendingResult.setStatus(ResultStatus.PENDING);
+
+            when(resultRepository.findBySession_IdAndStatus(sessionId, ResultStatus.COMPLETED))
+                    .thenReturn(Optional.empty());
+            when(resultRepository.findBySession_Id(sessionId))
+                    .thenReturn(Optional.of(pendingResult));
+            when(sessionRepository.findByIdWithTemplate(sessionId))
+                    .thenReturn(Optional.of(mockSession));
+            when(answerRepository.findBySession_Id(sessionId)).thenReturn(createMockAnswers(3));
+
+            when(overviewStrategy.getSupportedGoal()).thenReturn(AssessmentGoal.OVERVIEW);
+            ScoringResult scoringResult = new ScoringResult();
+            scoringResult.setOverallScore(80.0);
+            scoringResult.setOverallPercentage(80.0);
+            scoringResult.setGoal(AssessmentGoal.OVERVIEW);
+            scoringResult.setCompetencyScores(List.of());
+            when(overviewStrategy.calculate(any(), any())).thenReturn(scoringResult);
+
+            when(resultRepository.save(any(TestResult.class))).thenAnswer(invocation -> {
+                TestResult r = invocation.getArgument(0);
+                r.setId(UUID.randomUUID());
+                return r;
+            });
+            when(resultRepository.countResultsByTemplateId(templateId)).thenReturn(0L);
+
+            when(responseConsistencyAnalyzer.analyze(anyList()))
+                .thenReturn(new ResponseConsistencyAnalyzer.ConsistencyResult(0.95, List.of(), 0.0, 0.0, 0.0));
+
+            // When
+            TestResultDto result = scoringOrchestrationService.calculateAndSaveResult(sessionId);
+
+            // Then: Should have deleted the pending result
+            verify(resultRepository).delete(pendingResult);
+            verify(resultRepository).flush();
+
+            // And re-scored
+            verify(overviewStrategy).calculate(eq(mockSession), any());
+            assertThat(result.status()).isEqualTo(ResultStatus.COMPLETED);
+            assertThat(result.overallScore()).isEqualTo(80.0);
+        }
+
+        @Test
         @DisplayName("Should throw ResourceNotFoundException when session not found")
         void shouldThrowExceptionWhenSessionNotFound() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
+            when(resultRepository.findBySession_IdAndStatus(nonExistentId, ResultStatus.COMPLETED))
+                    .thenReturn(Optional.empty());
+            when(resultRepository.findBySession_Id(nonExistentId)).thenReturn(Optional.empty());
             when(sessionRepository.findByIdWithTemplate(nonExistentId)).thenReturn(Optional.empty());
 
             // When & Then
@@ -187,6 +279,9 @@ class ScoringOrchestrationServiceTest {
         void shouldUseLegacyScoringWhenNoStrategyMatches() {
             // Given
             mockTemplate.setGoal(AssessmentGoal.JOB_FIT); // No matching strategy in our mock list
+            when(resultRepository.findBySession_IdAndStatus(sessionId, ResultStatus.COMPLETED))
+                    .thenReturn(Optional.empty());
+            when(resultRepository.findBySession_Id(sessionId)).thenReturn(Optional.empty());
             when(sessionRepository.findByIdWithTemplate(sessionId)).thenReturn(Optional.of(mockSession));
             when(answerRepository.findBySession_Id(sessionId)).thenReturn(List.of());
 
@@ -224,6 +319,9 @@ class ScoringOrchestrationServiceTest {
         void shouldCalculatePassedStatusCorrectly() {
             // Given
             mockTemplate.setPassingScore(80.0);
+            when(resultRepository.findBySession_IdAndStatus(sessionId, ResultStatus.COMPLETED))
+                    .thenReturn(Optional.empty());
+            when(resultRepository.findBySession_Id(sessionId)).thenReturn(Optional.empty());
             when(sessionRepository.findByIdWithTemplate(sessionId)).thenReturn(Optional.of(mockSession));
             when(answerRepository.findBySession_Id(sessionId)).thenReturn(createMockAnswers(3));
 

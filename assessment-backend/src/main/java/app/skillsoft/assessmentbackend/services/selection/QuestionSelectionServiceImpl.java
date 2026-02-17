@@ -43,16 +43,30 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
     private final BehavioralIndicatorRepository indicatorRepository;
     private final PsychometricBlueprintValidator psychometricValidator;
     private final ItemStatisticsRepository itemStatisticsRepository;
+    private final ExposureTrackingService exposureTrackingService;
+
+    /**
+     * Difficulty bands used for graduated difficulty distribution.
+     * When questionsPerIndicator >= 3, questions are selected across these bands
+     * to ensure a spread from foundational through advanced difficulty.
+     */
+    private static final DifficultyLevel[] GRADUATED_DIFFICULTY_BANDS = {
+            DifficultyLevel.FOUNDATIONAL,
+            DifficultyLevel.INTERMEDIATE,
+            DifficultyLevel.ADVANCED
+    };
 
     public QuestionSelectionServiceImpl(
             AssessmentQuestionRepository questionRepository,
             BehavioralIndicatorRepository indicatorRepository,
             PsychometricBlueprintValidator psychometricValidator,
-            ItemStatisticsRepository itemStatisticsRepository) {
+            ItemStatisticsRepository itemStatisticsRepository,
+            ExposureTrackingService exposureTrackingService) {
         this.questionRepository = questionRepository;
         this.indicatorRepository = indicatorRepository;
         this.psychometricValidator = psychometricValidator;
         this.itemStatisticsRepository = itemStatisticsRepository;
+        this.exposureTrackingService = exposureTrackingService;
     }
 
     // ========== SINGLE INDICATOR SELECTION ==========
@@ -287,9 +301,17 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
     }
 
     /**
-     * Waterfall distribution with context neutrality filtering.
+     * Waterfall distribution with context neutrality filtering and graduated difficulty.
      * Only selects questions that pass the context neutrality check (GENERAL tag,
      * UNIVERSAL tag, or no narrow domain tags).
+     *
+     * When {@code questionsPerRound >= 3}, applies graduated difficulty distribution:
+     * each indicator gets questions spread across FOUNDATIONAL, INTERMEDIATE, and ADVANCED
+     * bands. This ensures the OVERVIEW assessment probes multiple cognitive levels per
+     * competency, producing a richer Competency Passport.
+     *
+     * When {@code questionsPerRound < 3}, uses the single {@code preferredDifficulty}
+     * for all selections (legacy behavior).
      *
      * Used exclusively by OVERVIEW assessments for Competency Passport generation
      * where construct validity requires context-neutral items.
@@ -300,12 +322,163 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
             int questionsPerRound,
             DifficultyLevel preferredDifficulty) {
 
+        boolean useGraduatedDifficulty = questionsPerRound >= 3;
+
+        if (useGraduatedDifficulty) {
+            log.info("Using graduated difficulty distribution for OVERVIEW assembly " +
+                    "(questionsPerRound={}, bands={})",
+                    questionsPerRound, Arrays.toString(GRADUATED_DIFFICULTY_BANDS));
+            return selectWithGraduatedDifficulty(indicatorIds, totalQuestions, questionsPerRound);
+        }
+
+        // Legacy single-difficulty path for questionsPerRound < 3
+        return selectWithSingleDifficultyContextNeutral(
+                indicatorIds, totalQuestions, questionsPerRound, preferredDifficulty);
+    }
+
+    /**
+     * Graduated difficulty selection for context-neutral OVERVIEW waterfall.
+     *
+     * For each indicator, selects questions in difficulty bands:
+     * - Band 1 (FOUNDATIONAL): 1 question
+     * - Band 2 (INTERMEDIATE): 1 question
+     * - Band 3 (ADVANCED): 1 question
+     * - Remaining: cycle through bands again
+     *
+     * If a difficulty band has no questions for a given indicator, falls back
+     * to any available difficulty to maintain the target count.
+     */
+    private List<UUID> selectWithGraduatedDifficulty(
+            List<UUID> indicatorIds,
+            int totalQuestions,
+            int questionsPerRound) {
+
+        List<UUID> selectedQuestions = new ArrayList<>();
+        Set<UUID> usedQuestions = new HashSet<>();
+
+        // For each indicator, build separate pools per difficulty band
+        Map<UUID, Map<DifficultyLevel, List<UUID>>> indicatorBandPools = new LinkedHashMap<>();
+        Map<UUID, List<UUID>> indicatorFallbackPools = new LinkedHashMap<>();
+
+        for (UUID indicatorId : indicatorIds) {
+            Map<DifficultyLevel, List<UUID>> bandPools = new LinkedHashMap<>();
+            for (DifficultyLevel band : GRADUATED_DIFFICULTY_BANDS) {
+                bandPools.put(band, getContextNeutralQuestionPool(indicatorId, band));
+            }
+            indicatorBandPools.put(indicatorId, bandPools);
+
+            // Fallback pool: all context-neutral questions regardless of difficulty
+            indicatorFallbackPools.put(indicatorId, getContextNeutralQuestionPool(indicatorId, null));
+        }
+
+        // Iterate over indicators in waterfall fashion
+        // Each indicator gets questionsPerRound questions, spread across difficulty bands
+        int maxRounds = (totalQuestions / Math.max(1, indicatorIds.size()) / Math.max(1, questionsPerRound)) + 1;
+
+        for (int round = 0; round < maxRounds && selectedQuestions.size() < totalQuestions; round++) {
+            for (UUID indicatorId : indicatorIds) {
+                if (selectedQuestions.size() >= totalQuestions) break;
+
+                Map<DifficultyLevel, List<UUID>> bandPools = indicatorBandPools.get(indicatorId);
+                int questionsThisRound = 0;
+                int targetForRound = Math.max(1, questionsPerRound);
+
+                // Phase 1: Select one question per difficulty band (graduated distribution)
+                for (DifficultyLevel band : GRADUATED_DIFFICULTY_BANDS) {
+                    if (questionsThisRound >= targetForRound) break;
+                    if (selectedQuestions.size() >= totalQuestions) break;
+
+                    List<UUID> pool = bandPools.get(band);
+                    UUID selected = pickFirstUnused(pool, usedQuestions);
+
+                    if (selected != null) {
+                        selectedQuestions.add(selected);
+                        usedQuestions.add(selected);
+                        questionsThisRound++;
+                    } else {
+                        log.debug("No {} question available for indicator {} in round {}, " +
+                                "will use fallback", band, indicatorId, round);
+                    }
+                }
+
+                // Phase 2: Fill remaining slots from any difficulty (fallback)
+                if (questionsThisRound < targetForRound) {
+                    List<UUID> fallbackPool = indicatorFallbackPools.get(indicatorId);
+                    while (questionsThisRound < targetForRound
+                            && selectedQuestions.size() < totalQuestions) {
+                        UUID selected = pickFirstUnused(fallbackPool, usedQuestions);
+                        if (selected == null) break; // indicator exhausted
+
+                        selectedQuestions.add(selected);
+                        usedQuestions.add(selected);
+                        questionsThisRound++;
+
+                        log.debug("Fallback: selected any-difficulty question for indicator {} " +
+                                "(round {}, slot {})", indicatorId, round, questionsThisRound);
+                    }
+                }
+
+                // Phase 3: If questionsPerRound > 3, fill extra slots by cycling bands again
+                if (questionsThisRound < targetForRound) {
+                    int bandIdx = 0;
+                    while (questionsThisRound < targetForRound
+                            && selectedQuestions.size() < totalQuestions) {
+                        DifficultyLevel band = GRADUATED_DIFFICULTY_BANDS[bandIdx % GRADUATED_DIFFICULTY_BANDS.length];
+                        List<UUID> pool = bandPools.get(band);
+                        UUID selected = pickFirstUnused(pool, usedQuestions);
+
+                        if (selected != null) {
+                            selectedQuestions.add(selected);
+                            usedQuestions.add(selected);
+                            questionsThisRound++;
+                        }
+                        bandIdx++;
+
+                        // Safety: break if we have cycled through all bands without finding anything
+                        if (bandIdx >= GRADUATED_DIFFICULTY_BANDS.length * 2) break;
+                    }
+                }
+            }
+        }
+
+        log.info("Graduated difficulty context-neutral waterfall selected {} questions " +
+                "across {} indicators (target: {})",
+                selectedQuestions.size(), indicatorIds.size(), totalQuestions);
+
+        return selectedQuestions;
+    }
+
+    /**
+     * Pick the first unused question ID from the pool.
+     *
+     * @param pool         Ordered list of candidate question IDs
+     * @param usedQuestions Set of already-selected question IDs
+     * @return The first unused ID, or null if pool is exhausted
+     */
+    private UUID pickFirstUnused(List<UUID> pool, Set<UUID> usedQuestions) {
+        for (UUID id : pool) {
+            if (!usedQuestions.contains(id)) {
+                return id;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Legacy single-difficulty context-neutral waterfall selection.
+     * Used when questionsPerRound < 3 (graduated difficulty not applicable).
+     */
+    private List<UUID> selectWithSingleDifficultyContextNeutral(
+            List<UUID> indicatorIds,
+            int totalQuestions,
+            int questionsPerRound,
+            DifficultyLevel preferredDifficulty) {
+
         List<UUID> selectedQuestions = new ArrayList<>();
         Set<UUID> usedQuestions = new HashSet<>();
         Map<UUID, List<UUID>> indicatorQuestionPool = new HashMap<>();
         Map<UUID, Integer> indicatorCursors = new HashMap<>();
 
-        // Prepare context-neutral question pools for each indicator
         for (UUID indicatorId : indicatorIds) {
             List<UUID> pool = getContextNeutralQuestionPool(indicatorId, preferredDifficulty);
             indicatorQuestionPool.put(indicatorId, pool);
@@ -341,7 +514,7 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
             }
         }
 
-        log.debug("Context-neutral waterfall selected {} questions across {} indicators",
+        log.debug("Single-difficulty context-neutral waterfall selected {} questions across {} indicators",
                 selectedQuestions.size(), indicatorIds.size());
 
         return selectedQuestions;
@@ -564,9 +737,9 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
             );
         }
 
-        // Auto-track exposure for all selected questions
+        // Auto-track exposure via dedicated service (avoids self-invocation @Transactional issue)
         if (!selectedQuestions.isEmpty()) {
-            trackExposure(selectedQuestions);
+            exposureTrackingService.trackExposure(selectedQuestions);
         }
 
         // Shuffle if requested (prevents clustering by competency)
@@ -754,25 +927,4 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                 ));
     }
 
-    /**
-     * Increment exposure count for selected questions.
-     * Called automatically at the end of selectQuestionsForCompetencies() after
-     * questions are finalized for a test assembly.
-     *
-     * Uses @Transactional to override the class-level readOnly = true,
-     * since this method performs write operations.
-     *
-     * @param questionIds The IDs of questions selected for the test
-     */
-    @Transactional
-    public void trackExposure(List<UUID> questionIds) {
-        if (questionIds == null || questionIds.isEmpty()) return;
-
-        List<AssessmentQuestion> questions = questionRepository.findAllById(questionIds);
-        for (AssessmentQuestion q : questions) {
-            q.incrementExposureCount();
-        }
-        questionRepository.saveAll(questions);
-        log.debug("Incremented exposure count for {} questions", questions.size());
-    }
 }

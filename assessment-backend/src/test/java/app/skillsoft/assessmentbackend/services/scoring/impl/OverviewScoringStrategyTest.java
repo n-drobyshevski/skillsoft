@@ -1,10 +1,13 @@
 package app.skillsoft.assessmentbackend.services.scoring.impl;
 
+import app.skillsoft.assessmentbackend.config.ScoringConfiguration;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
+import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.ScoreInterpreter;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +18,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -53,7 +55,10 @@ class OverviewScoringStrategyTest {
     @Spy
     private ScoreNormalizer scoreNormalizer = new ScoreNormalizer();
 
-    @InjectMocks
+    @Spy
+    private ScoreInterpreter scoreInterpreter = new ScoreInterpreter();
+
+    private ScoringConfiguration config;
     private OverviewScoringStrategy scoringStrategy;
 
     private TestSession mockSession;
@@ -65,6 +70,18 @@ class OverviewScoringStrategyTest {
 
     @BeforeEach
     void setUp() {
+        // Set up configuration with defaults
+        config = new ScoringConfiguration();
+
+        // Construct strategy manually with all dependencies (constructor injection)
+        scoringStrategy = new OverviewScoringStrategy(
+                competencyBatchLoader,
+                indicatorBatchLoader,
+                scoreNormalizer,
+                config,
+                scoreInterpreter
+        );
+
         // Set up UUIDs
         competencyId1 = UUID.randomUUID();
         competencyId2 = UUID.randomUUID();
@@ -936,6 +953,223 @@ class OverviewScoringStrategyTest {
             // Then
             // Pass/fail is set by service layer based on template passing score
             assertThat(result.getPassed()).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("Evidence Sufficiency Tests")
+    class EvidenceSufficiencyTests {
+
+        @Test
+        @DisplayName("Should flag competency with insufficient evidence when questions below minimum")
+        void shouldFlagInsufficientEvidence() {
+            // Given: 2 answers for a competency (default min is 3)
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency1);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+
+            TestAnswer a1 = createAnswer(mockSession, q1, 4, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then
+            assertThat(result.getCompetencyScores()).hasSize(1);
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getInsufficientEvidence()).isTrue();
+            assertThat(score.getEvidenceNote()).contains("2 question(s)").contains("minimum 3");
+        }
+
+        @Test
+        @DisplayName("Should not flag competency with sufficient evidence")
+        void shouldNotFlagSufficientEvidence() {
+            // Given: 3 answers for a competency (meets default min of 3)
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency1);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            AssessmentQuestion q3 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+
+            TestAnswer a1 = createAnswer(mockSession, q1, 3, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+            TestAnswer a3 = createAnswer(mockSession, q3, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3));
+
+            // Then
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getInsufficientEvidence()).isNull();
+            assertThat(score.getEvidenceNote()).isNull();
+        }
+
+        @Test
+        @DisplayName("Should flag single-question competency as insufficient")
+        void shouldFlagSingleQuestionCompetency() {
+            // Given: 1 answer (well below default min of 3)
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency1);
+            AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer a = createAnswer(mockSession, q, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
+
+            // Then
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getInsufficientEvidence()).isTrue();
+            assertThat(score.getEvidenceNote()).contains("1 question(s)");
+        }
+
+        @Test
+        @DisplayName("Should respect custom minQuestionsPerCompetency config")
+        void shouldRespectCustomMinQuestions() {
+            // Given: Custom config with min=1
+            config.getThresholds().getOverview().setMinQuestionsPerCompetency(1);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency1);
+            AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer a = createAnswer(mockSession, q, 4, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
+
+            // Then: 1 question meets the min=1 threshold
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getInsufficientEvidence()).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("Proficiency Label Tests")
+    class ProficiencyLabelTests {
+
+        @Test
+        @DisplayName("Should assign proficiency labels to competency scores")
+        void shouldAssignProficiencyLabelsToCompetencies() {
+            // Given: Competency with 75% score (Advanced)
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency1);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            AssessmentQuestion q3 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            AssessmentQuestion q4 = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+
+            // Likert 3,4,4,5 => normalized 0.5,0.75,0.75,1.0 => avg 0.75 => 75%
+            TestAnswer a1 = createAnswer(mockSession, q1, 3, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 4, null, false);
+            TestAnswer a3 = createAnswer(mockSession, q3, 4, null, false);
+            TestAnswer a4 = createAnswer(mockSession, q4, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2, a3, a4));
+
+            // Then
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getProficiencyLabel()).isEqualTo("Advanced"); // 70-84% range
+            assertThat(score.getPercentage()).isCloseTo(75.0, within(0.1));
+        }
+
+        @Test
+        @DisplayName("Should assign proficiency labels to indicator scores")
+        void shouldAssignProficiencyLabelsToIndicators() {
+            // Given: Single indicator with 100% score
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency1);
+            AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer a = createAnswer(mockSession, q, 5, null, false); // 1.0 normalized = 100%
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
+
+            // Then
+            CompetencyScoreDto compScore = result.getCompetencyScores().get(0);
+            assertThat(compScore.getIndicatorScores()).isNotEmpty();
+            IndicatorScoreDto indScore = compScore.getIndicatorScores().get(0);
+            assertThat(indScore.getProficiencyLabel()).isEqualTo("Expert"); // 100% is Expert
+        }
+
+        @Test
+        @DisplayName("Should assign Beginning label for low scores")
+        void shouldAssignBeginningLabelForLowScores() {
+            // Given: Competency with 0% score
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency1);
+            AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+            TestAnswer a = createAnswer(mockSession, q, 1, null, false); // 0.0 normalized = 0%
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
+
+            // Then
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getProficiencyLabel()).isEqualTo("Beginning"); // 0-29% range
+        }
+    }
+
+    @Nested
+    @DisplayName("Profile Pattern Analysis Tests")
+    class ProfilePatternTests {
+
+        @Test
+        @DisplayName("Should classify competencies into profile pattern categories")
+        @SuppressWarnings("unchecked")
+        void shouldClassifyCompetenciesIntoProfilePattern() {
+            // Given: 2 competencies - one high (100%), one low (25%)
+            // Overall average = (100 + 25) / 2 = 62.5%
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competency1);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competency2);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.SJT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.SJT);
+
+            TestAnswer a1 = createAnswer(mockSession, q1, null, 1.0, false); // 100% => SIGNATURE_STRENGTH (>= 62.5+10 and >= 75)
+            TestAnswer a2 = createAnswer(mockSession, q2, null, 0.25, false); // 25% => CRITICAL_GAP (< 30)
+
+            setupBatchLoaderMock(Map.of(competencyId1, competency1, competencyId2, competency2));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then
+            assertThat(result.getExtendedMetrics()).isNotNull();
+            Map<String, List<String>> profilePattern =
+                    (Map<String, List<String>>) result.getExtendedMetrics().get("profilePattern");
+            assertThat(profilePattern).isNotNull();
+
+            // 100% >= 62.5+10=72.5 AND >= 75 => SIGNATURE_STRENGTH
+            assertThat(profilePattern.getOrDefault("SIGNATURE_STRENGTH", List.of()))
+                    .contains("Leadership");
+
+            // 25% < 30 => CRITICAL_GAP
+            assertThat(profilePattern.getOrDefault("CRITICAL_GAP", List.of()))
+                    .contains("Communication");
+        }
+
+        @Test
+        @DisplayName("Should produce extended metrics with profile pattern for empty scores")
+        void shouldProduceExtendedMetricsForEmptyScores() {
+            // Given: No answers
+            List<TestAnswer> emptyAnswers = Collections.emptyList();
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, emptyAnswers);
+
+            // Then: Extended metrics should still exist but with no categories
+            assertThat(result.getExtendedMetrics()).isNotNull();
         }
     }
 }

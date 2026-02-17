@@ -17,11 +17,19 @@ import java.util.stream.Collectors;
  *
  * Produces a composite consistency score (0.0-1.0) and human-readable flags
  * that are stored in extendedMetrics for all assessment goals.
+ *
+ * @see ScoreNormalizer used for consistent answer normalization
  */
 @Service
 public class ResponseConsistencyAnalyzer {
 
     private static final Logger log = LoggerFactory.getLogger(ResponseConsistencyAnalyzer.class);
+
+    private final ScoreNormalizer scoreNormalizer;
+
+    public ResponseConsistencyAnalyzer(ScoreNormalizer scoreNormalizer) {
+        this.scoreNormalizer = scoreNormalizer;
+    }
 
     /**
      * Result of consistency analysis across all answers in a session.
@@ -145,10 +153,11 @@ public class ResponseConsistencyAnalyzer {
      */
     private double calculateIntraCompetencyVariance(List<TestAnswer> answers) {
         // Group answered (non-skipped) answers by competency UUID
+        // Filter matches OverviewScoringStrategy logic: skip when isSkipped or answeredAt is null
         Map<UUID, List<Double>> competencyScores = new HashMap<>();
 
         for (TestAnswer answer : answers) {
-            if (Boolean.TRUE.equals(answer.getIsSkipped()) || answer.getScore() == null) {
+            if (answer.getIsSkipped() || answer.getAnsweredAt() == null) {
                 continue;
             }
 
@@ -157,11 +166,8 @@ public class ResponseConsistencyAnalyzer {
                 continue;
             }
 
-            // Normalize score to 0-1 range
-            double maxScore = answer.getMaxScore() != null && answer.getMaxScore() > 0
-                ? answer.getMaxScore()
-                : 1.0;
-            double normalized = answer.getScore() / maxScore;
+            // Use shared ScoreNormalizer for consistent normalization across strategies
+            double normalized = scoreNormalizer.normalize(answer);
 
             competencyScores.computeIfAbsent(competencyId, k -> new ArrayList<>())
                 .add(normalized);

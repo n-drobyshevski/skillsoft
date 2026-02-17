@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.repository;
 
+import app.skillsoft.assessmentbackend.domain.entities.ResultStatus;
 import app.skillsoft.assessmentbackend.domain.entities.TestResult;
 import app.skillsoft.assessmentbackend.domain.projections.TemplateStatisticsProjection;
 import app.skillsoft.assessmentbackend.domain.projections.UserStatisticsProjection;
@@ -22,6 +23,16 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
      * Find result by session ID
      */
     Optional<TestResult> findBySession_Id(UUID sessionId);
+
+    /**
+     * Find result by session ID and status.
+     * Used for idempotency checks to detect already-completed scoring.
+     *
+     * @param sessionId The session UUID
+     * @param status    The result status to filter by
+     * @return Optional containing the result if found with the given status
+     */
+    Optional<TestResult> findBySession_IdAndStatus(UUID sessionId, ResultStatus status);
 
     /**
      * Find all results for a user

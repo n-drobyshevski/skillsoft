@@ -33,9 +33,12 @@ public class CompetencyScoreDto {
     // Per-competency percentile (populated by SubscalePercentileCalculator)
     private Integer percentile;   // Percentile rank within this competency across all takers
 
-    // Evidence sufficiency (populated by JobFitScoringStrategy)
+    // Evidence sufficiency (populated by JobFitScoringStrategy / OverviewScoringStrategy)
     private Boolean insufficientEvidence;  // Whether too few questions were answered
     private String evidenceNote;           // Human-readable note about evidence sufficiency
+
+    // Proficiency classification (populated by ScoreInterpreter via OverviewScoringStrategy)
+    private String proficiencyLabel;       // e.g., "Advanced", "Developing"
 
     // Constructors
     public CompetencyScoreDto() {
@@ -201,6 +204,14 @@ public class CompetencyScoreDto {
 
     public void setEvidenceNote(String evidenceNote) {
         this.evidenceNote = evidenceNote;
+    }
+
+    public String getProficiencyLabel() {
+        return proficiencyLabel;
+    }
+
+    public void setProficiencyLabel(String proficiencyLabel) {
+        this.proficiencyLabel = proficiencyLabel;
     }
 
     @Override

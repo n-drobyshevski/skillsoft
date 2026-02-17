@@ -91,21 +91,21 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
 
         log.info("Starting scoring calculation in new transaction for session={}", sessionId);
 
-        // Idempotency check: return existing result if scoring was already completed for this session
-        Optional<TestResult> existingResult = resultRepository.findBySession_Id(sessionId);
-        if (existingResult.isPresent()) {
-            TestResult existing = existingResult.get();
-            if (existing.getStatus() == ResultStatus.COMPLETED) {
-                log.info("Scoring already completed for session={}, returning existing result={}",
-                        sessionId, existing.getId());
-                TestSession existingSession = sessionRepository.findByIdWithTemplate(sessionId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
-                return toResultDto(existing, existingSession);
-            }
-            // If existing result is PENDING, delete it and re-score
+        // Idempotency guard: return existing COMPLETED result without re-scoring
+        Optional<TestResult> completedResult = resultRepository.findBySession_IdAndStatus(sessionId, ResultStatus.COMPLETED);
+        if (completedResult.isPresent()) {
+            log.info("Idempotent scoring: result already exists for session {}", sessionId);
+            TestSession existingSession = sessionRepository.findByIdWithTemplate(sessionId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+            return toResultDto(completedResult.get(), existingSession);
+        }
+
+        // If existing result is PENDING, delete it and re-score
+        Optional<TestResult> pendingResult = resultRepository.findBySession_Id(sessionId);
+        if (pendingResult.isPresent()) {
             log.info("Found PENDING result={} for session={}, deleting and re-scoring",
-                    existing.getId(), sessionId);
-            resultRepository.delete(existing);
+                    pendingResult.get().getId(), sessionId);
+            resultRepository.delete(pendingResult.get());
             resultRepository.flush();
         }
 
@@ -186,8 +186,13 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         // Set Big Five profile (only populated for TEAM_FIT goal)
         result.setBigFiveProfile(scoringResult.getBigFiveProfile());
 
-        // Set extended metrics (e.g., TeamFitMetrics for TEAM_FIT goal, confidence for JOB_FIT)
+        // Set extended metrics (e.g., TeamFitMetrics for TEAM_FIT goal, confidence for JOB_FIT, profile for OVERVIEW)
         Map<String, Object> extendedMetrics = new LinkedHashMap<>();
+
+        // Propagate strategy-level extended metrics (e.g., profilePattern from OVERVIEW scoring)
+        if (scoringResult.getExtendedMetrics() != null) {
+            extendedMetrics.putAll(scoringResult.getExtendedMetrics());
+        }
 
         if (scoringResult.getTeamFitMetrics() != null) {
             extendedMetrics.putAll(convertTeamFitMetricsToMap(scoringResult.getTeamFitMetrics()));
