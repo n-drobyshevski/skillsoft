@@ -7,6 +7,7 @@ import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
+import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,6 +48,9 @@ class TestSimulatorServiceTest {
     private InventoryHeatmapService inventoryHeatmapService;
 
     @Mock
+    private BlueprintValidationService blueprintValidationService;
+
+    @Mock
     private TestAssembler mockAssembler;
 
     private TestSimulatorService testSimulatorService;
@@ -65,7 +69,8 @@ class TestSimulatorServiceTest {
         testSimulatorService = new TestSimulatorService(
             assemblerFactory,
             questionRepository,
-            inventoryHeatmapService
+            inventoryHeatmapService,
+            blueprintValidationService
         );
 
         // Initialize test UUIDs

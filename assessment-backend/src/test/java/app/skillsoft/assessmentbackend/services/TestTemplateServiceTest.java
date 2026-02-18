@@ -7,6 +7,7 @@ import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.impl.TestTemplateServiceImpl;
+import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -49,6 +50,9 @@ class TestTemplateServiceTest {
 
     @Mock
     private BlueprintConversionService blueprintConversionService;
+
+    @Mock
+    private BlueprintValidationService blueprintValidationService;
 
     @InjectMocks
     private TestTemplateServiceImpl testTemplateService;

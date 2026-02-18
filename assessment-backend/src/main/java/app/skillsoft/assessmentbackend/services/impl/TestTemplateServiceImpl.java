@@ -8,12 +8,14 @@ import app.skillsoft.assessmentbackend.domain.dto.TestTemplateDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateSummaryDto;
 import app.skillsoft.assessmentbackend.domain.dto.UpdateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
+import app.skillsoft.assessmentbackend.domain.dto.validation.BlueprintValidationResult;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
+import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
@@ -36,14 +38,17 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     private final TestTemplateRepository templateRepository;
     private final UserRepository userRepository;
     private final BlueprintConversionService blueprintConversionService;
+    private final BlueprintValidationService blueprintValidationService;
 
     public TestTemplateServiceImpl(
             TestTemplateRepository templateRepository,
             UserRepository userRepository,
-            BlueprintConversionService blueprintConversionService) {
+            BlueprintConversionService blueprintConversionService,
+            BlueprintValidationService blueprintValidationService) {
         this.templateRepository = templateRepository;
         this.userRepository = userRepository;
         this.blueprintConversionService = blueprintConversionService;
+        this.blueprintValidationService = blueprintValidationService;
     }
 
     @Override
@@ -296,45 +301,27 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     /**
      * Validates that a template has all required configuration to be published.
      *
-     * <p>This validation ensures templates are ready for test assembly by requiring
-     * a typed blueprint. Legacy blueprint data will be auto-converted before validation.</p>
+     * <p>Delegates to {@link BlueprintValidationService} for centralized validation.
+     * Returns a flat list of error message strings for backward compatibility with
+     * the existing publish flow.</p>
      *
      * @param template The template to validate
      * @return List of validation error messages (empty if valid)
      */
     private List<String> validateTemplateForPublishing(TestTemplate template) {
-        List<String> errors = new ArrayList<>();
+        BlueprintValidationResult result = blueprintValidationService.validateForPublishing(template);
 
-        // Check template has a name
-        if (template.getName() == null || template.getName().trim().isEmpty()) {
-            errors.add("Template must have a name");
+        // Log warnings even though they don't block publishing
+        if (result.hasWarnings()) {
+            log.info("Template {} has {} validation warnings: {}",
+                    template.getId(),
+                    result.warnings().size(),
+                    result.warnings().stream()
+                            .map(w -> w.id() + ": " + w.message())
+                            .toList());
         }
 
-        // Attempt to auto-convert legacy blueprint to typed blueprint
-        blueprintConversionService.ensureTypedBlueprint(template);
-
-        // Now strictly require typed blueprint for test assembly
-        if (template.getTypedBlueprint() == null) {
-            errors.add("Template must have a valid blueprint configured. " +
-                    "Please go to the Blueprint tab and add at least one competency.");
-        }
-
-        // Check assessment goal is set
-        if (template.getGoal() == null) {
-            errors.add("Template must have an assessment goal defined");
-        }
-
-        // Check time limit is reasonable
-        if (template.getTimeLimitMinutes() == null || template.getTimeLimitMinutes() <= 0) {
-            errors.add("Template must have a valid time limit (> 0 minutes)");
-        }
-
-        // Check passing score is reasonable (0-100%)
-        if (template.getPassingScore() == null || template.getPassingScore() < 0 || template.getPassingScore() > 100) {
-            errors.add("Template must have a valid passing score (0-100)");
-        }
-
-        return errors;
+        return result.errorMessages();
     }
 
     // Mapping methods

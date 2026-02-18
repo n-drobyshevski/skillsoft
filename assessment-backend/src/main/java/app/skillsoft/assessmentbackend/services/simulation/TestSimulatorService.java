@@ -2,9 +2,12 @@ package app.skillsoft.assessmentbackend.services.simulation;
 
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.*;
+import app.skillsoft.assessmentbackend.domain.dto.validation.BlueprintValidationResult;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
+import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
+import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import app.skillsoft.assessmentbackend.config.CacheConfig;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +39,7 @@ public class TestSimulatorService {
     private final TestAssemblerFactory assemblerFactory;
     private final AssessmentQuestionRepository questionRepository;
     private final InventoryHeatmapService inventoryHeatmapService;
+    private final BlueprintValidationService blueprintValidationService;
 
     /**
      * Default time per question in seconds (for estimation).
@@ -43,8 +47,50 @@ public class TestSimulatorService {
     private static final int DEFAULT_TIME_PER_QUESTION_SECONDS = 60;
 
     /**
+     * Simulate test execution with pre-validation against a full template.
+     *
+     * <p>Runs {@link BlueprintValidationService#validateForSimulation(TestTemplate)}
+     * before attempting assembly. If the blueprint fails validation, the simulation
+     * returns a failed result with the validation errors as warnings.</p>
+     *
+     * @param template The test template containing the blueprint
+     * @param profile  The simulation persona (PERFECT, RANDOM, FAILING)
+     * @return Simulation results, or a failed result if validation fails
+     */
+    @Transactional(readOnly = true)
+    public SimulationResultDto simulateWithValidation(TestTemplate template, SimulationProfile profile) {
+        if (template == null) {
+            return SimulationResultDto.failed(List.of(
+                InventoryWarning.info("Template is null")
+            ));
+        }
+
+        BlueprintValidationResult validationResult =
+                blueprintValidationService.validateForSimulation(template);
+
+        if (!validationResult.canSimulate()) {
+            log.warn("Template {} failed pre-simulation validation: {}",
+                    template.getId(), validationResult.errorMessages());
+
+            List<InventoryWarning> warnings = validationResult.errors().stream()
+                    .map(issue -> InventoryWarning.info("Validation: " + issue.message()))
+                    .collect(Collectors.toList());
+
+            return SimulationResultDto.failed(warnings);
+        }
+
+        // Log any non-blocking warnings
+        if (validationResult.hasWarnings()) {
+            log.info("Template {} has {} simulation warnings",
+                    template.getId(), validationResult.warnings().size());
+        }
+
+        return simulate(template.getTypedBlueprint(), profile);
+    }
+
+    /**
      * Simulate test execution with the given blueprint and profile.
-     * 
+     *
      * @param blueprint The test blueprint configuration
      * @param profile The simulation persona (PERFECT, RANDOM, FAILING)
      * @return Simulation results with composition, sample questions, and warnings
@@ -64,7 +110,7 @@ public class TestSimulatorService {
             profile = SimulationProfile.RANDOM_GUESSER;
         }
 
-        log.info("Starting simulation with profile: {} for strategy: {}", 
+        log.info("Starting simulation with profile: {} for strategy: {}",
             profile, blueprint.getStrategy());
 
         var warnings = new ArrayList<InventoryWarning>();
