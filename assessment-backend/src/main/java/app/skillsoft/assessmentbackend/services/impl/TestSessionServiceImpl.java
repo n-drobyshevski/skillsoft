@@ -18,6 +18,7 @@ import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
+import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyCompletedEvent;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyFailedEvent;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyProgress;
@@ -56,6 +57,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final ScoringOrchestrationService scoringOrchestrationService;
     private final ActivityTrackingService activityTrackingService;
     private final BlueprintConversionService blueprintConversionService;
+    private final QuestionSelectionService questionSelectionService;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -71,7 +73,8 @@ public class TestSessionServiceImpl implements TestSessionService {
             AssemblyProgressTracker assemblyProgressTracker,
             ScoringOrchestrationService scoringOrchestrationService,
             ActivityTrackingService activityTrackingService,
-            BlueprintConversionService blueprintConversionService) {
+            BlueprintConversionService blueprintConversionService,
+            QuestionSelectionService questionSelectionService) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -86,6 +89,7 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.scoringOrchestrationService = scoringOrchestrationService;
         this.activityTrackingService = activityTrackingService;
         this.blueprintConversionService = blueprintConversionService;
+        this.questionSelectionService = questionSelectionService;
     }
 
     @Override
@@ -119,12 +123,24 @@ public class TestSessionServiceImpl implements TestSessionService {
             throw new DuplicateSessionException(existing.getId(), request.templateId(), request.clerkUserId());
         }
 
-        // Create new session
+        // Create new session with pre-assigned UUID for deterministic question ordering (BE-008)
         TestSession session = new TestSession(template, request.clerkUserId());
+        UUID sessionId = UUID.randomUUID();
+        session.setId(sessionId);
+
+        // Seed the question selection service for reproducible test form generation.
+        // The same sessionId always produces the same question order, enabling
+        // psychometric validation of test forms.
+        questionSelectionService.setSessionSeed(sessionId);
 
         // Generate question order based on template configuration
         // Pass clerkUserId for Delta Testing (gap-based question selection)
-        List<UUID> questionOrder = generateQuestionOrder(template, request.clerkUserId());
+        List<UUID> questionOrder;
+        try {
+            questionOrder = generateQuestionOrder(template, request.clerkUserId());
+        } finally {
+            questionSelectionService.clearSessionSeed();
+        }
 
         // CRITICAL VALIDATION: Prevent sessions with empty question order
         if (questionOrder == null || questionOrder.isEmpty()) {

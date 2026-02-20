@@ -20,6 +20,7 @@ import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
+import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,6 +89,9 @@ class TestSessionDuplicateSessionTest {
     @Mock
     private BlueprintConversionService blueprintConversionService;
 
+    @Mock
+    private QuestionSelectionService questionSelectionService;
+
     private TestSessionService testSessionService;
 
     private UUID templateId;
@@ -113,7 +117,8 @@ class TestSessionDuplicateSessionTest {
                 assemblyProgressTracker,
                 scoringOrchestrationService,
                 activityTrackingService,
-                blueprintConversionService
+                blueprintConversionService,
+                questionSelectionService
         );
 
         // Initialize test data

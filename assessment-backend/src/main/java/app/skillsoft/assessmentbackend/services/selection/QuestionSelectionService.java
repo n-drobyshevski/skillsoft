@@ -233,6 +233,28 @@ public interface QuestionSelectionService {
      */
     List<AssessmentQuestion> filterByContextNeutrality(List<AssessmentQuestion> questions);
 
+    // ========== REPRODUCIBLE RANDOM (BE-008) ==========
+
+    /**
+     * Set a session-based seed for reproducible question ordering.
+     *
+     * When set, all subsequent shuffle operations in this thread will use
+     * a {@code Random} seeded with {@code sessionId.getMostSignificantBits()},
+     * producing the same question order for the same session ID.
+     *
+     * Must be paired with {@link #clearSessionSeed()} after question generation
+     * completes (use try/finally) to prevent leaking state across pooled threads.
+     *
+     * @param sessionId The session UUID used to derive the seed
+     */
+    void setSessionSeed(UUID sessionId);
+
+    /**
+     * Clear the session-based seed, reverting to non-deterministic shuffling.
+     * Must be called after {@link #setSessionSeed(UUID)} to prevent thread leaks.
+     */
+    void clearSessionSeed();
+
     // ========== ELIGIBILITY CHECKS ==========
 
     /**

@@ -17,6 +17,7 @@ import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
+import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -98,6 +99,9 @@ class TestSessionServiceTest {
     @Mock
     private BlueprintConversionService blueprintConversionService;
 
+    @Mock
+    private QuestionSelectionService questionSelectionService;
+
     private TestSessionServiceImpl testSessionService;
 
     private UUID sessionId;
@@ -124,7 +128,8 @@ class TestSessionServiceTest {
                 assemblyProgressTracker,
                 scoringOrchestrationService,
                 activityTrackingService,
-                blueprintConversionService
+                blueprintConversionService,
+                questionSelectionService
         );
 
         sessionId = UUID.randomUUID();

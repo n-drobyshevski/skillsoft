@@ -32,12 +32,24 @@ import java.util.stream.Collectors;
  * - Consistent difficulty fallback logic
  * - Reusable distribution strategies
  * - Proper logging and metrics
+ * - Reproducible question ordering via seeded Random (BE-008)
  */
 @Service
 @Transactional(readOnly = true)
 public class QuestionSelectionServiceImpl implements QuestionSelectionService {
 
     private static final Logger log = LoggerFactory.getLogger(QuestionSelectionServiceImpl.class);
+
+    /**
+     * Thread-local seeded Random for reproducible question ordering.
+     * When set (via {@link #setSessionSeed(UUID)}), all shuffle operations
+     * use this instance instead of ThreadLocalRandom, producing the same
+     * question order for the same session ID.
+     *
+     * Must be cleared after use via {@link #clearSessionSeed()} to prevent
+     * leaking state across pooled threads.
+     */
+    private static final ThreadLocal<Random> SEEDED_RANDOM = new ThreadLocal<>();
 
     private final AssessmentQuestionRepository questionRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
@@ -67,6 +79,36 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
         this.psychometricValidator = psychometricValidator;
         this.itemStatisticsRepository = itemStatisticsRepository;
         this.exposureTrackingService = exposureTrackingService;
+    }
+
+    // ========== REPRODUCIBLE RANDOM (BE-008) ==========
+
+    @Override
+    public void setSessionSeed(UUID sessionId) {
+        if (sessionId == null) {
+            log.debug("Null sessionId provided to setSessionSeed, shuffles will be non-deterministic");
+            return;
+        }
+        Random seeded = new Random(sessionId.getMostSignificantBits());
+        SEEDED_RANDOM.set(seeded);
+        log.debug("Set seeded Random for session {} (seed={})",
+                sessionId, sessionId.getMostSignificantBits());
+    }
+
+    @Override
+    public void clearSessionSeed() {
+        SEEDED_RANDOM.remove();
+    }
+
+    /**
+     * Return the seeded Random if set, otherwise a new (non-deterministic) Random.
+     * This ensures reproducible ordering when a session seed has been set,
+     * while preserving existing behavior for callers that do not set a seed
+     * (e.g., simulation, validation).
+     */
+    private Random getRandomInstance() {
+        Random seeded = SEEDED_RANDOM.get();
+        return seeded != null ? seeded : new Random();
     }
 
     // ========== SINGLE INDICATOR SELECTION ==========
@@ -104,8 +146,8 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
         if (preferredDifficulty != null) {
             eligible = applyDifficultyPreference(eligible, preferredDifficulty);
         } else {
-            // Shuffle if no difficulty preference (random selection)
-            Collections.shuffle(eligible);
+            // Shuffle if no difficulty preference (seeded for reproducibility)
+            Collections.shuffle(eligible, getRandomInstance());
         }
 
         // Select up to maxQuestions
@@ -158,7 +200,7 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                     .stream()
                     .filter(q -> !allExcluded.contains(q.getId()))
                     .collect(Collectors.toList());
-            Collections.shuffle(eligibleAnyDifficulty);
+            Collections.shuffle(eligibleAnyDifficulty, getRandomInstance());
 
             for (AssessmentQuestion q : eligibleAnyDifficulty) {
                 if (remaining <= 0) break;
@@ -191,7 +233,7 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                             .stream()
                             .filter(q -> !allExcluded.contains(q.getId()))
                             .collect(Collectors.toList());
-                    Collections.shuffle(eligibleSibling);
+                    Collections.shuffle(eligibleSibling, getRandomInstance());
 
                     for (AssessmentQuestion q : eligibleSibling) {
                         if (remaining <= 0) break;
@@ -745,7 +787,7 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
         // Shuffle if requested (prevents clustering by competency)
         if (shuffle && !selectedQuestions.isEmpty()) {
             List<UUID> shuffled = new ArrayList<>(selectedQuestions);
-            Collections.shuffle(shuffled);
+            Collections.shuffle(shuffled, getRandomInstance());
             log.debug("Shuffled {} selected questions", shuffled.size());
             return shuffled;
         }
@@ -804,7 +846,7 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
         if (preferred == null) {
             // No preference - shuffle and return
             List<AssessmentQuestion> shuffled = new ArrayList<>(questions);
-            Collections.shuffle(shuffled);
+            Collections.shuffle(shuffled, getRandomInstance());
             return shuffled;
         }
 
