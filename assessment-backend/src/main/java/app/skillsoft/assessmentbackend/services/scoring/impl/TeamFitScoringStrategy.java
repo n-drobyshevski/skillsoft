@@ -2,16 +2,17 @@ package app.skillsoft.assessmentbackend.services.scoring.impl;
 
 import app.skillsoft.assessmentbackend.config.ScoringConfiguration;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
-import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregationService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
+import app.skillsoft.assessmentbackend.services.scoring.ScoringPrecision;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import org.slf4j.Logger;
@@ -43,6 +44,7 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(TeamFitScoringStrategy.class);
 
+    private final CompetencyAggregationService aggregationService;
     private final CompetencyBatchLoader competencyBatchLoader;
     private final IndicatorBatchLoader indicatorBatchLoader;
     private final ScoringConfiguration scoringConfig;
@@ -50,11 +52,13 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
     private final TeamService teamService;
 
     public TeamFitScoringStrategy(
+            CompetencyAggregationService aggregationService,
             CompetencyBatchLoader competencyBatchLoader,
             IndicatorBatchLoader indicatorBatchLoader,
             ScoringConfiguration scoringConfig,
             ScoreNormalizer scoreNormalizer,
             TeamService teamService) {
+        this.aggregationService = aggregationService;
         this.competencyBatchLoader = competencyBatchLoader;
         this.indicatorBatchLoader = indicatorBatchLoader;
         this.scoringConfig = scoringConfig;
@@ -114,6 +118,7 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         Map<UUID, BehavioralIndicator> indicatorCache = indicatorBatchLoader.loadIndicatorsForAnswers(answers);
 
         // Step 1: Normalize & Aggregate Scores by Indicator (first level)
+        // TeamFit keeps its own normalization loop to track Big Five and ESCO mappings
         Map<UUID, IndicatorAggregation> indicatorAggs = new HashMap<>();
 
         // Track Big Five and ESCO mappings for team compatibility analysis
@@ -163,28 +168,13 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
 
         log.debug("Aggregated {} indicators from {} answers", indicatorAggs.size(), answers.size());
 
-        // Step 2: Roll up indicators to competencies (second level)
-        Map<UUID, CompetencyAggregation> competencyAggs = new HashMap<>();
+        // Step 2: Delegate indicator-to-competency rollup and DTO building to shared service
+        Map<UUID, CompetencyAggregation> competencyAggs = aggregationService.rollUpIndicatorsToCompetencies(
+                indicatorAggs, indicatorCache);
+        List<CompetencyScoreDto> finalScores = aggregationService.buildCompetencyScores(
+                competencyAggs, competencyCache);
 
-        for (var entry : indicatorAggs.entrySet()) {
-            UUID indicatorId = entry.getKey();
-            IndicatorAggregation indAgg = entry.getValue();
-
-            BehavioralIndicator indicator = indicatorBatchLoader.getFromCache(indicatorCache, indicatorId);
-            if (indicator == null || indicator.getCompetency() == null) {
-                log.warn("Skipping indicator {} - competency not found", indicatorId);
-                continue;
-            }
-
-            UUID competencyId = indicator.getCompetency().getId();
-            IndicatorScoreDto indicatorDto = indAgg.toDto(indicator);
-
-            competencyAggs.computeIfAbsent(competencyId, CompetencyAggregation::new)
-                    .addIndicator(indicatorDto, indAgg);
-        }
-
-        // Step 3: Create Score DTOs with Team Fit Analysis
-        List<CompetencyScoreDto> finalScores = new ArrayList<>();
+        // Step 3: Team Fit-specific DTO enrichment and weighting
         double totalWeightedScore = 0.0;
 
         // Track competencies that contribute to team diversity vs saturation
@@ -194,37 +184,25 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         // Track per-competency saturation: competencyName -> candidate percentage (0-1 scale)
         Map<String, Double> competencySaturationMap = new HashMap<>();
 
-        for (var entry : competencyAggs.entrySet()) {
-            UUID competencyId = entry.getKey();
-            CompetencyAggregation compAgg = entry.getValue();
+        for (CompetencyScoreDto scoreDto : finalScores) {
+            UUID competencyId = scoreDto.getCompetencyId();
+            CompetencyAggregation compAgg = competencyAggs.get(competencyId);
 
-            // Get competency details from preloaded cache
-            Competency competency = competencyBatchLoader.getFromCache(competencyCache, competencyId);
-            String competencyName = competency != null ? competency.getName() : "Unknown Competency";
+            // Enrich with team-fit specific fields from competency entity
+            Competency competency = competencyCache.get(competencyId);
+            String competencyName = scoreDto.getCompetencyName();
             String onetCode = competency != null ? competency.getOnetCode() : null;
             String escoUri = competency != null ? competency.getEscoUri() : null;
 
-            double percentage = compAgg.getWeightedPercentage();
+            double percentage = scoreDto.getPercentage();
             double average = percentage / 100.0;
 
             // For Team Fit, track questions that demonstrate competency
-            int questionsCorrect = (int) Math.round(average * compAgg.getQuestionCount());
-
-            CompetencyScoreDto scoreDto = new CompetencyScoreDto();
-            scoreDto.setCompetencyId(competencyId);
-            scoreDto.setCompetencyName(competencyName);
-            scoreDto.setScore(compAgg.getTotalScore());
-            scoreDto.setMaxScore(compAgg.getTotalMaxScore());
-            scoreDto.setPercentage(percentage);
-            scoreDto.setQuestionsAnswered(compAgg.getQuestionCount());
+            int questionsCorrect = (int) Math.round(average * scoreDto.getQuestionsAnswered());
             scoreDto.setQuestionsCorrect(questionsCorrect);
-            scoreDto.setOnetCode(onetCode);
             scoreDto.setEscoUri(escoUri);
             String bigFive = competency != null ? competency.getBigFiveCategory() : null;
             scoreDto.setBigFiveCategory(bigFive);
-            scoreDto.setIndicatorScores(compAgg.getIndicatorScores());
-
-            finalScores.add(scoreDto);
 
             // Record candidate percentage on 0-1 scale for radar chart display
             competencySaturationMap.put(competencyName, average);
@@ -233,14 +211,15 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
             double diversityThreshold = teamFitConfig.getDiversityThreshold();
 
             // Classify based on real team data when available, fallback to self-referential
+            // Round both sides to 4dp to eliminate IEEE 754 floating-point boundary errors
             if (!teamCompetencySaturation.isEmpty() && competencyId != null) {
                 // Look up team saturation for this competency
                 Double teamSat = teamCompetencySaturation.get(competencyId);
                 if (teamSat != null) {
-                    if (teamSat >= saturationThreshold) {
+                    if (ScoringPrecision.meetsThreshold(teamSat, saturationThreshold)) {
                         // Team already has this skill covered
                         saturationContributors++;
-                    } else if (teamSat >= diversityThreshold) {
+                    } else if (ScoringPrecision.meetsThreshold(teamSat, diversityThreshold)) {
                         // Team has some coverage, candidate adds diversity
                         diversityContributors++;
                     }
@@ -250,9 +229,9 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                 // Don't increment either counter - falls through to gap calculation
             } else {
                 // Fallback: self-referential classification (no team data available)
-                if (average >= saturationThreshold) {
+                if (ScoringPrecision.meetsThreshold(average, saturationThreshold)) {
                     saturationContributors++;
-                } else if (average >= diversityThreshold) {
+                } else if (ScoringPrecision.meetsThreshold(average, diversityThreshold)) {
                     diversityContributors++;
                 }
             }
@@ -286,12 +265,19 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                 }
             }
 
+            // Cap maximum weight multiplier to prevent single-competency domination
+            // After all boosts are compounded (ESCO + Big Five + gap relevance + role weight),
+            // cap the final weight to the configured maximum
+            double maxWeightMultiplier = weights.getMaxWeightMultiplier();
+            weight = Math.min(weight, maxWeightMultiplier);
+
             totalWeightedScore += (percentage * weight);
 
             log.debug("Competency {} (ESCO: {}, Big Five: {}): {} indicators, score {}%, contribution: {}",
-                    competencyName, escoUri, bigFive, compAgg.getIndicatorScores().size(),
+                    competencyName, escoUri, bigFive, scoreDto.getIndicatorScores().size(),
                     String.format("%.2f", percentage),
-                    average >= saturationThreshold ? "SATURATION" : (average >= diversityThreshold ? "DIVERSITY" : "GAP"));
+                    ScoringPrecision.meetsThreshold(average, saturationThreshold) ? "SATURATION"
+                            : (ScoringPrecision.meetsThreshold(average, diversityThreshold) ? "DIVERSITY" : "GAP"));
         }
 
         // Step 4: Calculate Big Five Personality Profile Summary
@@ -315,6 +301,9 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
         final Map<UUID, Double> teamSatForDenominator = teamCompetencySaturation;
         final Map<UUID, Double> roleWeightsForDenominator = roleWeights;
 
+        // Apply same max weight cap in denominator for symmetry
+        final double maxWeightCap = weights.getMaxWeightMultiplier();
+
         double totalWeight = competencyCount > 0
                 ? finalScores.stream()
                 .mapToDouble(s -> {
@@ -335,7 +324,8 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                             w *= roleW;
                         }
                     }
-                    return w;
+                    // Cap weight in denominator matching numerator cap
+                    return Math.min(w, maxWeightCap);
                 })
                 .sum()
                 : 1.0;
@@ -381,7 +371,14 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
                     String.format("%.4f", teamFitMultiplier));
         }
 
+        // Clamp multiplier to [0.8, 1.2] to prevent extreme score distortions
+        // from combined sigmoid + personality adjustments
+        teamFitMultiplier = Math.max(0.8, Math.min(1.2, teamFitMultiplier));
+
         double adjustedPercentage = overallPercentage * teamFitMultiplier;
+
+        // Clamp final adjusted percentage to valid [0.0, 100.0] range
+        adjustedPercentage = Math.max(0.0, Math.min(100.0, adjustedPercentage));
 
         log.info("Team Fit score calculated: {} (adjusted: {}%), diversity: {}%, saturation: {}%, indicators: {}",
                 String.format("%.2f", overallScore),
@@ -439,7 +436,9 @@ public class TeamFitScoringStrategy implements ScoringStrategy {
 
         double passThreshold = adjustedPassThreshold * 100.0;
         double minDiversityRatio = teamFitConfig.getMinDiversityRatio();
-        boolean addsTeamValue = adjustedPercentage >= passThreshold && diversityRatio >= minDiversityRatio;
+        // Round both sides to 4dp to eliminate IEEE 754 floating-point boundary errors
+        boolean addsTeamValue = ScoringPrecision.meetsThreshold(adjustedPercentage, passThreshold)
+                && ScoringPrecision.meetsThreshold(diversityRatio, minDiversityRatio);
         result.setPassed(addsTeamValue);
 
         log.debug("Pass determination: adjusted threshold={}%, score={}%, diversity={}%, result={}",

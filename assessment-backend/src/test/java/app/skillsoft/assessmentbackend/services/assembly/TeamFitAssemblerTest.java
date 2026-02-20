@@ -5,6 +5,7 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
+import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
@@ -76,8 +77,8 @@ class TeamFitAssemblerTest {
         questionId1 = UUID.randomUUID();
         questionId2 = UUID.randomUUID();
 
-        indicator1 = createIndicator(indicatorId1, "Indicator 1", 1.0f, true);
-        indicator2 = createIndicator(indicatorId2, "Indicator 2", 0.8f, true);
+        indicator1 = createIndicator(indicatorId1, "Indicator 1", 1.0f, true, competencyId1);
+        indicator2 = createIndicator(indicatorId2, "Indicator 2", 0.8f, true, competencyId1);
     }
 
     @Nested
@@ -191,7 +192,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -215,12 +216,16 @@ class TeamFitAssemblerTest {
             saturation.put(competencyId1, 0.9);  // All saturated
             saturation.put(competencyId2, 0.8);
 
+            // Create indicators for both competencies since fallback uses all
+            BehavioralIndicator ind1 = createIndicator(indicatorId1, "Ind1", 1.0f, true, competencyId1);
+            BehavioralIndicator ind2 = createIndicator(indicatorId2, "Ind2", 0.8f, true, competencyId2);
+
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of());  // None undersaturated
-            when(indicatorRepository.findByCompetencyId(any()))
-                .thenReturn(List.of(indicator1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(ind1, ind2));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -250,7 +255,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -276,7 +281,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(eq(teamId), anyDouble()))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -302,7 +307,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(eq(teamId), anyDouble()))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -333,7 +338,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1, indicator2));
             when(questionSelectionService.selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()))
@@ -361,13 +366,14 @@ class TeamFitAssemblerTest {
             Map<UUID, Double> saturation = new HashMap<>();
             saturation.put(competencyId1, 0.2);
 
-            BehavioralIndicator inactiveIndicator = createIndicator(indicatorId2, "Inactive", 0.5f, false);
+            BehavioralIndicator inactiveIndicator = createIndicator(indicatorId2, "Inactive", 0.5f, false, competencyId1);
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            // Batch query returns both active and inactive; implementation filters active only
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1, inactiveIndicator));
             when(questionSelectionService.selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), any(), anySet()))
@@ -395,7 +401,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of());  // No indicators
 
             // When
@@ -424,7 +430,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -452,7 +458,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -480,7 +486,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -505,14 +511,15 @@ class TeamFitAssemblerTest {
             saturation.put(competencyId1, 0.05);  // Critical gap -> ADVANCED
             saturation.put(competencyId2, 0.4);   // Minor gap -> FOUNDATIONAL
 
+            // indicator2 needs to belong to competencyId2 for this test
+            BehavioralIndicator ind2ForComp2 = createIndicator(indicatorId2, "Indicator 2", 0.8f, true, competencyId2);
+
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
                 .thenReturn(List.of(competencyId1, competencyId2));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
-                .thenReturn(List.of(indicator1));
-            when(indicatorRepository.findByCompetencyId(competencyId2))
-                .thenReturn(List.of(indicator2));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1, ind2ForComp2));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -542,7 +549,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -570,7 +577,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -598,7 +605,7 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
             when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
                 .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
@@ -623,12 +630,17 @@ class TeamFitAssemblerTest {
         return blueprint;
     }
 
-    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive) {
+    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive, UUID competencyId) {
         BehavioralIndicator indicator = new BehavioralIndicator();
         indicator.setId(id);
         indicator.setTitle(title);
         indicator.setWeight(weight);
         indicator.setActive(isActive);
+        if (competencyId != null) {
+            Competency competency = new Competency();
+            competency.setId(competencyId);
+            indicator.setCompetency(competency);
+        }
         return indicator;
     }
 

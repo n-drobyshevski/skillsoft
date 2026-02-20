@@ -1,5 +1,7 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
@@ -483,59 +485,88 @@ public class TestTemplate {
 
     /**
      * Get the strategy from blueprint.
-     * @return Strategy string (e.g., "UNIVERSAL_BASELINE", "TARGETED_FIT", "DYNAMIC_GAP_ANALYSIS")
+     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
+     * @return Strategy string (e.g., "OVERVIEW", "JOB_FIT", "TEAM_FIT")
      */
     @Transient
     public String getStrategy() {
-        if (blueprint == null) return null;
-        Object strategy = blueprint.get("strategy");
-        return strategy != null ? strategy.toString() : null;
+        if (typedBlueprint != null && typedBlueprint.getStrategy() != null) {
+            return typedBlueprint.getStrategy().name();
+        }
+        // Legacy fallback
+        if (blueprint != null) {
+            Object strategy = blueprint.get("strategy");
+            return strategy != null ? strategy.toString() : null;
+        }
+        return null;
     }
 
     /**
      * Get the O*NET SOC code for JOB_FIT scenarios.
+     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
      * @return SOC code (e.g., "15-1132.00") or null
      */
     @Transient
     public String getOnetSocCode() {
-        if (blueprint == null) return null;
-        Object code = blueprint.get("onetSocCode");
-        return code != null ? code.toString() : null;
+        if (typedBlueprint instanceof JobFitBlueprint jobFit && jobFit.getOnetSocCode() != null) {
+            return jobFit.getOnetSocCode();
+        }
+        // Legacy fallback
+        if (blueprint != null) {
+            Object code = blueprint.get("onetSocCode");
+            return code != null ? code.toString() : null;
+        }
+        return null;
     }
 
     /**
      * Get the team ID for TEAM_FIT scenarios.
-     * @return Team UUID or null
+     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
+     * @return Team UUID string or null
      */
     @Transient
     public String getTeamId() {
-        if (blueprint == null) return null;
-        Object teamId = blueprint.get("teamId");
-        return teamId != null ? teamId.toString() : null;
+        if (typedBlueprint instanceof TeamFitBlueprint teamFit && teamFit.getTeamId() != null) {
+            return teamFit.getTeamId().toString();
+        }
+        // Legacy fallback
+        if (blueprint != null) {
+            Object teamId = blueprint.get("teamId");
+            return teamId != null ? teamId.toString() : null;
+        }
+        return null;
     }
 
     /**
      * Check if this template should save results as Competency Passport.
      * Used in OVERVIEW scenario.
+     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
      * @return true if results should be saved as reusable passport
      */
     @Transient
     public boolean shouldSaveAsPassport() {
-        if (blueprint == null) return false;
-        Object save = blueprint.get("saveAsPassport");
-        return Boolean.TRUE.equals(save);
+        // typedBlueprint does not currently expose saveAsPassport; fall back to legacy
+        if (blueprint != null) {
+            Object save = blueprint.get("saveAsPassport");
+            return Boolean.TRUE.equals(save);
+        }
+        return false;
     }
 
     /**
      * Check if this template should reuse existing Passport data.
      * Used in JOB_FIT scenario for Delta Testing.
+     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
      * @return true if existing passport data should be reused
      */
     @Transient
     public boolean shouldReusePassportData() {
-        if (blueprint == null) return false;
-        Object reuse = blueprint.get("reusePassportData");
-        return Boolean.TRUE.equals(reuse);
+        // typedBlueprint does not currently expose reusePassportData; fall back to legacy
+        if (blueprint != null) {
+            Object reuse = blueprint.get("reusePassportData");
+            return Boolean.TRUE.equals(reuse);
+        }
+        return false;
     }
 
     /**

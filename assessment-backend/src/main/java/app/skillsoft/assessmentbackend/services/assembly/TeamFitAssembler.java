@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Assembler for TEAM_FIT (Dynamic Gap Analysis) assessment strategy.
@@ -135,13 +136,16 @@ public class TeamFitAssembler implements TestAssembler {
             .sorted(Comparator.comparing(id -> saturationLevels.getOrDefault(id, 1.0)))
             .toList();
 
+        // Batch-load all indicators for all competencies in a single query (N+1 fix)
+        Map<UUID, List<BehavioralIndicator>> indicatorsByCompetency = indicatorRepository
+            .findByCompetencyIdIn(new HashSet<>(competencyIds))
+            .stream()
+            .filter(BehavioralIndicator::isActive)
+            .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
+            .collect(Collectors.groupingBy(ind -> ind.getCompetency().getId()));
+
         for (var competencyId : sortedCompetencies) {
-            // Get indicators for this competency
-            var indicators = indicatorRepository.findByCompetencyId(competencyId)
-                .stream()
-                .filter(BehavioralIndicator::isActive)
-                .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
-                .toList();
+            var indicators = indicatorsByCompetency.getOrDefault(competencyId, List.of());
 
             if (indicators.isEmpty()) {
                 log.debug("No active indicators for competency {}", competencyId);

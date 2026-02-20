@@ -86,7 +86,7 @@ class JobFitAssemblerTest {
 
         competency1 = createCompetency(competencyId1, "Problem Solving");
         competency2 = createCompetency(competencyId2, "Communication");
-        indicator1 = createIndicator(indicatorId1, "Critical Thinking", 1.0f, true);
+        indicator1 = createIndicator(indicatorId1, "Critical Thinking", 1.0f, true, competencyId1);
     }
 
     @Nested
@@ -209,8 +209,8 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -240,8 +240,8 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -268,8 +268,8 @@ class JobFitAssemblerTest {
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
             when(passportService.getPassportByClerkUserId(candidateId)).thenReturn(Optional.empty());
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -302,9 +302,8 @@ class JobFitAssemblerTest {
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
             when(passportService.getPassportByClerkUserId(candidateId)).thenReturn(Optional.of(passport));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -332,8 +331,8 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), any(DifficultyLevel.class), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -359,7 +358,7 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
 
             // When
             List<UUID> result = assembler.assemble(blueprint);
@@ -385,12 +384,16 @@ class JobFitAssemblerTest {
         return competency;
     }
 
-    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive) {
+    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive, UUID competencyId) {
         BehavioralIndicator indicator = new BehavioralIndicator();
         indicator.setId(id);
         indicator.setTitle(title);
         indicator.setWeight(weight);
         indicator.setActive(isActive);
+        // Set competency for batch-loaded grouping (source groups by competency.getId())
+        Competency competency = new Competency();
+        competency.setId(competencyId);
+        indicator.setCompetency(competency);
         return indicator;
     }
 

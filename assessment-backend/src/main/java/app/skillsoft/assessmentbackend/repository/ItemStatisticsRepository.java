@@ -137,4 +137,13 @@ public interface ItemStatisticsRepository extends JpaRepository<ItemStatistics, 
      * Delete statistics for a question.
      */
     void deleteByQuestion_Id(UUID questionId);
+
+    /**
+     * Count items that have been analyzed (recalculated) since a given timestamp.
+     * Used by the health report to track items analyzed since the last full audit.
+     *
+     * @param since The cutoff timestamp
+     * @return Number of items with lastCalculatedAt after the given timestamp
+     */
+    long countByLastCalculatedAtAfter(LocalDateTime since);
 }

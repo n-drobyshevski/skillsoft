@@ -1,15 +1,9 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
-import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
-import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
-import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
-import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
-import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
-import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
+import app.skillsoft.assessmentbackend.services.diagnostics.TemplateDiagnosticsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
@@ -19,6 +13,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -44,22 +39,13 @@ public class TestSessionController {
     private static final Logger logger = LoggerFactory.getLogger(TestSessionController.class);
 
     private final TestSessionService testSessionService;
-    private final TestTemplateRepository templateRepository;
-    private final CompetencyRepository competencyRepository;
-    private final BehavioralIndicatorRepository indicatorRepository;
-    private final AssessmentQuestionRepository questionRepository;
+    private final TemplateDiagnosticsService diagnosticsService;
 
     public TestSessionController(
             TestSessionService testSessionService,
-            TestTemplateRepository templateRepository,
-            CompetencyRepository competencyRepository,
-            BehavioralIndicatorRepository indicatorRepository,
-            AssessmentQuestionRepository questionRepository) {
+            TemplateDiagnosticsService diagnosticsService) {
         this.testSessionService = testSessionService;
-        this.templateRepository = templateRepository;
-        this.competencyRepository = competencyRepository;
-        this.indicatorRepository = indicatorRepository;
-        this.questionRepository = questionRepository;
+        this.diagnosticsService = diagnosticsService;
     }
 
     // ==================== SESSION LIFECYCLE ====================
@@ -110,7 +96,9 @@ public class TestSessionController {
         TemplateReadinessResponse readiness = testSessionService.checkTemplateReadiness(templateId);
         logger.debug("Template {} readiness: {}", templateId, readiness.ready() ? "READY" : "NOT READY");
 
-        return ResponseEntity.ok(readiness);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(readiness);
     }
 
     /**
@@ -138,7 +126,9 @@ public class TestSessionController {
                     AssemblyProgressDto dto = AssemblyProgressDto.from(progress);
                     logger.debug("Assembly progress for template {}: {}% (phase: {})",
                             templateId, dto.percentComplete(), dto.phase());
-                    return ResponseEntity.ok(dto);
+                    return ResponseEntity.ok()
+                            .cacheControl(CacheControl.noStore())
+                            .body(dto);
                 })
                 .orElseGet(() -> {
                     logger.debug("No active assembly found for template {}", templateId);
@@ -158,7 +148,9 @@ public class TestSessionController {
         logger.debug("GET /api/v1/tests/sessions/{}", sessionId);
 
         return testSessionService.findById(sessionId)
-                .map(ResponseEntity::ok)
+                .map(session -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.noStore())
+                        .body(session))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -247,7 +239,9 @@ public class TestSessionController {
         // Let GlobalExceptionHandler handle exceptions
         List<TestAnswerDto> answers = testSessionService.getSessionAnswers(sessionId);
         logger.debug("Found {} answers for session {}", answers.size(), sessionId);
-        return ResponseEntity.ok(answers);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(answers);
     }
 
     // ==================== QUESTION NAVIGATION ====================
@@ -276,7 +270,9 @@ public class TestSessionController {
         logger.debug("Current question {}/{} for session {}",
                 question.questionIndex() + 1, question.totalQuestions(), sessionId);
 
-        return ResponseEntity.ok(question);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(question);
     }
 
     /**
@@ -341,7 +337,9 @@ public class TestSessionController {
         Page<TestSessionSummaryDto> sessions = testSessionService.findByUser(clerkUserId, pageable);
         logger.debug("Found {} sessions for user {}", sessions.getTotalElements(), clerkUserId);
 
-        return ResponseEntity.ok(sessions);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(sessions);
     }
 
     /**
@@ -361,7 +359,9 @@ public class TestSessionController {
         List<TestSessionSummaryDto> sessions = testSessionService.findByUserAndStatus(clerkUserId, status);
         logger.debug("Found {} {} sessions for user {}", sessions.size(), status, clerkUserId);
 
-        return ResponseEntity.ok(sessions);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(sessions);
     }
 
     /**
@@ -379,7 +379,9 @@ public class TestSessionController {
         logger.debug("GET /api/v1/tests/sessions/user/{}/in-progress?templateId={}", clerkUserId, templateId);
 
         return testSessionService.findInProgressSession(clerkUserId, templateId)
-                .map(ResponseEntity::ok)
+                .map(session -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.noStore())
+                        .body(session))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -410,120 +412,10 @@ public class TestSessionController {
     public ResponseEntity<Map<String, Object>> getTemplateDiagnostics(@PathVariable UUID templateId) {
         logger.info("GET /api/v1/tests/sessions/templates/{}/diagnostics", templateId);
 
-        Optional<TestTemplate> templateOpt = templateRepository.findById(templateId);
-        if (templateOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        TestTemplate template = templateOpt.get();
-        Map<String, Object> diagnostics = new LinkedHashMap<>();
-
-        diagnostics.put("templateId", templateId);
-        diagnostics.put("templateName", template.getName());
-        diagnostics.put("goal", template.getGoal());
-        diagnostics.put("questionsPerIndicator", template.getQuestionsPerIndicator());
-        diagnostics.put("isActive", template.getIsActive());
-
-        List<UUID> competencyIds = template.getCompetencyIds();
-        diagnostics.put("competencyCount", competencyIds != null ? competencyIds.size() : 0);
-
-        List<Map<String, Object>> competencyDiagnostics = new ArrayList<>();
-        int totalAvailableQuestions = 0;
-        int totalRequiredQuestions = 0;
-
-        if (competencyIds != null) {
-            for (UUID compId : competencyIds) {
-                Map<String, Object> compDiag = new LinkedHashMap<>();
-                compDiag.put("competencyId", compId);
-
-                // Get competency name
-                String compName = competencyRepository.findById(compId)
-                        .map(Competency::getName)
-                        .orElse("Unknown");
-                compDiag.put("competencyName", compName);
-
-                // Count behavioral indicators
-                List<BehavioralIndicator> indicators = indicatorRepository.findByCompetencyId(compId);
-                compDiag.put("indicatorCount", indicators.size());
-
-                // Get indicator details
-                List<Map<String, Object>> indicatorDetails = new ArrayList<>();
-                for (BehavioralIndicator ind : indicators) {
-                    Map<String, Object> indDetail = new LinkedHashMap<>();
-                    indDetail.put("id", ind.getId());
-                    indDetail.put("title", ind.getTitle());
-                    indDetail.put("contextScope", ind.getContextScope() != null ? ind.getContextScope().name() : "NULL");
-                    indDetail.put("isActive", ind.isActive());
-
-                    long questionCount = questionRepository.findByBehavioralIndicator_Id(ind.getId())
-                            .stream().filter(q -> q.isActive()).count();
-                    indDetail.put("activeQuestionCount", questionCount);
-
-                    indicatorDetails.add(indDetail);
-                }
-                compDiag.put("indicators", indicatorDetails);
-
-                // Count total active questions for this competency
-                long activeQuestions = questionRepository.countActiveQuestionsForCompetency(compId);
-                compDiag.put("activeQuestionCount", activeQuestions);
-
-                // Try to get Scenario A eligible questions
-                try {
-                    List<?> scenarioAQuestions = questionRepository.findUniversalQuestions(
-                            compId, template.getQuestionsPerIndicator());
-                    compDiag.put("scenarioAEligibleCount", scenarioAQuestions.size());
-                } catch (Exception e) {
-                    compDiag.put("scenarioAEligibleCount", "error: " + e.getMessage());
-                }
-
-                // Calculate shortfall
-                int required = template.getQuestionsPerIndicator();
-                int available = (int) activeQuestions;
-                compDiag.put("questionsRequired", required);
-                compDiag.put("questionsAvailable", available);
-                compDiag.put("shortfall", Math.max(0, required - available));
-
-                totalAvailableQuestions += available;
-                totalRequiredQuestions += required;
-
-                competencyDiagnostics.add(compDiag);
-            }
-        }
-
-        diagnostics.put("competencies", competencyDiagnostics);
-        diagnostics.put("totalQuestionsAvailable", totalAvailableQuestions);
-        diagnostics.put("totalQuestionsRequired", totalRequiredQuestions);
-        diagnostics.put("canStartSession", totalAvailableQuestions >= totalRequiredQuestions);
-
-        // Add troubleshooting tips based on findings
-        List<String> issues = new ArrayList<>();
-        for (Map<String, Object> compDiag : competencyDiagnostics) {
-            int shortfall = (int) compDiag.get("shortfall");
-            if (shortfall > 0) {
-                issues.add(String.format("Competency '%s' needs %d more questions",
-                        compDiag.get("competencyName"), shortfall));
-            }
-            int indicatorCount = (int) compDiag.get("indicatorCount");
-            if (indicatorCount == 0) {
-                issues.add(String.format("Competency '%s' has no behavioral indicators",
-                        compDiag.get("competencyName")));
-            }
-        }
-        diagnostics.put("issues", issues);
-
-        if (!issues.isEmpty()) {
-            List<String> tips = new ArrayList<>();
-            tips.add("1. Ensure each competency has at least one behavioral indicator");
-            tips.add("2. Ensure each behavioral indicator has active questions (is_active=true)");
-            tips.add("3. For Scenario A (OVERVIEW), ensure indicators have context_scope='UNIVERSAL' or NULL");
-            tips.add("4. For optimal filtering, add 'GENERAL' tag to question metadata.tags");
-            diagnostics.put("troubleshootingTips", tips);
-        }
-
-        logger.info("Template {} diagnostics: {} available, {} required, canStart={}",
-                templateId, totalAvailableQuestions, totalRequiredQuestions,
-                totalAvailableQuestions >= totalRequiredQuestions);
-
-        return ResponseEntity.ok(diagnostics);
+        return diagnosticsService.generateDiagnostics(templateId)
+                .map(diagnostics -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.noStore())
+                        .body(diagnostics))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

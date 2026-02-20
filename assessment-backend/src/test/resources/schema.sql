@@ -134,10 +134,13 @@ CREATE TABLE IF NOT EXISTS test_templates (
     version INTEGER DEFAULT 1,
     parent_id UUID,
     owner_id UUID,
+    deleted_at TIMESTAMP,
+    deleted_by_id UUID,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    FOREIGN KEY (owner_id) REFERENCES users(id)
+    FOREIGN KEY (owner_id) REFERENCES users(id),
+    FOREIGN KEY (deleted_by_id) REFERENCES users(id)
 );
 
 -- Create template_shares table for sharing templates with users/teams
@@ -200,6 +203,8 @@ CREATE TABLE IF NOT EXISTS test_sessions (
     ip_address VARCHAR(45),
     user_agent VARCHAR(500),
     anonymous_taker_info JSON,
+    -- Optimistic locking (V30)
+    version BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     FOREIGN KEY (template_id) REFERENCES test_templates(id),
     FOREIGN KEY (share_link_id) REFERENCES template_share_links(id)
@@ -262,6 +267,9 @@ CREATE TABLE IF NOT EXISTS item_statistics (
     discrimination_flag VARCHAR(30),
     previous_discrimination_index DECIMAL(5,4),
     status_change_history JSON,
+    irt_discrimination DECIMAL(6,4),
+    irt_difficulty DECIMAL(6,4),
+    irt_guessing DECIMAL(5,4),
     PRIMARY KEY (id),
     FOREIGN KEY (question_id) REFERENCES assessment_questions(id)
 );
@@ -337,4 +345,13 @@ CREATE TABLE IF NOT EXISTS anonymous_session_rate_limits (
     window_start TIMESTAMP NOT NULL,
     blocked_until TIMESTAMP,
     PRIMARY KEY (id)
+);
+
+-- ShedLock table for distributed scheduled task locking
+CREATE TABLE IF NOT EXISTS shedlock (
+    name VARCHAR(64) NOT NULL,
+    lock_until TIMESTAMP NOT NULL,
+    locked_at TIMESTAMP NOT NULL,
+    locked_by VARCHAR(255) NOT NULL,
+    PRIMARY KEY (name)
 );

@@ -19,4 +19,16 @@ public interface CompetencyRepository extends JpaRepository<Competency, UUID> {
      */
     @Query("SELECT c FROM Competency c WHERE LOWER(c.name) IN :names")
     List<Competency> findByNameInIgnoreCase(@Param("names") Collection<String> names);
+
+    /**
+     * Find competencies mapped to a specific Big Five trait via standardCodes JSONB.
+     * Replaces the previous findAll() + filter pattern to avoid full-table scans.
+     * Uses native JSONB operator to query directly in PostgreSQL.
+     *
+     * @param trait The Big Five trait name (e.g., "OPENNESS", "CONSCIENTIOUSNESS")
+     * @return List of competencies mapped to the specified trait
+     */
+    @Query(value = "SELECT c.* FROM competencies c WHERE c.standard_codes->'bigFiveRef'->>'trait' = :trait",
+            nativeQuery = true)
+    List<Competency> findByBigFiveTrait(@Param("trait") String trait);
 }

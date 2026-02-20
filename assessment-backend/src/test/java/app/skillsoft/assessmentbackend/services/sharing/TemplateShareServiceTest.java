@@ -186,13 +186,15 @@ class TemplateShareServiceTest extends BaseUnitTest {
         }
 
         @Test
-        @DisplayName("should throw exception when sharing DRAFT template")
+        @DisplayName("should throw exception when non-owner/non-admin sharing DRAFT template")
         void shouldThrowExceptionWhenSharingDraftTemplate() {
-            // Given
+            // Given - use non-owner, non-admin grantor (EDITOR role)
+            // The updated logic allows owners and admins to share DRAFT templates,
+            // but non-owner non-admin users should still be blocked
             template.setStatus(TemplateStatus.DRAFT);
 
             when(templateRepository.findById(template.getId())).thenReturn(Optional.of(template));
-            when(userRepository.findByClerkId(owner.getClerkId())).thenReturn(Optional.of(owner));
+            when(userRepository.findByClerkId(grantor.getClerkId())).thenReturn(Optional.of(grantor));
             when(userRepository.findById(grantee.getId())).thenReturn(Optional.of(grantee));
 
             // When & Then
@@ -201,7 +203,7 @@ class TemplateShareServiceTest extends BaseUnitTest {
                     grantee.getId(),
                     SharePermission.VIEW,
                     null,
-                    owner.getClerkId()
+                    grantor.getClerkId()
             ))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("DRAFT");

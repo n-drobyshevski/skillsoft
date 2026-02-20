@@ -10,6 +10,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -724,6 +725,32 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // ===============================
     // DATABASE & SECURITY EXCEPTIONS
     // ===============================
+
+    /**
+     * Handle optimistic locking failures (concurrent modification).
+     * Returns HTTP 409 Conflict when two concurrent requests attempt to modify
+     * the same entity (e.g., simultaneous session complete + abandon).
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(
+            ObjectOptimisticLockingFailureException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Optimistic locking failure [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.CONFLICT,
+            "The resource was modified by another request. Please retry.",
+            "A concurrent update was detected. Refresh and try again.",
+            request
+        );
+
+        errorResponse.setCode("CONCURRENT_MODIFICATION");
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
 
     /**
      * Handle database constraint violations

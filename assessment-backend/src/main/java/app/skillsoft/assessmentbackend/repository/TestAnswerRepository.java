@@ -1,14 +1,19 @@
 package app.skillsoft.assessmentbackend.repository;
 
 import app.skillsoft.assessmentbackend.domain.entities.TestAnswer;
+import jakarta.persistence.QueryHint;
+import org.hibernate.jpa.HibernateHints;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Repository
 public interface TestAnswerRepository extends JpaRepository<TestAnswer, UUID> {
@@ -227,6 +232,27 @@ public interface TestAnswerRepository extends JpaRepository<TestAnswer, UUID> {
     List<Object[]> getScoreMatrixForCompetency(@Param("competencyId") UUID competencyId);
 
     /**
+     * Stream answer score matrix for Cronbach's Alpha calculation.
+     * Uses cursor-based fetching to avoid loading entire result set into memory.
+     * MUST be called within a @Transactional context and consumed via try-with-resources.
+     */
+    @QueryHints(@QueryHint(name = HibernateHints.HINT_FETCH_SIZE, value = "100"))
+    @Query(value = """
+        SELECT
+            a.session_id,
+            a.question_id,
+            CASE WHEN a.max_score > 0 THEN a.score / a.max_score ELSE 0 END as normalized_score
+        FROM test_answers a
+        JOIN assessment_questions q ON a.question_id = q.id
+        JOIN behavioral_indicators bi ON q.behavioral_indicator_id = bi.id
+        WHERE bi.competency_id = :competencyId
+        AND a.is_skipped = false
+        AND a.score IS NOT NULL
+        ORDER BY a.session_id, a.question_id
+        """, nativeQuery = true)
+    Stream<Object[]> streamScoreMatrixForCompetency(@Param("competencyId") UUID competencyId);
+
+    /**
      * Get answer scores for a specific session and competency.
      * Used in scoring strategies and reliability analysis.
      */
@@ -252,4 +278,22 @@ public interface TestAnswerRepository extends JpaRepository<TestAnswer, UUID> {
         AND a.score IS NOT NULL
         """)
     long countDistinctSessionsByQuestionId(@Param("questionId") UUID questionId);
+
+    /**
+     * Get score matrix for a specific set of questions across all sessions.
+     * Returns [session_id, question_id, normalized_score] tuples.
+     * Used for DIF analysis when analyzing items across competency boundaries.
+     */
+    @Query(value = """
+        SELECT
+            a.session_id,
+            a.question_id,
+            CASE WHEN a.max_score > 0 THEN a.score / a.max_score ELSE 0 END as normalized_score
+        FROM test_answers a
+        WHERE a.question_id IN :questionIds
+        AND a.is_skipped = false
+        AND a.score IS NOT NULL
+        ORDER BY a.session_id, a.question_id
+        """, nativeQuery = true)
+    List<Object[]> getScoreMatrixForQuestions(@Param("questionIds") Collection<UUID> questionIds);
 }

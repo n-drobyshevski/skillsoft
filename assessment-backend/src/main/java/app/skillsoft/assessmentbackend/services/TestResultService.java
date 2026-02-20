@@ -32,9 +32,9 @@ public interface TestResultService {
     Page<TestResultSummaryDto> findByUser(String clerkUserId, Pageable pageable);
 
     /**
-     * Get all results for a user (ordered by completion date).
+     * Get all results for a user (ordered by completion date) with pagination.
      */
-    List<TestResultSummaryDto> findByUserOrderByDate(String clerkUserId);
+    Page<TestResultSummaryDto> findByUserOrderByDate(String clerkUserId, Pageable pageable);
 
     /**
      * Get user's results for a specific template.
@@ -47,9 +47,9 @@ public interface TestResultService {
     Optional<TestResultDto> findLatestByUserAndTemplate(String clerkUserId, UUID templateId);
 
     /**
-     * Get passed results for a user.
+     * Get passed results for a user with pagination.
      */
-    List<TestResultSummaryDto> findPassedByUser(String clerkUserId);
+    Page<TestResultSummaryDto> findPassedByUser(String clerkUserId, Pageable pageable);
 
     /**
      * Get historical trend data for a user, optionally filtered by template.
@@ -68,9 +68,9 @@ public interface TestResultService {
     TemplateTestStatistics getTemplateStatistics(UUID templateId);
 
     /**
-     * Get results within a date range (for reporting).
+     * Get results within a date range (for reporting) with pagination.
      */
-    List<TestResultSummaryDto> findByDateRange(LocalDateTime startDate, LocalDateTime endDate);
+    Page<TestResultSummaryDto> findByDateRange(LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
 
     /**
      * Get recent results (for dashboard).

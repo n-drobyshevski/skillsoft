@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,6 +18,12 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
      * Find all assessment questions for a specific behavioral indicator
      */
     List<AssessmentQuestion> findByBehavioralIndicator_Id(UUID behavioralIndicatorId);
+
+    /**
+     * Batch-load questions for multiple behavioral indicators in a single query.
+     * Used by TemplateDiagnosticsService for batch diagnostics.
+     */
+    List<AssessmentQuestion> findByBehavioralIndicator_IdIn(Collection<UUID> indicatorIds);
 
     /**
      * Find active assessment questions for a specific behavioral indicator.
@@ -136,7 +143,6 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
           AND (bi.context_scope = 'UNIVERSAL' OR bi.context_scope IS NULL)
           AND q.is_active = true
           AND (q.metadata IS NULL OR q.metadata -> 'tags' IS NULL OR q.metadata -> 'tags' @> '["GENERAL"]'::jsonb)
-        ORDER BY random()
         LIMIT :limit
         """, nativeQuery = true)
     List<AssessmentQuestion> findUniversalQuestions(
@@ -158,7 +164,6 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
         JOIN behavioral_indicators bi ON q.behavioral_indicator_id = bi.id
         WHERE bi.competency_id = :competencyId
           AND q.is_active = true
-        ORDER BY random()
         LIMIT :limit
         """, nativeQuery = true)
     List<AssessmentQuestion> findAnyActiveQuestionsForCompetency(

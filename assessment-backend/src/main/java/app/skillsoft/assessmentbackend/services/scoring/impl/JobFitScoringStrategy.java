@@ -2,16 +2,13 @@ package app.skillsoft.assessmentbackend.services.scoring.impl;
 
 import app.skillsoft.assessmentbackend.config.ScoringConfiguration;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
-import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
-import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
-import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
-import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
-import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregationService;
+import app.skillsoft.assessmentbackend.services.scoring.ScoringPrecision;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import org.slf4j.Logger;
@@ -43,22 +40,16 @@ public class JobFitScoringStrategy implements ScoringStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(JobFitScoringStrategy.class);
 
-    private final CompetencyBatchLoader competencyBatchLoader;
-    private final IndicatorBatchLoader indicatorBatchLoader;
+    private final CompetencyAggregationService aggregationService;
     private final ScoringConfiguration scoringConfig;
-    private final ScoreNormalizer scoreNormalizer;
     private final OnetService onetService;
 
     public JobFitScoringStrategy(
-            CompetencyBatchLoader competencyBatchLoader,
-            IndicatorBatchLoader indicatorBatchLoader,
+            CompetencyAggregationService aggregationService,
             ScoringConfiguration scoringConfig,
-            ScoreNormalizer scoreNormalizer,
             OnetService onetService) {
-        this.competencyBatchLoader = competencyBatchLoader;
-        this.indicatorBatchLoader = indicatorBatchLoader;
+        this.aggregationService = aggregationService;
         this.scoringConfig = scoringConfig;
-        this.scoreNormalizer = scoreNormalizer;
         this.onetService = onetService;
     }
 
@@ -77,59 +68,14 @@ public class JobFitScoringStrategy implements ScoringStrategy {
         // S1: Load O*NET benchmark lookup for propagation to CompetencyScoreDto
         Map<String, Double> benchmarkLookup = buildBenchmarkLookup(onetSocCode);
 
-        // Batch load all competencies and indicators upfront to prevent N+1 queries
-        Map<UUID, Competency> competencyCache = competencyBatchLoader.loadCompetenciesForAnswers(answers);
-        Map<UUID, BehavioralIndicator> indicatorCache = indicatorBatchLoader.loadIndicatorsForAnswers(answers);
+        // Steps 1-3: Shared aggregation pipeline (normalize → indicator → competency → DTOs)
+        CompetencyAggregationService.AggregationResult aggResult = aggregationService.aggregate(answers);
+        Map<UUID, CompetencyAggregation> competencyAggs = aggResult.competencyAggregations();
+        List<CompetencyScoreDto> finalScores = aggResult.competencyScores();
+        Map<UUID, Competency> competencyCache = aggResult.competencyCache();
 
-        // Step 1: Normalize & Aggregate Scores by Indicator (first level)
-        Map<UUID, IndicatorAggregation> indicatorAggs = new HashMap<>();
-
-        for (TestAnswer answer : answers) {
-            // Skip unanswered or skipped questions
-            if (answer.getIsSkipped() || answer.getAnsweredAt() == null) {
-                continue;
-            }
-
-            Optional<UUID> indicatorIdOpt = indicatorBatchLoader.extractIndicatorIdSafe(answer);
-            if (indicatorIdOpt.isEmpty()) {
-                log.warn("Skipping answer {} - unable to extract indicator ID", answer.getId());
-                continue;
-            }
-            UUID indicatorId = indicatorIdOpt.get();
-
-            double normalizedScore = scoreNormalizer.normalize(answer);
-
-            indicatorAggs.computeIfAbsent(indicatorId, IndicatorAggregation::new)
-                    .addAnswer(normalizedScore);
-        }
-
-        log.debug("Aggregated {} indicators from {} answers", indicatorAggs.size(), answers.size());
-
-        // Step 2: Roll up indicators to competencies (second level)
-        Map<UUID, CompetencyAggregation> competencyAggs = new HashMap<>();
-
-        for (var entry : indicatorAggs.entrySet()) {
-            UUID indicatorId = entry.getKey();
-            IndicatorAggregation indAgg = entry.getValue();
-
-            BehavioralIndicator indicator = indicatorBatchLoader.getFromCache(indicatorCache, indicatorId);
-            if (indicator == null || indicator.getCompetency() == null) {
-                log.warn("Skipping indicator {} - competency not found", indicatorId);
-                continue;
-            }
-
-            UUID competencyId = indicator.getCompetency().getId();
-            IndicatorScoreDto indicatorDto = indAgg.toDto(indicator);
-
-            competencyAggs.computeIfAbsent(competencyId, CompetencyAggregation::new)
-                    .addIndicator(indicatorDto, indAgg);
-        }
-
-        // Step 3: Create Score DTOs with Job Fit Analysis
-        List<CompetencyScoreDto> finalScores = new ArrayList<>();
+        // Step 4: Job Fit-specific DTO enrichment
         double totalWeightedScore = 0.0;
-
-        // Get threshold configuration
         ScoringConfiguration.Thresholds.JobFit jobFitConfig = scoringConfig.getThresholds().getJobFit();
 
         // Calculate strictness-adjusted threshold (higher strictness = higher threshold)
@@ -137,30 +83,21 @@ public class JobFitScoringStrategy implements ScoringStrategy {
         double strictnessAdjustment = (strictnessLevel / 100.0) * jobFitConfig.getStrictnessMaxAdjustment();
         double effectiveThreshold = baseThreshold + strictnessAdjustment;
 
-        for (var entry : competencyAggs.entrySet()) {
-            UUID competencyId = entry.getKey();
-            CompetencyAggregation compAgg = entry.getValue();
+        for (CompetencyScoreDto scoreDto : finalScores) {
+            UUID competencyId = scoreDto.getCompetencyId();
+            CompetencyAggregation compAgg = competencyAggs.get(competencyId);
 
-            // Get competency details from preloaded cache
-            Competency competency = competencyBatchLoader.getFromCache(competencyCache, competencyId);
-            String competencyName = competency != null ? competency.getName() : "Unknown Competency";
+            // Get competency details for O*NET enrichment
+            Competency competency = competencyCache.get(competencyId);
+            String competencyName = scoreDto.getCompetencyName();
             String onetCode = competency != null ? competency.getOnetCode() : null;
 
-            double percentage = compAgg.getWeightedPercentage();
+            double percentage = scoreDto.getPercentage();
 
             // For Job Fit, we track how well the score meets the threshold
-            int questionsCorrect = compAgg.getTotalMaxScore() > 0
+            int questionsCorrect = compAgg != null && compAgg.getTotalMaxScore() > 0
                     ? (int) Math.round((percentage / 100.0) * compAgg.getQuestionCount()) : 0;
-
-            CompetencyScoreDto scoreDto = new CompetencyScoreDto();
-            scoreDto.setCompetencyId(competencyId);
-            scoreDto.setCompetencyName(competencyName);
-            scoreDto.setScore(compAgg.getTotalScore());
-            scoreDto.setMaxScore(compAgg.getTotalMaxScore());
-            scoreDto.setPercentage(percentage);
-            scoreDto.setQuestionsAnswered(compAgg.getQuestionCount());
             scoreDto.setQuestionsCorrect(questionsCorrect);
-            scoreDto.setOnetCode(onetCode);
 
             // S1: Propagate O*NET benchmark to DTO
             if (onetSocCode != null && !benchmarkLookup.isEmpty()) {
@@ -170,20 +107,16 @@ public class JobFitScoringStrategy implements ScoringStrategy {
                 }
             }
 
-            scoreDto.setIndicatorScores(compAgg.getIndicatorScores());
-
             // Check minimum evidence threshold
-            int minQuestions = scoringConfig.getThresholds().getJobFit().getMinQuestionsPerCompetency();
-            if (compAgg.getQuestionCount() < minQuestions) {
+            int minQuestions = jobFitConfig.getMinQuestionsPerCompetency();
+            if (scoreDto.getQuestionsAnswered() < minQuestions) {
                 scoreDto.setInsufficientEvidence(true);
                 scoreDto.setEvidenceNote(String.format(
                     "Only %d of %d minimum questions answered",
-                    compAgg.getQuestionCount(), minQuestions));
+                    scoreDto.getQuestionsAnswered(), minQuestions));
                 log.warn("Insufficient evidence for competency {}: {} questions (min: {})",
-                    competencyName, compAgg.getQuestionCount(), minQuestions);
+                    competencyName, scoreDto.getQuestionsAnswered(), minQuestions);
             }
-
-            finalScores.add(scoreDto);
 
             // Weight the score based on O*NET alignment (competencies with O*NET codes are prioritized)
             double onetBoost = scoringConfig.getWeights().getOnetBoost();
@@ -191,12 +124,13 @@ public class JobFitScoringStrategy implements ScoringStrategy {
             totalWeightedScore += (percentage * weight);
 
             log.debug("Competency {} (O*NET: {}): {} indicators, {} questions, score {}/{} ({}%), threshold met: {}",
-                    competencyName, onetCode, compAgg.getIndicatorScores().size(), compAgg.getQuestionCount(),
-                    compAgg.getTotalScore(), compAgg.getTotalMaxScore(), String.format("%.2f", percentage),
-                    (percentage / 100.0) >= effectiveThreshold);
+                    competencyName, onetCode, scoreDto.getIndicatorScores().size(),
+                    scoreDto.getQuestionsAnswered(),
+                    scoreDto.getScore(), scoreDto.getMaxScore(), String.format("%.2f", percentage),
+                    ScoringPrecision.meetsThreshold(percentage / 100.0, effectiveThreshold));
         }
 
-        // Step 4: Calculate Overall Job Fit Score
+        // Step 5: Calculate Overall Job Fit Score
         int competencyCount = finalScores.size();
         double onetBoostForWeighting = scoringConfig.getWeights().getOnetBoost();
         double totalWeight = competencyCount > 0
@@ -219,9 +153,9 @@ public class JobFitScoringStrategy implements ScoringStrategy {
                 String.format("%.2f", overallScore),
                 String.format("%.2f", overallPercentage),
                 String.format("%.2f", effectiveThreshold * 100),
-                indicatorAggs.size());
+                aggResult.indicatorAggregations().size());
 
-        // Step 5: Create Result
+        // Step 6: Create Result
         ScoringResult result = new ScoringResult();
         result.setOverallScore(overallScore);
         result.setOverallPercentage(overallPercentage);
@@ -229,7 +163,9 @@ public class JobFitScoringStrategy implements ScoringStrategy {
         result.setGoal(AssessmentGoal.JOB_FIT);
 
         // Determine pass/fail based on strictness-adjusted threshold
-        boolean meetsJobRequirements = (overallPercentage / 100.0) >= effectiveThreshold;
+        // Round both sides to 4dp to eliminate IEEE 754 floating-point boundary errors
+        boolean meetsJobRequirements = ScoringPrecision.meetsThreshold(
+                overallPercentage / 100.0, effectiveThreshold);
         result.setPassed(meetsJobRequirements);
 
         // S2: Calculate decision confidence score

@@ -5,6 +5,7 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.*;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
@@ -45,6 +46,9 @@ class TestSimulatorServiceTest {
     private AssessmentQuestionRepository questionRepository;
 
     @Mock
+    private CompetencyRepository competencyRepository;
+
+    @Mock
     private InventoryHeatmapService inventoryHeatmapService;
 
     @Mock
@@ -69,6 +73,7 @@ class TestSimulatorServiceTest {
         testSimulatorService = new TestSimulatorService(
             assemblerFactory,
             questionRepository,
+            competencyRepository,
             inventoryHeatmapService,
             blueprintValidationService
         );

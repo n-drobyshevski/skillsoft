@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregationService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
@@ -17,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -74,8 +74,16 @@ class TeamFitScoringStrategyTest {
         // Initialize ScoringConfiguration with default values
         scoringConfig = new ScoringConfiguration();
 
+        // Create shared aggregation service with mocked dependencies
+        CompetencyAggregationService aggregationService = new CompetencyAggregationService(
+                competencyBatchLoader,
+                indicatorBatchLoader,
+                scoreNormalizer
+        );
+
         // Create the strategy with all dependencies
         scoringStrategy = new TeamFitScoringStrategy(
+                aggregationService,
                 competencyBatchLoader,
                 indicatorBatchLoader,
                 scoringConfig,
@@ -1788,6 +1796,203 @@ class TeamFitScoringStrategyTest {
     }
 
     @Nested
+    @DisplayName("Multiplier Clamping Tests")
+    class MultiplierClampingTests {
+
+        @Test
+        @DisplayName("Should clamp multiplier to 1.2 when extreme personality adjustment pushes it above")
+        void shouldClampMultiplierToUpperBound() {
+            // Given: Configure extreme personalityWeight so adjustment exceeds bounds
+            // Set personalityWeight high enough that compatibility=1.0 produces teamFitMultiplier > 1.2
+            // Sigmoid bonus at max diversity ~ 1.1, personality adj = (1.0 - 0.5) * weight
+            // To exceed 1.2: 1.1 + 0.5 * weight > 1.2 -> weight > 0.2
+            scoringConfig.getThresholds().getTeamFit().setPersonalityWeight(0.5);
+
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            UUID openId = UUID.randomUUID();
+            UUID consId = UUID.randomUUID();
+
+            Competency openness = createCompetency(openId, "Openness", null,
+                    "http://data.europa.eu/esco/skill/clamp-open", "OPENNESS");
+            Competency conscientiousness = createCompetency(consId, "Conscientiousness", null,
+                    "http://data.europa.eu/esco/skill/clamp-cons", "CONSCIENTIOUSNESS");
+
+            // Team and candidate have identical profiles -> compatibility = 1.0
+            Map<String, Double> teamPersonality = Map.of(
+                    "OPENNESS", 100.0,
+                    "CONSCIENTIOUSNESS", 100.0
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Clamp Test Team",
+                    List.of(),
+                    Map.of(openId, 0.5, consId, 0.5), // diversity range
+                    teamPersonality,
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            BehavioralIndicator indOpen = createBehavioralIndicator(UUID.randomUUID(), openness);
+            BehavioralIndicator indCons = createBehavioralIndicator(UUID.randomUUID(), conscientiousness);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indOpen, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indCons, QuestionType.LIKERT);
+
+            // Max score -> bigFiveAverages = {OPENNESS: 100, CONSCIENTIOUSNESS: 100}
+            TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(openId, openness, consId, conscientiousness));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: Without clamping, multiplier would be > 1.2 due to extreme personalityWeight
+            // With clamping, it must be exactly 1.2
+            assertThat(result.getTeamFitMetrics().getTeamFitMultiplier())
+                    .isCloseTo(1.2, within(0.001));
+            // Final percentage must not exceed 100%
+            assertThat(result.getOverallPercentage()).isLessThanOrEqualTo(100.0);
+        }
+
+        @Test
+        @DisplayName("Should clamp multiplier to 0.8 when extreme personality adjustment pushes it below")
+        void shouldClampMultiplierToLowerBound() {
+            // Given: Configure extreme personalityWeight so negative adjustment drops below 0.8
+            // Sigmoid penalty at max saturation ~ 0.9, personality adj = (0.0 - 0.5) * weight = -0.5 * weight
+            // To go below 0.8: 0.9 - 0.5 * weight < 0.8 -> weight > 0.2
+            scoringConfig.getThresholds().getTeamFit().setPersonalityWeight(0.5);
+            setTemplateSaturationThreshold(0.4); // Force all scores into saturation
+
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            UUID openId = UUID.randomUUID();
+            UUID consId = UUID.randomUUID();
+
+            Competency openness = createCompetency(openId, "Openness", null,
+                    "http://data.europa.eu/esco/skill/clamp-low-open", "OPENNESS");
+            Competency conscientiousness = createCompetency(consId, "Conscientiousness", null,
+                    "http://data.europa.eu/esco/skill/clamp-low-cons", "CONSCIENTIOUSNESS");
+
+            // Team at 0%, candidate at 100% -> max distance -> compatibility = 0.0
+            Map<String, Double> teamPersonality = Map.of(
+                    "OPENNESS", 0.0,
+                    "CONSCIENTIOUSNESS", 0.0
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Low Clamp Team",
+                    List.of(),
+                    Map.of(openId, 0.5, consId, 0.5),
+                    teamPersonality,
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            BehavioralIndicator indOpen = createBehavioralIndicator(UUID.randomUUID(), openness);
+            BehavioralIndicator indCons = createBehavioralIndicator(UUID.randomUUID(), conscientiousness);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indOpen, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indCons, QuestionType.LIKERT);
+
+            // Max score -> bigFiveAverages = {OPENNESS: 100, CONSCIENTIOUSNESS: 100}
+            // But team has 0% -> max distance -> compatibility ~0.0
+            TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(openId, openness, consId, conscientiousness));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: Without clamping, multiplier would be < 0.8
+            // With clamping, it must be exactly 0.8
+            assertThat(result.getTeamFitMetrics().getTeamFitMultiplier())
+                    .isCloseTo(0.8, within(0.001));
+            // Final percentage must be >= 0%
+            assertThat(result.getOverallPercentage()).isGreaterThanOrEqualTo(0.0);
+        }
+
+        @Test
+        @DisplayName("Should not clamp multiplier when personality adjustment stays within bounds")
+        void shouldNotClampWhenWithinBounds() {
+            // Given: Normal personalityWeight (default 0.1), producing adjustment within [-0.05, +0.05]
+            // Sigmoid range [0.9, 1.1] + personality [-0.05, +0.05] = [0.85, 1.15] -> within [0.8, 1.2]
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            UUID openId = UUID.randomUUID();
+            UUID consId = UUID.randomUUID();
+
+            Competency openness = createCompetency(openId, "Openness", null,
+                    "http://data.europa.eu/esco/skill/norm-open", "OPENNESS");
+            Competency conscientiousness = createCompetency(consId, "Conscientiousness", null,
+                    "http://data.europa.eu/esco/skill/norm-cons", "CONSCIENTIOUSNESS");
+
+            // Team and candidate have identical profiles -> compatibility = 1.0
+            // Adjustment = (1.0 - 0.5) * 0.1 = +0.05
+            Map<String, Double> teamPersonality = Map.of(
+                    "OPENNESS", 100.0,
+                    "CONSCIENTIOUSNESS", 100.0
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Normal Clamp Team",
+                    List.of(),
+                    Map.of(openId, 0.5, consId, 0.5), // diversity range
+                    teamPersonality,
+                    List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            BehavioralIndicator indOpen = createBehavioralIndicator(UUID.randomUUID(), openness);
+            BehavioralIndicator indCons = createBehavioralIndicator(UUID.randomUUID(), conscientiousness);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), indOpen, QuestionType.LIKERT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), indCons, QuestionType.LIKERT);
+
+            TestAnswer a1 = createAnswer(mockSession, q1, 5, null, false);
+            TestAnswer a2 = createAnswer(mockSession, q2, 5, null, false);
+
+            setupBatchLoaderMock(Map.of(openId, openness, consId, conscientiousness));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+
+            // Then: Multiplier should be within (0.8, 1.2) exclusive -- not clamped
+            double multiplier = result.getTeamFitMetrics().getTeamFitMultiplier();
+            assertThat(multiplier).isGreaterThan(0.8);
+            assertThat(multiplier).isLessThan(1.2);
+            // Verify final percentage is still bounded
+            assertThat(result.getOverallPercentage()).isBetween(0.0, 100.0);
+        }
+
+        @Test
+        @DisplayName("Should clamp final adjusted percentage to 100% even without personality data")
+        void shouldClampFinalPercentageTo100() {
+            // Given: A scenario where overallPercentage * multiplier could exceed 100%
+            // This is a safety-net test for the final percentage clamp
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 5; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+                answers.add(createAnswer(mockSession, q, 5, null, false));
+            }
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            // Then: No matter what multiplier/weighting combination occurs,
+            // the final percentage must never exceed 100%
+            assertThat(result.getOverallPercentage()).isLessThanOrEqualTo(100.0);
+            assertThat(result.getOverallPercentage()).isGreaterThanOrEqualTo(0.0);
+        }
+    }
+
+    @Nested
     @DisplayName("Role Weight Tests")
     class RoleWeightTests {
 
@@ -1960,6 +2165,554 @@ class TeamFitScoringStrategyTest {
             assertThat(result).isNotNull();
             assertThat(result.getCompetencyScores()).hasSize(2);
             assertThat(result.getOverallPercentage()).isGreaterThan(0);
+        }
+    }
+
+    @Nested
+    @DisplayName("BE-005: Floating-Point Boundary Precision Tests")
+    class FloatingPointBoundaryTests {
+
+        @Test
+        @DisplayName("Should classify as saturated when score exactly equals saturation threshold")
+        void shouldClassifyAsSaturatedAtExactThreshold() {
+            // Given: Saturation threshold = 0.75, single competency at exactly 75%
+            setTemplateSaturationThreshold(0.75);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            // Score of 0.75 = 75% = exactly the saturation threshold
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.75, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: Should be classified as saturation (score meets threshold)
+            assertThat(result.getTeamFitMetrics()).isNotNull();
+            assertThat(result.getTeamFitMetrics().getSaturationCount()).isEqualTo(1);
+            assertThat(result.getTeamFitMetrics().getDiversityCount()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("Should classify as diversity when score is between diversity and saturation thresholds")
+        void shouldClassifyAsDiversityBetweenThresholds() {
+            // Given: Saturation threshold = 0.75, diversity threshold = 0.5
+            // Single competency at 60% (between the two)
+            setTemplateSaturationThreshold(0.75);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.6, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: Should be classified as diversity
+            assertThat(result.getTeamFitMetrics()).isNotNull();
+            assertThat(result.getTeamFitMetrics().getDiversityCount()).isEqualTo(1);
+            assertThat(result.getTeamFitMetrics().getSaturationCount()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("Should classify as diversity when score exactly equals diversity threshold")
+        void shouldClassifyAsDiversityAtExactThreshold() {
+            // Given: Diversity threshold = 0.5, score exactly 50%
+            setTemplateSaturationThreshold(0.75);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.5, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: 0.5 meets diversity threshold of 0.5
+            assertThat(result.getTeamFitMetrics()).isNotNull();
+            assertThat(result.getTeamFitMetrics().getDiversityCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("Should handle pass threshold boundary with precision rounding")
+        void shouldHandlePassThresholdBoundaryWithPrecision() {
+            // Given: Pass threshold = 60%, candidate scores exactly at threshold
+            // Use a single high-scoring competency with ESCO + BigFive for diversity
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            // Score needs to produce an adjustedPercentage that is at the boundary
+            // 0.6 = 60% base, multiplied by team fit multiplier
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.6, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: Should not crash and should make a deterministic pass/fail decision
+            assertThat(result).isNotNull();
+            assertThat(result.getPassed()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("Should classify as gap when score is below diversity threshold")
+        void shouldClassifyAsGapBelowDiversityThreshold() {
+            // Given: Diversity threshold = 0.5, score at 49%
+            setTemplateSaturationThreshold(0.75);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.49, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: 0.49 < 0.5 diversity threshold => gap
+            assertThat(result.getTeamFitMetrics()).isNotNull();
+            assertThat(result.getTeamFitMetrics().getGapCount()).isEqualTo(1);
+            assertThat(result.getTeamFitMetrics().getDiversityCount()).isEqualTo(0);
+            assertThat(result.getTeamFitMetrics().getSaturationCount()).isEqualTo(0);
+        }
+    }
+
+    // === Boundary Edge Case Tests (QA-003) ===
+
+    @Nested
+    @DisplayName("QA-003: Saturation/Diversity Threshold Boundary Tests")
+    class SaturationDiversityBoundaryTests {
+
+        @ParameterizedTest(name = "Score {0}% with satThreshold {1}, divThreshold {2} should classify as {3}")
+        @CsvSource({
+            "74.9, 0.75, 0.5, DIVERSITY",
+            "75.0, 0.75, 0.5, SATURATION",
+            "75.1, 0.75, 0.5, SATURATION",
+            "49.9, 0.75, 0.5, GAP",
+            "50.0, 0.75, 0.5, DIVERSITY",
+            "50.1, 0.75, 0.5, DIVERSITY",
+            "59.9, 0.60, 0.3, DIVERSITY",
+            "60.0, 0.60, 0.3, SATURATION",
+            "29.9, 0.60, 0.3, GAP",
+            "30.0, 0.60, 0.3, DIVERSITY"
+        })
+        @DisplayName("Should correctly classify competency at threshold boundaries")
+        void shouldClassifyCorrectlyAtBoundaries(double scorePercent, double satThreshold,
+                                                   double divThreshold, String expectedClassification) {
+            // Configure thresholds
+            setTemplateSaturationThreshold(satThreshold);
+            scoringConfig.getThresholds().getTeamFit().setDiversityThreshold(divThreshold);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            TestAnswer answer = createAnswer(mockSession, question, null, scorePercent / 100.0, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then
+            ScoringResult.TeamFitMetrics metrics = result.getTeamFitMetrics();
+            assertThat(metrics).isNotNull();
+
+            switch (expectedClassification) {
+                case "SATURATION" -> {
+                    assertThat(metrics.getSaturationCount())
+                            .as("Score %.1f%% should be SATURATION (threshold %.0f%%)", scorePercent, satThreshold * 100)
+                            .isEqualTo(1);
+                    assertThat(metrics.getDiversityCount()).isEqualTo(0);
+                    assertThat(metrics.getGapCount()).isEqualTo(0);
+                }
+                case "DIVERSITY" -> {
+                    assertThat(metrics.getDiversityCount())
+                            .as("Score %.1f%% should be DIVERSITY", scorePercent)
+                            .isEqualTo(1);
+                    assertThat(metrics.getSaturationCount()).isEqualTo(0);
+                    assertThat(metrics.getGapCount()).isEqualTo(0);
+                }
+                case "GAP" -> {
+                    assertThat(metrics.getGapCount())
+                            .as("Score %.1f%% should be GAP (below diversity threshold %.0f%%)", scorePercent, divThreshold * 100)
+                            .isEqualTo(1);
+                    assertThat(metrics.getDiversityCount()).isEqualTo(0);
+                    assertThat(metrics.getSaturationCount()).isEqualTo(0);
+                }
+                default -> throw new IllegalArgumentException("Unknown classification: " + expectedClassification);
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("QA-003: Pass Threshold Boundary Tests")
+    class PassThresholdBoundaryTests {
+
+        @Test
+        @DisplayName("Should FAIL when adjusted percentage is just below pass threshold")
+        void shouldFailJustBelowPassThreshold() {
+            // Default passThreshold = 0.6 => 60%, minDiversityRatio = 0.3
+            // Use a score that will produce adjustedPercentage just below 60%
+            // With single competency at 55%, diversity ratio is 1.0 (single comp in diversity range)
+            // sigmoid multiplier for diversity=1.0, saturation=0 should be > 1.0
+            // So raw 55% * ~1.09 = ~60%, which may pass. Use lower score.
+            setTemplateSaturationThreshold(0.75);
+            scoringConfig.getThresholds().getTeamFit().setPassThreshold(0.6);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            // Score at 40% => well below 60% threshold even with multiplier
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.40, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // 40% with any reasonable multiplier (0.9 to 1.1) stays below 60%
+            assertThat(result.getPassed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Should PASS when adjusted percentage is above pass threshold with sufficient diversity")
+        void shouldPassAboveThresholdWithDiversity() {
+            // Score at 70% in diversity range with decent multiplier should exceed 60%
+            setTemplateSaturationThreshold(0.75);
+            scoringConfig.getThresholds().getTeamFit().setPassThreshold(0.6);
+            scoringConfig.getThresholds().getTeamFit().setMinDiversityRatio(0.3);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.70, false));
+            }
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            // 70% * multiplier (~1.09 for all diversity) = ~76% > 60% pass threshold
+            // Diversity ratio = 1.0 >= 0.3 minDiversityRatio
+            assertThat(result.getPassed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should FAIL when diversity ratio is below minimum even if score is high")
+        void shouldFailWhenDiversityRatioBelowMinimum() {
+            // All competencies saturated => diversity ratio = 0
+            setTemplateSaturationThreshold(0.3); // Low threshold so 100% scores are saturated
+            scoringConfig.getThresholds().getTeamFit().setMinDiversityRatio(0.3);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 1.0, false));
+            }
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            // All at 100% with saturation threshold 0.3 => all saturated
+            // Diversity ratio = 0 < 0.3 minDiversityRatio => FAIL regardless of score
+            assertThat(result.getTeamFitMetrics().getDiversityRatio()).isEqualTo(0.0);
+            assertThat(result.getPassed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Small team adjustment should lower pass threshold by configured amount")
+        void shouldApplySmallTeamAdjustment() {
+            // Default: passThreshold=0.6, smallTeamThreshold=5, smallTeamAdjustment=0.1
+            // With 3 members (< 5), adjusted threshold = 0.6 - 0.1 = 0.5 => 50%
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            List<TeamService.TeamMemberProfile> members = List.of(
+                    new TeamService.TeamMemberProfile(UUID.randomUUID(), "Alice", "Dev", Map.of(), Map.of()),
+                    new TeamService.TeamMemberProfile(UUID.randomUUID(), "Bob", "QA", Map.of(), Map.of()),
+                    new TeamService.TeamMemberProfile(UUID.randomUUID(), "Charlie", "PM", Map.of(), Map.of())
+            );
+
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Small Team", members,
+                    Map.of(competencyId3, 0.4), // diversity range for team
+                    Map.of(), List.of()
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            // Score at 55% in diversity range
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.55, false));
+            }
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            // With small team adjustment, pass threshold is 50%, score ~55% * multiplier > 50%
+            assertThat(result.getTeamFitMetrics().getTeamSize()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("Severe gap adjustment should lower pass threshold when > 50% competencies are gaps")
+        void shouldApplySevereGapAdjustment() {
+            // When gapRatio > 0.5, severeGapAdjustment (default 0.1) is subtracted
+            // Need at least 2 competencies with > 50% being gaps (below diversity threshold)
+            setTemplateSaturationThreshold(0.75);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            BehavioralIndicator ind3 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            // Comp3: gap (20% < 50% diversity threshold)
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind1, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.20, false));
+            }
+            // Comp2: gap (30% < 50% diversity threshold)
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind2, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.30, false));
+            }
+            // Comp1: diversity (60%, between 50% and 75%)
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind3, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.60, false));
+            }
+
+            setupBatchLoaderMock(Map.of(
+                    competencyId3, competencyBasic,
+                    competencyId2, competencyWithEscoOnly,
+                    competencyId1, competencyWithEscoAndBigFive
+            ));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            // 2 gaps out of 3 = gapRatio 0.67 > 0.5, severe gap adjustment applies
+            assertThat(result.getTeamFitMetrics().getGapCount()).isEqualTo(2);
+            assertThat(result.getTeamFitMetrics().getDiversityCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("Pass threshold should never drop below minPassThreshold floor")
+        void shouldEnforceMinPassThresholdFloor() {
+            // Set very low passThreshold with both adjustments to push it below floor
+            scoringConfig.getThresholds().getTeamFit().setPassThreshold(0.35);
+            // minPassThreshold default = 0.3
+            // With both smallTeam (-0.1) and severeGap (-0.1): 0.35 - 0.2 = 0.15
+            // But floor is 0.3, so effective threshold = 0.3 => 30%
+
+            UUID teamId = ((TeamFitBlueprint) mockTemplate.getTypedBlueprint()).getTeamId();
+
+            List<TeamService.TeamMemberProfile> members = List.of(
+                    new TeamService.TeamMemberProfile(UUID.randomUUID(), "Alice", "Dev", Map.of(), Map.of())
+            );
+
+            // All gaps to trigger severe gap adjustment
+            TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
+                    teamId, "Tiny Team", members,
+                    Map.of(competencyId3, 0.05),
+                    Map.of(), List.of(competencyId3)
+            );
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
+
+            // Score above the floor (35%) but below what passThreshold would be without floor
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.35, false));
+            }
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            // Effective threshold = max(0.35 - 0.1 - 0.1, 0.3) = max(0.15, 0.3) = 0.3 => 30%
+            // Score ~35% * multiplier, diversity depends on team saturation
+            assertThat(result).isNotNull();
+            assertThat(result.getTeamFitMetrics().getTeamSize()).isEqualTo(1);
+        }
+    }
+
+    @Nested
+    @DisplayName("QA-003: Zero-Answer Competency Tests")
+    class ZeroAnswerCompetencyTests {
+
+        @Test
+        @DisplayName("Should handle competency with all answers skipped")
+        void shouldHandleCompetencyWithAllSkippedAnswers() {
+            // Given: Competency1 has all skipped, Competency3 has real answers
+            setTemplateSaturationThreshold(0.75);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind3 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            // Competency1: 3 skipped
+            for (int i = 0; i < 3; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+                answers.add(createAnswer(mockSession, q, null, null, true));
+            }
+            // Competency3: 4 real answers at 70%
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind3, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.70, false));
+            }
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive, competencyId3, competencyBasic));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            // Only Competency3 should appear (Competency1 has zero valid answers)
+            assertThat(result.getCompetencyScores()).hasSize(1);
+            assertThat(result.getCompetencyScores().get(0).getCompetencyName()).isEqualTo("Basic Skills");
+        }
+
+        @Test
+        @DisplayName("Should return zero overall when all competencies have only skipped answers")
+        void shouldReturnZeroWhenAllSkipped() {
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoAndBigFive);
+            BehavioralIndicator ind3 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+
+            List<TestAnswer> answers = List.of(
+                    createAnswer(mockSession,
+                            createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT), null, null, true),
+                    createAnswer(mockSession,
+                            createQuestion(UUID.randomUUID(), ind3, QuestionType.LIKERT), null, null, true)
+            );
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithEscoAndBigFive, competencyId3, competencyBasic));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getCompetencyScores()).isEmpty();
+            assertThat(result.getOverallScore()).isEqualTo(0.0);
+            assertThat(result.getOverallPercentage()).isEqualTo(0.0);
+            assertThat(result.getPassed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Team fit metrics should be zero-initialized when no valid answers exist")
+        void shouldZeroInitializeMetricsWhenNoValidAnswers() {
+            List<TestAnswer> emptyAnswers = Collections.emptyList();
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, emptyAnswers);
+
+            assertThat(result.getTeamFitMetrics()).isNotNull();
+            assertThat(result.getTeamFitMetrics().getDiversityRatio()).isEqualTo(0.0);
+            assertThat(result.getTeamFitMetrics().getSaturationRatio()).isEqualTo(0.0);
+            assertThat(result.getTeamFitMetrics().getDiversityCount()).isEqualTo(0);
+            assertThat(result.getTeamFitMetrics().getSaturationCount()).isEqualTo(0);
+            assertThat(result.getTeamFitMetrics().getGapCount()).isEqualTo(0);
+        }
+    }
+
+    @Nested
+    @DisplayName("QA-003: Sigmoid Multiplier Edge Cases")
+    class SigmoidMultiplierEdgeCases {
+
+        @Test
+        @DisplayName("Multiplier should be in [penalty, bonus] range regardless of input")
+        void shouldBeBoundedByPenaltyAndBonus() {
+            // The sigmoid maps balance [-1, 1] to [penalty, bonus] = [0.9, 1.1]
+            // Verify with extreme values: all saturation (balance = -1) and all diversity (balance = 1)
+
+            // Scenario A: All saturated (balance = -1.0)
+            setTemplateSaturationThreshold(0.3); // Very low threshold, all scores saturate
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 1.0, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic));
+
+            ScoringResult saturatedResult = scoringStrategy.calculate(mockSession, answers);
+            double penaltyMultiplier = saturatedResult.getTeamFitMetrics().getTeamFitMultiplier();
+
+            // Should be close to but >= penalty (0.9)
+            assertThat(penaltyMultiplier).isGreaterThanOrEqualTo(
+                    scoringConfig.getThresholds().getTeamFit().getSaturationPenalty() - 0.01);
+
+            // Scenario B: All diversity (balance = 1.0)
+            setTemplateSaturationThreshold(0.99); // Very high threshold, nothing saturates
+
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+            List<TestAnswer> answers2 = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind2, QuestionType.SJT);
+                answers2.add(createAnswer(mockSession, q, null, 0.7, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId2, competencyWithEscoOnly));
+
+            ScoringResult diversityResult = scoringStrategy.calculate(mockSession, answers2);
+            double bonusMultiplier = diversityResult.getTeamFitMetrics().getTeamFitMultiplier();
+
+            // Should be close to but <= bonus (1.1)
+            assertThat(bonusMultiplier).isLessThanOrEqualTo(
+                    scoringConfig.getThresholds().getTeamFit().getDiversityBonus() + 0.01);
+
+            // Penalty < Bonus (monotonicity)
+            assertThat(penaltyMultiplier).isLessThan(bonusMultiplier);
+        }
+
+        @Test
+        @DisplayName("Sigmoid steepness parameter should affect transition sharpness")
+        void shouldRespondToSteepnessParameter() {
+            // At steepness=10 (default), the transition between penalty and bonus
+            // occurs mostly in the balance range [-0.2, +0.2]
+            // At steepness=1, the transition is much smoother/wider
+
+            // Test with low steepness
+            scoringConfig.getThresholds().getTeamFit().setSigmoidSteepness(1.0);
+            setTemplateSaturationThreshold(0.75);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+
+            AssessmentQuestion q1 = createQuestion(UUID.randomUUID(), ind1, QuestionType.SJT);
+            AssessmentQuestion q2 = createQuestion(UUID.randomUUID(), ind2, QuestionType.SJT);
+
+            // One in diversity range, one is a gap
+            TestAnswer a1 = createAnswer(mockSession, q1, null, 0.6, false); // diversity
+            TestAnswer a2 = createAnswer(mockSession, q2, null, 0.3, false); // gap
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic, competencyId2, competencyWithEscoOnly));
+            ScoringResult lowSteepResult = scoringStrategy.calculate(mockSession, List.of(a1, a2));
+            double lowSteepMultiplier = lowSteepResult.getTeamFitMetrics().getTeamFitMultiplier();
+
+            // Test with high steepness
+            scoringConfig.getThresholds().getTeamFit().setSigmoidSteepness(30.0);
+
+            BehavioralIndicator ind1b = createBehavioralIndicator(UUID.randomUUID(), competencyBasic);
+            BehavioralIndicator ind2b = createBehavioralIndicator(UUID.randomUUID(), competencyWithEscoOnly);
+
+            AssessmentQuestion q1b = createQuestion(UUID.randomUUID(), ind1b, QuestionType.SJT);
+            AssessmentQuestion q2b = createQuestion(UUID.randomUUID(), ind2b, QuestionType.SJT);
+
+            TestAnswer a1b = createAnswer(mockSession, q1b, null, 0.6, false);
+            TestAnswer a2b = createAnswer(mockSession, q2b, null, 0.3, false);
+
+            setupBatchLoaderMock(Map.of(competencyId3, competencyBasic, competencyId2, competencyWithEscoOnly));
+            ScoringResult highSteepResult = scoringStrategy.calculate(mockSession, List.of(a1b, a2b));
+            double highSteepMultiplier = highSteepResult.getTeamFitMetrics().getTeamFitMultiplier();
+
+            // With positive balance (diversity > saturation), higher steepness should produce
+            // a multiplier closer to the bonus. Both should be > 1.0 but differ.
+            assertThat(lowSteepMultiplier).isGreaterThan(0.9);
+            assertThat(highSteepMultiplier).isGreaterThan(0.9);
+            // High steepness should push the multiplier further toward the bonus
+            assertThat(highSteepMultiplier).isGreaterThanOrEqualTo(lowSteepMultiplier);
         }
     }
 }

@@ -80,7 +80,10 @@ public class SecurityConfig {
             
             // Configure CORS - uses the same CorsConfigurationSource as CorsFilter
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
-            
+
+            // Disable default Cache-Control: no-cache headers so controllers can set their own
+            .headers(h -> h.cacheControl(c -> c.disable()))
+
             // Stateless session management
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -90,6 +93,8 @@ public class SecurityConfig {
                 // Public endpoints - no authentication required
                 .requestMatchers("/api/webhooks/**").permitAll()
                 .requestMatchers("/actuator/health/**").permitAll()
+                .requestMatchers("/actuator/caches/**").permitAll()
+                .requestMatchers("/actuator/circuitbreakers/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 
                 // Allow CORS preflight requests

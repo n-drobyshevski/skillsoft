@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregationService;
 import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
@@ -16,13 +17,16 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -71,12 +75,17 @@ class JobFitScoringStrategyTest {
         // Initialize ScoringConfiguration with default values
         scoringConfig = new ScoringConfiguration();
 
-        // Create the strategy with all dependencies
-        scoringStrategy = new JobFitScoringStrategy(
+        // Create shared aggregation service with mocked dependencies
+        CompetencyAggregationService aggregationService = new CompetencyAggregationService(
                 competencyBatchLoader,
                 indicatorBatchLoader,
+                scoreNormalizer
+        );
+
+        // Create the strategy with all dependencies
+        scoringStrategy = new JobFitScoringStrategy(
+                aggregationService,
                 scoringConfig,
-                scoreNormalizer,
                 onetService
         );
 
@@ -963,6 +972,382 @@ class JobFitScoringStrategyTest {
 
             // Then
             assertThat(result.getPassed()).isTrue(); // 75% >= 65%
+        }
+    }
+
+    @Nested
+    @DisplayName("Floating-Point Boundary Precision Tests")
+    class FloatingPointBoundaryTests {
+
+        @Test
+        @DisplayName("Should pass when score equals threshold after rounding (IEEE 754 boundary)")
+        void shouldPassWhenScoreEqualsThresholdAfterRounding() {
+            // Given: Strictness 0 => base threshold 0.5 (50%)
+            // Construct a score that would be 0.49999999999... due to floating-point arithmetic
+            setTemplateStrictnessLevel(0);
+
+            // Use SJT scores to get precise control over the percentage
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+
+            // Score of 0.5 exactly - with IEEE 754 this could be 0.49999999999 internally
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.5, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: 50% score meets 50% threshold after rounding
+            assertThat(result.getOverallPercentage()).isCloseTo(50.0, within(0.1));
+            assertThat(result.getPassed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should fail when score is meaningfully below threshold")
+        void shouldFailWhenScoreMeaningfullyBelowThreshold() {
+            // Given: Strictness 0 => base threshold 0.5 (50%)
+            setTemplateStrictnessLevel(0);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+
+            // Score of 0.49 = 49% which is meaningfully below 50% threshold
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.49, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: 49% < 50% should fail
+            assertThat(result.getPassed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("Should handle boundary with strictness-adjusted threshold")
+        void shouldHandleBoundaryWithStrictnessAdjustedThreshold() {
+            // Given: Strictness 50 => threshold = 0.5 + (50/100)*0.3 = 0.65
+            setTemplateStrictnessLevel(50);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            AssessmentQuestion question = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+
+            // Score of 0.65 exactly - matches threshold
+            TestAnswer answer = createAnswer(mockSession, question, null, 0.65, false);
+
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            // When
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(answer));
+
+            // Then: 65% score meets 65% threshold (score/100 = 0.65 >= 0.65)
+            assertThat(result.getOverallPercentage()).isCloseTo(65.0, within(0.1));
+            assertThat(result.getPassed()).isTrue();
+        }
+    }
+
+    // === Boundary Edge Case Tests (QA-003) ===
+
+    @Nested
+    @DisplayName("QA-003: Confidence Level Boundary Tests")
+    class ConfidenceLevelBoundaryTests {
+
+        /**
+         * Helper: creates N answers for one competency at a target percentage.
+         */
+        private List<TestAnswer> createAnswersForPercentage(double targetPercentage, Competency competency,
+                                                             UUID competencyId, int answerCount) {
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competency);
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < answerCount; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, targetPercentage / 100.0, false));
+            }
+            return answers;
+        }
+
+        @Test
+        @DisplayName("Should produce HIGH confidence when score is far above threshold")
+        void shouldProduceHighConfidenceWhenFarAboveThreshold() {
+            // Given: Strictness 50 => threshold = 0.65
+            // Score at 95% => margin = |0.95 - 0.65| = 0.30 >> 0.15 => marginFactor = 1.0
+            // All 5 answers => sufficient evidence => evidenceFactor = 1.0
+            // No benchmarks => coverageFactor = 1.0
+            // Confidence = 0.5 * 1.0 + 0.3 * 1.0 + 0.2 * 1.0 = 1.0 => HIGH
+            setTemplateStrictnessLevel(50);
+
+            List<TestAnswer> answers = createAnswersForPercentage(95.0, competencyWithOnet, competencyId1, 5);
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getConfidenceLevel()).isEqualTo("HIGH");
+            assertThat(result.getDecisionConfidence()).isGreaterThanOrEqualTo(0.7);
+        }
+
+        @Test
+        @DisplayName("Should produce LOW confidence when evidence is insufficient and score is near threshold")
+        void shouldProduceLowConfidenceWhenEvidenceInsufficientAndNearThreshold() {
+            // Given: Strictness 50 => threshold = 0.65
+            // Score at 66% => margin = |0.66 - 0.65| = 0.01 => marginFactor = 0.01/0.15 = 0.067
+            // Only 1 answer => insufficient evidence => evidenceFactor = 0 (0 sufficient / 1 total)
+            // No benchmarks => coverageFactor = 1.0
+            // Confidence = 0.5 * 0.067 + 0.3 * 0.0 + 0.2 * 1.0 = 0.033 + 0 + 0.2 = 0.233 => LOW
+            setTemplateStrictnessLevel(50);
+
+            List<TestAnswer> answers = createAnswersForPercentage(66.0, competencyWithOnet, competencyId1, 1);
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getConfidenceLevel()).isEqualTo("LOW");
+            assertThat(result.getDecisionConfidence()).isLessThan(0.4);
+        }
+
+        @Test
+        @DisplayName("Should produce MEDIUM confidence at intermediate margin with insufficient evidence")
+        void shouldProduceMediumConfidenceAtIntermediateMargin() {
+            // Given: Strictness 50 => threshold = 0.65
+            // Score at 72% => margin = 0.07 => marginFactor = 0.07/0.15 = 0.467
+            // 2 answers => insufficient evidence => evidenceFactor = 0
+            // Confidence = 0.5 * 0.467 + 0.3 * 0.0 + 0.2 * 1.0 = 0.233 + 0 + 0.2 = 0.433 => MEDIUM
+            setTemplateStrictnessLevel(50);
+
+            List<TestAnswer> answers = createAnswersForPercentage(72.0, competencyWithOnet, competencyId1, 2);
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getConfidenceLevel()).isEqualTo("MEDIUM");
+            assertThat(result.getDecisionConfidence()).isGreaterThanOrEqualTo(0.4);
+            assertThat(result.getDecisionConfidence()).isLessThan(0.7);
+        }
+
+        @Test
+        @DisplayName("Confidence message should reflect pass outcome with HIGH confidence")
+        void shouldGenerateAppropriateConfidenceMessage() {
+            setTemplateStrictnessLevel(50);
+
+            List<TestAnswer> answers = createAnswersForPercentage(90.0, competencyWithOnet, competencyId1, 5);
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getConfidenceMessage()).isNotNull();
+            assertThat(result.getConfidenceMessage()).containsIgnoringCase("high confidence");
+            assertThat(result.getPassed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Confidence message should reflect fail outcome with LOW confidence")
+        void shouldGenerateLowConfidenceMessageForFail() {
+            setTemplateStrictnessLevel(50);
+
+            // Score just below threshold with insufficient evidence
+            List<TestAnswer> answers = createAnswersForPercentage(64.0, competencyWithOnet, competencyId1, 1);
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getConfidenceMessage()).isNotNull();
+            assertThat(result.getConfidenceLevel()).isEqualTo("LOW");
+        }
+    }
+
+    @Nested
+    @DisplayName("QA-003: Pass/Fail Threshold Boundary Tests")
+    class PassFailThresholdBoundaryTests {
+
+        @Test
+        @DisplayName("Score exactly at effective threshold should PASS (>= comparison)")
+        void shouldPassWhenScoreExactlyAtThreshold() {
+            // Strictness 50 => effectiveThreshold = 0.65
+            setTemplateStrictnessLevel(50);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.65, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getOverallPercentage()).isCloseTo(65.0, within(0.1));
+            assertThat(result.getPassed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Score just below effective threshold should FAIL")
+        void shouldFailWhenScoreJustBelowThreshold() {
+            // Strictness 50 => effectiveThreshold = 0.65
+            setTemplateStrictnessLevel(50);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.649, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getOverallPercentage()).isCloseTo(64.9, within(0.1));
+            assertThat(result.getPassed()).isFalse();
+        }
+
+        @ParameterizedTest(name = "Strictness {0} with score {1}% should {2}")
+        @CsvSource({
+            "0,   50.0,  PASS",
+            "0,   49.9,  FAIL",
+            "100, 80.0,  PASS",
+            "100, 79.9,  FAIL",
+            "50,  65.0,  PASS",
+            "50,  64.9,  FAIL"
+        })
+        @DisplayName("Should correctly evaluate pass/fail at exact threshold for various strictness levels")
+        void shouldEvaluateAtExactThresholdForStrictnessLevels(int strictness, double scorePercent,
+                                                                String expectedOutcome) {
+            setTemplateStrictnessLevel(strictness);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, scorePercent / 100.0, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            boolean expectedPass = "PASS".equals(expectedOutcome);
+            assertThat(result.getPassed())
+                    .as("Strictness %d, score %.1f%% should %s", strictness, scorePercent, expectedOutcome)
+                    .isEqualTo(expectedPass);
+        }
+    }
+
+    @Nested
+    @DisplayName("QA-003: Evidence Sufficiency Boundary Tests")
+    class EvidenceSufficiencyBoundaryTests {
+
+        @Test
+        @DisplayName("Should flag insufficient evidence at minQuestions - 1 (2 answers)")
+        void shouldFlagInsufficientAtOneBelow() {
+            setTemplateStrictnessLevel(50);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+                answers.add(createAnswer(mockSession, q, 4, null, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getInsufficientEvidence()).isTrue();
+            assertThat(score.getEvidenceNote()).contains("2").contains("3");
+        }
+
+        @Test
+        @DisplayName("Should NOT flag insufficient evidence at exactly minQuestions (3 answers)")
+        void shouldNotFlagAtExactMinQuestions() {
+            setTemplateStrictnessLevel(50);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            List<TestAnswer> answers = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.LIKERT);
+                answers.add(createAnswer(mockSession, q, 4, null, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getInsufficientEvidence()).isNull();
+        }
+
+        @Test
+        @DisplayName("Evidence factor should be 0 when all competencies have insufficient evidence")
+        void shouldHaveZeroEvidenceFactorWhenAllInsufficient() {
+            setTemplateStrictnessLevel(50);
+
+            BehavioralIndicator indicator = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            AssessmentQuestion q = createQuestion(UUID.randomUUID(), indicator, QuestionType.SJT);
+            TestAnswer a = createAnswer(mockSession, q, null, 0.9, false);
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
+
+            assertThat(result.getDecisionConfidence()).isLessThan(0.7);
+            CompetencyScoreDto score = result.getCompetencyScores().get(0);
+            assertThat(score.getInsufficientEvidence()).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("QA-003: Zero-Answer Competency Tests")
+    class ZeroAnswerCompetencyTests {
+
+        @Test
+        @DisplayName("Should handle mix of zero-answer and real-answer competencies")
+        void shouldHandleMixedZeroAndRealAnswers() {
+            setTemplateStrictnessLevel(50);
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithoutOnet);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            // Competency1: 3 skipped answers
+            for (int i = 0; i < 3; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+                answers.add(createAnswer(mockSession, q, null, null, true));
+            }
+            // Competency2: 3 real answers at 80%
+            for (int i = 0; i < 3; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind2, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.8, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet, competencyId2, competencyWithoutOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getCompetencyScores()).hasSize(1);
+            assertThat(result.getCompetencyScores().get(0).getCompetencyName()).isEqualTo("Soft Skills");
+            assertThat(result.getOverallPercentage()).isCloseTo(80.0, within(0.1));
+        }
+
+        @Test
+        @DisplayName("Should correctly determine pass/fail when zero-answer competencies are excluded")
+        void shouldDeterminePassFailWithZeroAnswerExcluded() {
+            setTemplateStrictnessLevel(100); // threshold = 80%
+
+            BehavioralIndicator ind1 = createBehavioralIndicator(UUID.randomUUID(), competencyWithOnet);
+            BehavioralIndicator ind2 = createBehavioralIndicator(UUID.randomUUID(), competencyWithoutOnet);
+
+            List<TestAnswer> answers = new ArrayList<>();
+            // Competency1: all skipped
+            for (int i = 0; i < 3; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind1, QuestionType.LIKERT);
+                answers.add(createAnswer(mockSession, q, null, null, true));
+            }
+            // Competency2: 4 real answers at 90%
+            for (int i = 0; i < 4; i++) {
+                AssessmentQuestion q = createQuestion(UUID.randomUUID(), ind2, QuestionType.SJT);
+                answers.add(createAnswer(mockSession, q, null, 0.9, false));
+            }
+            setupBatchLoaderMock(Map.of(competencyId1, competencyWithOnet, competencyId2, competencyWithoutOnet));
+
+            ScoringResult result = scoringStrategy.calculate(mockSession, answers);
+
+            assertThat(result.getPassed()).isTrue();
+            assertThat(result.getOverallPercentage()).isCloseTo(90.0, within(0.1));
         }
     }
 }

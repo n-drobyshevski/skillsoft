@@ -4,12 +4,9 @@ import app.skillsoft.assessmentbackend.config.ScoringConfiguration;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.IndicatorScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
-import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregation;
-import app.skillsoft.assessmentbackend.services.scoring.CompetencyBatchLoader;
-import app.skillsoft.assessmentbackend.services.scoring.IndicatorAggregation;
-import app.skillsoft.assessmentbackend.services.scoring.IndicatorBatchLoader;
+import app.skillsoft.assessmentbackend.services.scoring.CompetencyAggregationService;
 import app.skillsoft.assessmentbackend.services.scoring.ScoreInterpreter;
-import app.skillsoft.assessmentbackend.services.scoring.ScoreNormalizer;
+import app.skillsoft.assessmentbackend.services.scoring.ScoringPrecision;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
 import app.skillsoft.assessmentbackend.util.LoggingContext;
@@ -42,20 +39,14 @@ public class OverviewScoringStrategy implements ScoringStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(OverviewScoringStrategy.class);
 
-    private final CompetencyBatchLoader competencyBatchLoader;
-    private final IndicatorBatchLoader indicatorBatchLoader;
-    private final ScoreNormalizer scoreNormalizer;
+    private final CompetencyAggregationService aggregationService;
     private final ScoringConfiguration config;
     private final ScoreInterpreter scoreInterpreter;
 
-    public OverviewScoringStrategy(CompetencyBatchLoader competencyBatchLoader,
-                                   IndicatorBatchLoader indicatorBatchLoader,
-                                   ScoreNormalizer scoreNormalizer,
+    public OverviewScoringStrategy(CompetencyAggregationService aggregationService,
                                    ScoringConfiguration config,
                                    ScoreInterpreter scoreInterpreter) {
-        this.competencyBatchLoader = competencyBatchLoader;
-        this.indicatorBatchLoader = indicatorBatchLoader;
-        this.scoreNormalizer = scoreNormalizer;
+        this.aggregationService = aggregationService;
         this.config = config;
         this.scoreInterpreter = scoreInterpreter;
     }
@@ -69,89 +60,13 @@ public class OverviewScoringStrategy implements ScoringStrategy {
         log.info("Calculating Scenario A (Overview) score with indicator breakdown: session={} answers={} user={}",
                 session.getId(), answers.size(), session.getClerkUserId());
 
-        // Batch load all competencies and indicators upfront to prevent N+1 queries
-        Map<UUID, Competency> competencyCache = competencyBatchLoader.loadCompetenciesForAnswers(answers);
-        Map<UUID, BehavioralIndicator> indicatorCache = indicatorBatchLoader.loadIndicatorsForAnswers(answers);
-
-        // Step 1: Normalize & Aggregate Scores by Indicator (first level)
-        Map<UUID, IndicatorAggregation> indicatorAggs = new HashMap<>();
-
-        for (TestAnswer answer : answers) {
-            // Skip unanswered or skipped questions
-            if (answer.getIsSkipped() || answer.getAnsweredAt() == null) {
-                continue;
-            }
-
-            Optional<UUID> indicatorIdOpt = indicatorBatchLoader.extractIndicatorIdSafe(answer);
-            if (indicatorIdOpt.isEmpty()) {
-                log.warn("Skipping answer {} - unable to extract indicator ID", answer.getId());
-                continue;
-            }
-            UUID indicatorId = indicatorIdOpt.get();
-
-            double normalizedScore = scoreNormalizer.normalize(answer);
-
-            indicatorAggs.computeIfAbsent(indicatorId, IndicatorAggregation::new)
-                    .addAnswer(normalizedScore);
-        }
-
-        log.debug("Aggregated {} indicators from {} answers", indicatorAggs.size(), answers.size());
-
-        // Step 2: Roll up indicators to competencies (second level)
-        Map<UUID, CompetencyAggregation> competencyAggs = new HashMap<>();
-
-        for (var entry : indicatorAggs.entrySet()) {
-            UUID indicatorId = entry.getKey();
-            IndicatorAggregation indAgg = entry.getValue();
-
-            BehavioralIndicator indicator = indicatorBatchLoader.getFromCache(indicatorCache, indicatorId);
-            if (indicator == null || indicator.getCompetency() == null) {
-                log.warn("Skipping indicator {} - competency not found", indicatorId);
-                continue;
-            }
-
-            UUID competencyId = indicator.getCompetency().getId();
-            IndicatorScoreDto indicatorDto = indAgg.toDto(indicator);
-
-            competencyAggs.computeIfAbsent(competencyId, CompetencyAggregation::new)
-                    .addIndicator(indicatorDto, indAgg);
-
-            log.debug("Indicator {}: {} questions, score {}/{} ({}%)",
-                    indicator.getTitle(), indAgg.getQuestionCount(), indAgg.getTotalScore(),
-                    indAgg.getTotalMaxScore(), String.format("%.2f", indicatorDto.getPercentage()));
-        }
-
-        // Step 3: Create final CompetencyScoreDto list with nested indicators
-        List<CompetencyScoreDto> finalScores = new ArrayList<>();
-        double totalPercentage = 0.0;
-
-        for (var entry : competencyAggs.entrySet()) {
-            UUID competencyId = entry.getKey();
-            CompetencyAggregation compAgg = entry.getValue();
-
-            Competency competency = competencyBatchLoader.getFromCache(competencyCache, competencyId);
-            CompetencyScoreDto scoreDto = compAgg.toDto(competency);
-
-            finalScores.add(scoreDto);
-            totalPercentage += scoreDto.getPercentage();
-
-            log.debug("Competency {}: {} indicators, {} questions, score {}/{} ({}%)",
-                    scoreDto.getCompetencyName(), scoreDto.getIndicatorScores().size(),
-                    scoreDto.getQuestionsAnswered(), scoreDto.getScore(),
-                    scoreDto.getMaxScore(), String.format("%.2f", scoreDto.getPercentage()));
-        }
+        // Steps 1-3: Shared aggregation pipeline (normalize → indicator → competency → DTOs)
+        CompetencyAggregationService.AggregationResult aggResult = aggregationService.aggregate(answers);
+        List<CompetencyScoreDto> finalScores = aggResult.competencyScores();
 
         // Step 4: Evidence sufficiency check
         int minQ = config.getThresholds().getOverview().getMinQuestionsPerCompetency();
-        for (CompetencyScoreDto cs : finalScores) {
-            if (cs.getQuestionsAnswered() < minQ) {
-                cs.setInsufficientEvidence(true);
-                cs.setEvidenceNote("Score based on " + cs.getQuestionsAnswered()
-                        + " question(s); minimum " + minQ + " required");
-                log.debug("Insufficient evidence for competency {}: {} questions (min {})",
-                        cs.getCompetencyName(), cs.getQuestionsAnswered(), minQ);
-            }
-        }
+        aggregationService.applyEvidenceSufficiency(finalScores, minQ);
 
         // Step 5: Calculate Overall Score (weighted by question count + evidence sufficiency)
         int competencyCount = finalScores.size();
@@ -180,7 +95,7 @@ public class OverviewScoringStrategy implements ScoringStrategy {
 
         log.info("Overall score calculated: {} ({}/100) with {} competencies, {} indicators (weighted, lowEvidenceFactor={})",
                 String.format("%.2f", overallScore), String.format("%.2f", overallPercentage),
-                competencyCount, indicatorAggs.size(), lowEvidenceWeight);
+                competencyCount, aggResult.indicatorAggregations().size(), lowEvidenceWeight);
 
         // Step 6: Profile pattern analysis and proficiency labels
         ScoringConfiguration.Thresholds.Overview overviewConfig = config.getThresholds().getOverview();
@@ -208,15 +123,17 @@ public class OverviewScoringStrategy implements ScoringStrategy {
             }
 
             // Classify into profile pattern categories
+            // Round both sides to 4dp to eliminate IEEE 754 floating-point boundary errors
+            double roundedPct = ScoringPrecision.round4(pct);
             String category;
-            if (pct >= overallPercentage + overviewConfig.getProfileBandWidth()
-                    && pct >= overviewConfig.getStrengthThreshold()) {
+            if (roundedPct >= ScoringPrecision.round4(overallPercentage + overviewConfig.getProfileBandWidth())
+                    && roundedPct >= ScoringPrecision.round4(overviewConfig.getStrengthThreshold())) {
                 category = "SIGNATURE_STRENGTH";
-            } else if (pct >= overviewConfig.getStrengthThreshold()) {
+            } else if (roundedPct >= ScoringPrecision.round4(overviewConfig.getStrengthThreshold())) {
                 category = "STRENGTH";
-            } else if (pct < overviewConfig.getCriticalGapThreshold()) {
+            } else if (roundedPct < ScoringPrecision.round4(overviewConfig.getCriticalGapThreshold())) {
                 category = "CRITICAL_GAP";
-            } else if (pct >= overviewConfig.getDevelopmentThreshold()) {
+            } else if (roundedPct >= ScoringPrecision.round4(overviewConfig.getDevelopmentThreshold())) {
                 category = "DEVELOPING";
             } else {
                 category = "AVERAGE";

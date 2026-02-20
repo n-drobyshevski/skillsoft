@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -391,9 +392,9 @@ class PsychometricAnalysisServiceImplTest {
             when(competencyRepository.findById(competencyId)).thenReturn(Optional.of(mockCompetency));
             when(competencyReliabilityRepository.findByCompetency_Id(competencyId))
                 .thenReturn(Optional.empty());
-            // calculateCompetencyReliability uses getScoreMatrixForCompetency, not findSessionsWithAnswersForCompetency
-            when(testAnswerRepository.getScoreMatrixForCompetency(competencyId))
-                .thenReturn(List.of());
+            // calculateCompetencyReliability uses streamScoreMatrixForCompetency via buildScoreMatrix
+            when(testAnswerRepository.streamScoreMatrixForCompetency(competencyId))
+                .thenReturn(Stream.empty());
             when(competencyReliabilityRepository.save(any(CompetencyReliability.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 

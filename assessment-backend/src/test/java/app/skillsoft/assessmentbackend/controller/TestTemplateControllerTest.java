@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.controller;
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.DeletionMode;
+import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.services.TemplateDeletionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService.TemplateStatistics;
@@ -416,7 +417,7 @@ class TestTemplateControllerTest {
             // Given
             UUID nonExistentId = UUID.randomUUID();
             when(testTemplateService.updateTemplate(eq(nonExistentId), any(UpdateTestTemplateRequest.class)))
-                    .thenThrow(new RuntimeException("Template not found"));
+                    .thenThrow(new ResourceNotFoundException("TestTemplate", nonExistentId));
 
             // When & Then
             mockMvc.perform(put("/api/v1/tests/templates/{id}", nonExistentId)
@@ -454,7 +455,7 @@ class TestTemplateControllerTest {
             // Given
             UUID nonExistentId = UUID.randomUUID();
             when(testTemplateService.activateTemplate(nonExistentId))
-                    .thenThrow(new RuntimeException("Template not found"));
+                    .thenThrow(new ResourceNotFoundException("TestTemplate", nonExistentId));
 
             // When & Then
             mockMvc.perform(post("/api/v1/tests/templates/{id}/activate", nonExistentId)
@@ -532,7 +533,7 @@ class TestTemplateControllerTest {
             // Given
             UUID nonExistentId = UUID.randomUUID();
             when(deletionService.deleteTemplate(eq(nonExistentId), eq(DeletionMode.SOFT_DELETE), eq(true)))
-                    .thenThrow(new RuntimeException("TestTemplate not found with id: " + nonExistentId));
+                    .thenThrow(new ResourceNotFoundException("TestTemplate", nonExistentId));
 
             // When & Then
             mockMvc.perform(delete("/api/v1/tests/templates/{id}", nonExistentId)

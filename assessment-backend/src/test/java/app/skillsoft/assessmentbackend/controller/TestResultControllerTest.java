@@ -1,9 +1,12 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
+import app.skillsoft.assessmentbackend.services.CandidateComparisonService;
 import app.skillsoft.assessmentbackend.services.TestResultService;
 import app.skillsoft.assessmentbackend.services.TestResultService.UserTestStatistics;
 import app.skillsoft.assessmentbackend.services.TestResultService.TemplateTestStatistics;
+import app.skillsoft.assessmentbackend.services.scoring.QuestionScoreService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +53,12 @@ class TestResultControllerTest {
 
     @MockBean
     private TestResultService testResultService;
+
+    @MockBean
+    private QuestionScoreService questionScoreService;
+
+    @MockBean
+    private CandidateComparisonService candidateComparisonService;
 
     private UUID resultId;
     private UUID sessionId;
@@ -206,7 +215,7 @@ class TestResultControllerTest {
             // Given
             UUID nonExistentId = UUID.randomUUID();
             when(testResultService.calculatePercentile(nonExistentId))
-                    .thenThrow(new RuntimeException("Result not found"));
+                    .thenThrow(new ResourceNotFoundException("Result", nonExistentId));
 
             // When & Then
             mockMvc.perform(get("/api/v1/tests/results/{resultId}/percentile", nonExistentId))
@@ -245,16 +254,16 @@ class TestResultControllerTest {
         @DisplayName("Should return all user results")
         void shouldReturnAllUserResults() throws Exception {
             // Given
-            when(testResultService.findByUserOrderByDate(clerkUserId))
-                    .thenReturn(List.of(testResultSummaryDto));
+            when(testResultService.findByUserOrderByDate(eq(clerkUserId), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(testResultSummaryDto)));
 
             // When & Then
             mockMvc.perform(get("/api/v1/tests/results/user/{clerkUserId}/all", clerkUserId))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$").isArray())
-                    .andExpect(jsonPath("$[0].templateName").value("Leadership Assessment"));
+                    .andExpect(jsonPath("$.content").isArray())
+                    .andExpect(jsonPath("$.content[0].templateName").value("Leadership Assessment"));
 
-            verify(testResultService).findByUserOrderByDate(clerkUserId);
+            verify(testResultService).findByUserOrderByDate(eq(clerkUserId), any(Pageable.class));
         }
 
         @Test
@@ -311,16 +320,16 @@ class TestResultControllerTest {
         @DisplayName("Should return passed results for user")
         void shouldReturnPassedResults() throws Exception {
             // Given
-            when(testResultService.findPassedByUser(clerkUserId))
-                    .thenReturn(List.of(testResultSummaryDto));
+            when(testResultService.findPassedByUser(eq(clerkUserId), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(testResultSummaryDto)));
 
             // When & Then
             mockMvc.perform(get("/api/v1/tests/results/user/{clerkUserId}/passed", clerkUserId))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$").isArray())
-                    .andExpect(jsonPath("$[0].passed").value(true));
+                    .andExpect(jsonPath("$.content").isArray())
+                    .andExpect(jsonPath("$.content[0].passed").value(true));
 
-            verify(testResultService).findPassedByUser(clerkUserId);
+            verify(testResultService).findPassedByUser(eq(clerkUserId), any(Pageable.class));
         }
     }
 

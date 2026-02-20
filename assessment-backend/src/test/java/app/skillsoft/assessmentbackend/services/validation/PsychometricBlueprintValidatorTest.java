@@ -17,6 +17,7 @@ import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.*;
 
 /**
@@ -31,6 +32,10 @@ import static org.mockito.Mockito.*;
  * - hasSufficientQuestions() logic
  * - Missing statistics defaults to PROBATION status
  * - Edge cases (empty indicators, shuffling, etc.)
+ *
+ * Note: selectValidatedQuestions uses batch-loading via findByQuestionIdIn()
+ * for partitioning questions by validity status (N+1 fix).
+ * getAvailabilitySummary/isEligibleForAssembly use individual findByQuestion_Id().
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("PsychometricBlueprintValidator Tests")
@@ -99,6 +104,18 @@ class PsychometricBlueprintValidatorTest {
         return stats;
     }
 
+    /**
+     * Helper to mock the batch findByQuestionIdIn() call used by partitionByValidityStatus.
+     * Maps each questionId to the given status.
+     */
+    private void mockBatchStats(Map<UUID, ItemValidityStatus> questionStatuses) {
+        List<ItemStatistics> statsList = new ArrayList<>();
+        for (Map.Entry<UUID, ItemValidityStatus> entry : questionStatuses.entrySet()) {
+            statsList.add(createStats(entry.getKey(), entry.getValue()));
+        }
+        when(itemStatsRepository.findByQuestionIdIn(anyCollection())).thenReturn(statsList);
+    }
+
     // ================================================================================
     // selectValidatedQuestions Tests - Psychometrics Enabled
     // ================================================================================
@@ -132,12 +149,12 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(q1, q2, q3));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId3))
-                .thenReturn(Optional.of(createStats(questionId3, ItemValidityStatus.ACTIVE)));
+            // Mock batch stats loading (used by partitionByValidityStatus)
+            mockBatchStats(Map.of(
+                questionId1, ItemValidityStatus.ACTIVE,
+                questionId2, ItemValidityStatus.ACTIVE,
+                questionId3, ItemValidityStatus.ACTIVE
+            ));
 
             // When - request 2 questions
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 2);
@@ -151,7 +168,7 @@ class PsychometricBlueprintValidatorTest {
         @Test
         @DisplayName("should include limited PROBATION items for data gathering")
         void shouldIncludeLimitedProbationItems() {
-            // Given - 2 ACTIVE and 5 PROBATION questions, request 10
+            // Given - 2 ACTIVE and 3 PROBATION questions, request 10
             AssessmentQuestion qActive1 = createQuestion(questionId1, indicatorId1, true);
             AssessmentQuestion qActive2 = createQuestion(questionId2, indicatorId1, true);
             AssessmentQuestion qProb1 = createQuestion(questionId3, indicatorId1, true);
@@ -161,16 +178,14 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(qActive1, qActive2, qProb1, qProb2, qProb3));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId3))
-                .thenReturn(Optional.of(createStats(questionId3, ItemValidityStatus.PROBATION)));
-            when(itemStatsRepository.findByQuestion_Id(questionId4))
-                .thenReturn(Optional.of(createStats(questionId4, ItemValidityStatus.PROBATION)));
-            when(itemStatsRepository.findByQuestion_Id(questionId5))
-                .thenReturn(Optional.of(createStats(questionId5, ItemValidityStatus.PROBATION)));
+            // Mock batch stats
+            mockBatchStats(Map.of(
+                questionId1, ItemValidityStatus.ACTIVE,
+                questionId2, ItemValidityStatus.ACTIVE,
+                questionId3, ItemValidityStatus.PROBATION,
+                questionId4, ItemValidityStatus.PROBATION,
+                questionId5, ItemValidityStatus.PROBATION
+            ));
 
             // When - request 10, probation target = max(1, 10*20/100) = 2
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 10);
@@ -189,15 +204,16 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(qActive, qRetired));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.RETIRED)));
+            // Mock batch stats
+            mockBatchStats(Map.of(
+                questionId1, ItemValidityStatus.ACTIVE,
+                questionId2, ItemValidityStatus.RETIRED
+            ));
 
             // When
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 5);
 
-            // Then - only ACTIVE item selected
+            // Then - only ACTIVE item selected (RETIRED is not in any selection pool)
             assertThat(result).containsExactly(questionId1);
             assertThat(result).doesNotContain(questionId2);
         }
@@ -212,10 +228,11 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(qActive, qFlagged));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.FLAGGED_FOR_REVIEW)));
+            // Mock batch stats
+            mockBatchStats(Map.of(
+                questionId1, ItemValidityStatus.ACTIVE,
+                questionId2, ItemValidityStatus.FLAGGED_FOR_REVIEW
+            ));
 
             // When - need 3 but only have 2 non-RETIRED
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 3);
@@ -236,10 +253,17 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId2))
                 .thenReturn(List.of(q2));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.ACTIVE)));
+            // Mock batch stats - called once per indicator
+            when(itemStatsRepository.findByQuestionIdIn(anyCollection()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Collection<UUID> ids = (Collection<UUID>) invocation.getArgument(0);
+                    List<ItemStatistics> result = new ArrayList<>();
+                    for (UUID id : ids) {
+                        result.add(createStats(id, ItemValidityStatus.ACTIVE));
+                    }
+                    return result;
+                });
 
             // When
             List<UUID> result = validator.selectValidatedQuestions(
@@ -265,10 +289,17 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(questions);
 
-            for (UUID qId : questionIds) {
-                when(itemStatsRepository.findByQuestion_Id(qId))
-                    .thenReturn(Optional.of(createStats(qId, ItemValidityStatus.ACTIVE)));
-            }
+            // Mock batch stats - all ACTIVE
+            when(itemStatsRepository.findByQuestionIdIn(anyCollection()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Collection<UUID> ids = (Collection<UUID>) invocation.getArgument(0);
+                    List<ItemStatistics> result = new ArrayList<>();
+                    for (UUID id : ids) {
+                        result.add(createStats(id, ItemValidityStatus.ACTIVE));
+                    }
+                    return result;
+                });
 
             // When
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 2);
@@ -389,14 +420,19 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(questions);
 
-            for (UUID qId : activeIds) {
-                when(itemStatsRepository.findByQuestion_Id(qId))
-                    .thenReturn(Optional.of(createStats(qId, ItemValidityStatus.ACTIVE)));
-            }
-            for (UUID qId : probationIds) {
-                when(itemStatsRepository.findByQuestion_Id(qId))
-                    .thenReturn(Optional.of(createStats(qId, ItemValidityStatus.PROBATION)));
-            }
+            // Mock batch stats
+            when(itemStatsRepository.findByQuestionIdIn(anyCollection()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Collection<UUID> ids = (Collection<UUID>) invocation.getArgument(0);
+                    List<ItemStatistics> result = new ArrayList<>();
+                    for (UUID id : ids) {
+                        ItemValidityStatus status = activeIds.contains(id)
+                            ? ItemValidityStatus.ACTIVE : ItemValidityStatus.PROBATION;
+                        result.add(createStats(id, status));
+                    }
+                    return result;
+                });
 
             // When - request 10, probation target = max(1, 10*30/100) = 3
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 10);
@@ -417,10 +453,11 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(qActive, qProb));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.PROBATION)));
+            // Mock batch stats
+            mockBatchStats(Map.of(
+                questionId1, ItemValidityStatus.ACTIVE,
+                questionId2, ItemValidityStatus.PROBATION
+            ));
 
             // When - request 3, probation target = max(1, 3*20/100) = max(1,0) = 1
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 3);
@@ -442,10 +479,11 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(qActive, qProb));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.PROBATION)));
+            // Mock batch stats
+            mockBatchStats(Map.of(
+                questionId1, ItemValidityStatus.ACTIVE,
+                questionId2, ItemValidityStatus.PROBATION
+            ));
 
             // When - max(1, 5*0/100) = 1, still includes 1 probation
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 5);
@@ -901,11 +939,10 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(q1, q2));
 
-            // q1 has no stats, q2 is ACTIVE
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.empty());
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.ACTIVE)));
+            // q1 has no stats (not returned by batch query), q2 is ACTIVE
+            List<ItemStatistics> batchResult = new ArrayList<>();
+            batchResult.add(createStats(questionId2, ItemValidityStatus.ACTIVE));
+            when(itemStatsRepository.findByQuestionIdIn(anyCollection())).thenReturn(batchResult);
 
             // When
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 5);
@@ -988,8 +1025,9 @@ class PsychometricBlueprintValidatorTest {
             AssessmentQuestion q1 = createQuestion(questionId1, indicatorId1, true);
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(q1));
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
+
+            // Mock batch stats
+            mockBatchStats(Map.of(questionId1, ItemValidityStatus.ACTIVE));
 
             // When
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 0);
@@ -1011,10 +1049,17 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(questions);
 
-            for (AssessmentQuestion q : questions) {
-                when(itemStatsRepository.findByQuestion_Id(q.getId()))
-                    .thenReturn(Optional.of(createStats(q.getId(), ItemValidityStatus.ACTIVE)));
-            }
+            // Mock batch stats - all ACTIVE
+            when(itemStatsRepository.findByQuestionIdIn(anyCollection()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Collection<UUID> ids = (Collection<UUID>) invocation.getArgument(0);
+                    List<ItemStatistics> result = new ArrayList<>();
+                    for (UUID id : ids) {
+                        result.add(createStats(id, ItemValidityStatus.ACTIVE));
+                    }
+                    return result;
+                });
 
             // When
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 50);
@@ -1038,10 +1083,17 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(questions);
 
-            for (UUID qId : questionIds) {
-                when(itemStatsRepository.findByQuestion_Id(qId))
-                    .thenReturn(Optional.of(createStats(qId, ItemValidityStatus.ACTIVE)));
-            }
+            // Mock batch stats - all ACTIVE
+            when(itemStatsRepository.findByQuestionIdIn(anyCollection()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Collection<UUID> ids = (Collection<UUID>) invocation.getArgument(0);
+                    List<ItemStatistics> result = new ArrayList<>();
+                    for (UUID id : ids) {
+                        result.add(createStats(id, ItemValidityStatus.ACTIVE));
+                    }
+                    return result;
+                });
 
             // When - run multiple times
             Set<List<UUID>> results = new HashSet<>();
@@ -1079,18 +1131,15 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(qA1, qA2, qA3, qP1, qP2, qP3));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId3))
-                .thenReturn(Optional.of(createStats(questionId3, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId4))
-                .thenReturn(Optional.of(createStats(questionId4, ItemValidityStatus.PROBATION)));
-            when(itemStatsRepository.findByQuestion_Id(questionId5))
-                .thenReturn(Optional.of(createStats(questionId5, ItemValidityStatus.PROBATION)));
-            when(itemStatsRepository.findByQuestion_Id(questionId6))
-                .thenReturn(Optional.of(createStats(questionId6, ItemValidityStatus.PROBATION)));
+            // Mock batch stats
+            Map<UUID, ItemValidityStatus> statuses = new HashMap<>();
+            statuses.put(questionId1, ItemValidityStatus.ACTIVE);
+            statuses.put(questionId2, ItemValidityStatus.ACTIVE);
+            statuses.put(questionId3, ItemValidityStatus.ACTIVE);
+            statuses.put(questionId4, ItemValidityStatus.PROBATION);
+            statuses.put(questionId5, ItemValidityStatus.PROBATION);
+            statuses.put(questionId6, ItemValidityStatus.PROBATION);
+            mockBatchStats(statuses);
 
             // When - request 4, probation target = max(1, 4*20/100) = 1
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 4);
@@ -1111,10 +1160,11 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(List.of(qActive, qFlagged));
 
-            when(itemStatsRepository.findByQuestion_Id(questionId1))
-                .thenReturn(Optional.of(createStats(questionId1, ItemValidityStatus.ACTIVE)));
-            when(itemStatsRepository.findByQuestion_Id(questionId2))
-                .thenReturn(Optional.of(createStats(questionId2, ItemValidityStatus.FLAGGED_FOR_REVIEW)));
+            // Mock batch stats
+            mockBatchStats(Map.of(
+                questionId1, ItemValidityStatus.ACTIVE,
+                questionId2, ItemValidityStatus.FLAGGED_FOR_REVIEW
+            ));
 
             // When - request 3 (but pool size is only 2)
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 3);
@@ -1141,12 +1191,19 @@ class PsychometricBlueprintValidatorTest {
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                 .thenReturn(questions);
 
-            for (UUID qId : activeIds) {
-                when(itemStatsRepository.findByQuestion_Id(qId))
-                    .thenReturn(Optional.of(createStats(qId, ItemValidityStatus.ACTIVE)));
-            }
-            when(itemStatsRepository.findByQuestion_Id(flaggedId))
-                .thenReturn(Optional.of(createStats(flaggedId, ItemValidityStatus.FLAGGED_FOR_REVIEW)));
+            // Mock batch stats
+            when(itemStatsRepository.findByQuestionIdIn(anyCollection()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Collection<UUID> ids = (Collection<UUID>) invocation.getArgument(0);
+                    List<ItemStatistics> result = new ArrayList<>();
+                    for (UUID id : ids) {
+                        ItemValidityStatus status = id.equals(flaggedId)
+                            ? ItemValidityStatus.FLAGGED_FOR_REVIEW : ItemValidityStatus.ACTIVE;
+                        result.add(createStats(id, status));
+                    }
+                    return result;
+                });
 
             // When - request 3
             List<UUID> result = validator.selectValidatedQuestions(List.of(indicatorId1), 3);

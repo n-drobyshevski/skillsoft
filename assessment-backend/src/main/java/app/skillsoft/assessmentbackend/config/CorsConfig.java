@@ -9,13 +9,13 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.lang.NonNull;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -30,6 +30,18 @@ public class CorsConfig implements WebMvcConfigurer {
 
     private static final Logger logger = LoggerFactory.getLogger(CorsConfig.class);
 
+    private final DeprecationHeaderInterceptor deprecationHeaderInterceptor;
+
+    public CorsConfig(DeprecationHeaderInterceptor deprecationHeaderInterceptor) {
+        this.deprecationHeaderInterceptor = deprecationHeaderInterceptor;
+    }
+
+    @Override
+    public void addInterceptors(@NonNull InterceptorRegistry registry) {
+        registry.addInterceptor(deprecationHeaderInterceptor)
+                .addPathPatterns("/api/**");
+    }
+
     @Override
     public void addCorsMappings(@NonNull CorsRegistry registry) {
         logger.info("CORS: Configuring WebMvcConfigurer CORS mappings");
@@ -38,7 +50,7 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
                 .allowedHeaders("*")
                 .allowCredentials(true)
-                .maxAge(3600);
+                .maxAge(86400);
     }
 
     /**
@@ -84,8 +96,8 @@ public class CorsConfig implements WebMvcConfigurer {
             "GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"
         ));
         
-        // Cache preflight response for 1 hour
-        configuration.setMaxAge(3600L);
+        // Cache preflight response for 24 hours (reduces OPTIONS request volume)
+        configuration.setMaxAge(86400L);
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

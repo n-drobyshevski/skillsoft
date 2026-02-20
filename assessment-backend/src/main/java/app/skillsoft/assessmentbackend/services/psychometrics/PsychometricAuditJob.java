@@ -10,6 +10,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -94,8 +98,13 @@ public class PsychometricAuditJob {
     /**
      * Nightly batch job - runs at 2 AM daily.
      * Recalculates psychometric metrics for all items with new responses.
+     *
+     * Protected by ShedLock to prevent concurrent execution across multiple instances:
+     * - lockAtMostFor: 30 minutes — upper bound; lock auto-releases even if the node crashes.
+     * - lockAtLeastFor: 5 minutes — prevents rapid re-execution if the job finishes quickly.
      */
     @Scheduled(cron = "${skillsoft.psychometrics.nightly-cron:0 0 2 * * ?}")
+    @SchedulerLock(name = "psychometricNightlyAudit", lockAtMostFor = "PT30M", lockAtLeastFor = "PT5M")
     @Transactional
     public void runNightlyAudit() {
         if (!psychometricsEnabled) {
@@ -239,19 +248,29 @@ public class PsychometricAuditJob {
     }
 
     /**
-     * Recalculate reliability for all competencies.
+     * Recalculate reliability for all competencies using paginated batches.
      */
     private int recalculateCompetencyReliability() {
-        List<Competency> competencies = competencyRepository.findAll();
         int count = 0;
+        int page = 0;
+        Pageable pageable = PageRequest.of(page, 100);
+        Slice<Competency> slice = competencyRepository.findAll(pageable);
 
-        for (Competency competency : competencies) {
-            try {
-                analysisService.calculateCompetencyReliability(competency.getId());
-                count++;
-            } catch (Exception e) {
-                log.warn("Failed to recalculate reliability for competency {}: {}", competency.getId(), e.getMessage());
+        while (true) {
+            for (Competency competency : slice.getContent()) {
+                try {
+                    analysisService.calculateCompetencyReliability(competency.getId());
+                    count++;
+                } catch (Exception e) {
+                    log.warn("Failed to recalculate reliability for competency {}: {}", competency.getId(), e.getMessage());
+                }
             }
+            if (!slice.hasNext()) {
+                break;
+            }
+            page++;
+            pageable = PageRequest.of(page, 100);
+            slice = competencyRepository.findAll(pageable);
         }
 
         return count;
@@ -276,22 +295,32 @@ public class PsychometricAuditJob {
     }
 
     /**
-     * Update validity statuses for all items with calculated metrics.
+     * Update validity statuses for all items with calculated metrics using paginated batches.
      */
     private int updateAllValidityStatuses() {
-        List<ItemStatistics> allStats = itemStatsRepository.findAll();
         int count = 0;
+        int page = 0;
+        Pageable pageable = PageRequest.of(page, 100);
+        Slice<ItemStatistics> slice = itemStatsRepository.findAll(pageable);
 
-        for (ItemStatistics stats : allStats) {
-            // Only update items that have been calculated
-            if (stats.getLastCalculatedAt() != null) {
-                try {
-                    analysisService.updateItemValidityStatus(stats.getQuestionId());
-                    count++;
-                } catch (Exception e) {
-                    log.warn("Failed to update status for item {}: {}", stats.getQuestionId(), e.getMessage());
+        while (true) {
+            for (ItemStatistics stats : slice.getContent()) {
+                // Only update items that have been calculated
+                if (stats.getLastCalculatedAt() != null) {
+                    try {
+                        analysisService.updateItemValidityStatus(stats.getQuestionId());
+                        count++;
+                    } catch (Exception e) {
+                        log.warn("Failed to update status for item {}: {}", stats.getQuestionId(), e.getMessage());
+                    }
                 }
             }
+            if (!slice.hasNext()) {
+                break;
+            }
+            page++;
+            pageable = PageRequest.of(page, 100);
+            slice = itemStatsRepository.findAll(pageable);
         }
 
         return count;
@@ -300,18 +329,29 @@ public class PsychometricAuditJob {
     /**
      * Initialize item statistics for new questions that don't have records yet.
      * Called during application startup or when new questions are added.
+     * Processes questions in paginated batches to avoid loading all into memory.
      */
     @Transactional
     public int initializeNewQuestions() {
-        List<AssessmentQuestion> questions = questionRepository.findAll();
         int count = 0;
+        int page = 0;
+        Pageable pageable = PageRequest.of(page, 100);
+        Slice<AssessmentQuestion> slice = questionRepository.findAll(pageable);
 
-        for (AssessmentQuestion question : questions) {
-            if (!itemStatsRepository.existsByQuestion_Id(question.getId())) {
-                ItemStatistics stats = new ItemStatistics(question);
-                itemStatsRepository.save(stats);
-                count++;
+        while (true) {
+            for (AssessmentQuestion question : slice.getContent()) {
+                if (!itemStatsRepository.existsByQuestion_Id(question.getId())) {
+                    ItemStatistics stats = new ItemStatistics(question);
+                    itemStatsRepository.save(stats);
+                    count++;
+                }
             }
+            if (!slice.hasNext()) {
+                break;
+            }
+            page++;
+            pageable = PageRequest.of(page, 100);
+            slice = questionRepository.findAll(pageable);
         }
 
         if (count > 0) {

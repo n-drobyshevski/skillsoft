@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.domain.entities;
 
 import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
@@ -15,6 +16,10 @@ import java.util.UUID;
 /**
  * Entity representing a test session.
  * Tracks the state and progress of a user taking a test.
+ *
+ * Uses {@code @Version} for optimistic locking to prevent concurrent
+ * state transitions (e.g., simultaneous complete + abandon/timeout)
+ * from producing inconsistent state.
  */
 @Entity
 @Table(name = "test_sessions", indexes = {
@@ -28,6 +33,15 @@ public class TestSession {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    /**
+     * Optimistic locking version. Prevents concurrent state transitions
+     * (e.g., simultaneous complete + abandon) from producing inconsistent state.
+     * Managed automatically by JPA; do not set manually.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id", nullable = false)
@@ -61,6 +75,7 @@ public class TestSession {
     private List<UUID> questionOrder = new ArrayList<>();
 
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<TestAnswer> answers = new ArrayList<>();
 
     @OneToOne(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -225,6 +240,14 @@ public class TestSession {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 
     public TestTemplate getTemplate() {

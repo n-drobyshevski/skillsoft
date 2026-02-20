@@ -117,7 +117,7 @@ class AssessmentQuestionIntegrationTest {
             complexQuestion.setQuestionType(QuestionType.SITUATIONAL_JUDGMENT);
             complexQuestion.setScoringRubric("Оценка эффективности решения от 1 до 5 баллов с учетом долгосрочных последствий");
             complexQuestion.setDifficultyLevel(DifficultyLevel.EXPERT);
-            complexQuestion.setTimeLimit(900); // 15 minutes
+            complexQuestion.setTimeLimit(600); // 10 minutes (max allowed)
             complexQuestion.setActive(true);
             complexQuestion.setOrderIndex(1);
 
@@ -355,7 +355,7 @@ class AssessmentQuestionIntegrationTest {
             selfReflectionQuestion.setQuestionType(QuestionType.SELF_REFLECTION);
             selfReflectionQuestion.setScoringRubric("Качественная оценка глубины самоанализа и реалистичности самооценки с использованием ИИ-анализа");
             selfReflectionQuestion.setDifficultyLevel(DifficultyLevel.EXPERT);
-            selfReflectionQuestion.setTimeLimit(1800); // 30 minutes
+            selfReflectionQuestion.setTimeLimit(600); // 10 minutes (max allowed)
             selfReflectionQuestion.setActive(true);
             selfReflectionQuestion.setOrderIndex(1);
 
@@ -539,12 +539,9 @@ class AssessmentQuestionIntegrationTest {
             AssessmentQuestionDto createdDto = objectMapper.readValue(response, AssessmentQuestionDto.class);
 
             // When - Update with completely new JSONB structure
-            AssessmentQuestion updateRequest = new AssessmentQuestion();
-            updateRequest.setQuestionText("Обновленный сценарий лидерства в кризисной ситуации");
-            updateRequest.setQuestionType(QuestionType.SITUATIONAL_JUDGMENT);
-            
+            // Build request as a Map to match UpdateQuestionRequest field names
             List<Map<String, Object>> newAnswerOptions = new ArrayList<>();
-            
+
             Map<String, Object> option1 = new HashMap<>();
             option1.put("scenario_id", "CRISIS_A");
             option1.put("response", "Принять решение единолично");
@@ -569,16 +566,20 @@ class AssessmentQuestionIntegrationTest {
             option2.put("metrics", metrics2);
             newAnswerOptions.add(option2);
 
-            updateRequest.setAnswerOptions(newAnswerOptions);
-            updateRequest.setScoringRubric("Новая система оценки кризисного лидерства");
-            updateRequest.setDifficultyLevel(DifficultyLevel.EXPERT);
+            Map<String, Object> updateRequestMap = new HashMap<>();
+            updateRequestMap.put("questionText", "Обновленный сценарий лидерства в кризисной ситуации");
+            updateRequestMap.put("questionType", "SITUATIONAL_JUDGMENT");
+            updateRequestMap.put("answerOptions", newAnswerOptions);
+            updateRequestMap.put("scoringRubric", "Новая система оценки кризисного лидерства");
+            updateRequestMap.put("difficultyLevel", "EXPERT");
+            updateRequestMap.put("isActive", true);
 
             // Then - Verify update
             mockMvc.perform(put("/api/questions/{questionId}", createdDto.id())
                             .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .characterEncoding("UTF-8")
-                            .content(objectMapper.writeValueAsString(updateRequest)))
+                            .content(objectMapper.writeValueAsString(updateRequestMap)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.questionText", containsString("кризисной ситуации")))
                     .andExpect(jsonPath("$.answerOptions", hasSize(2)))

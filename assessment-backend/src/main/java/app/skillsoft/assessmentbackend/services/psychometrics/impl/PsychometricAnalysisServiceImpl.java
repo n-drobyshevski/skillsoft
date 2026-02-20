@@ -16,6 +16,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Implementation of PsychometricAnalysisService.
@@ -39,6 +40,13 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
 
     // Psychometric thresholds
     private static final int MIN_RESPONSES = 50;
+
+    /**
+     * Response completeness threshold: 90% for both competency and Big Five reliability.
+     * Aligned per APA Standards - ensures comparable alpha values across measurement levels.
+     * Previous values: competency=100%, Big Five=80% (inconsistent, making comparisons unreliable).
+     */
+    private static final double RESPONSE_COMPLETENESS_THRESHOLD = 0.9;
     private static final BigDecimal DIFFICULTY_TOO_HARD = new BigDecimal("0.2");
     private static final BigDecimal DIFFICULTY_TOO_EASY = new BigDecimal("0.9");
     private static final BigDecimal DISCRIMINATION_CRITICAL = new BigDecimal("0.1");
@@ -244,25 +252,18 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         CompetencyReliability reliability = competencyReliabilityRepository.findByCompetency_Id(competencyId)
                 .orElseGet(() -> new CompetencyReliability(competency));
 
-        // Calculate Cronbach's Alpha
-        BigDecimal alpha = calculateCronbachAlpha(competencyId);
-        Map<UUID, BigDecimal> alphaIfDeleted = calculateAlphaIfDeleted(competencyId);
+        // Build score matrix ONCE (streamed from DB)
+        ScoreMatrixData matrix = buildScoreMatrix(competencyId);
 
-        // Get sample size and item count from score matrix
-        List<Object[]> scoreMatrix = testAnswerRepository.getScoreMatrixForCompetency(competencyId);
-        Set<UUID> sessions = new HashSet<>();
-        Set<UUID> items = new HashSet<>();
-
-        for (Object[] row : scoreMatrix) {
-            sessions.add((UUID) row[0]);
-            items.add((UUID) row[1]);
-        }
+        // Calculate Cronbach's Alpha using pre-built matrix
+        BigDecimal alpha = calculateCronbachAlphaFromMatrix(matrix);
+        Map<UUID, BigDecimal> alphaIfDeleted = calculateAlphaIfDeletedFromMatrix(matrix);
 
         reliability.setCronbachAlpha(alpha);
         reliability.setAlphaIfDeleted(alphaIfDeleted);
-        reliability.setSampleSize(sessions.size());
-        reliability.setItemCount(items.size());
-        reliability.setReliabilityStatus(determineReliabilityStatus(alpha, sessions.size(), items.size()));
+        reliability.setSampleSize(matrix.sessionCount());
+        reliability.setItemCount(matrix.itemCount());
+        reliability.setReliabilityStatus(determineReliabilityStatus(alpha, matrix.sessionCount(), matrix.itemCount()));
         reliability.setLastCalculatedAt(LocalDateTime.now());
 
         logger.info("Competency reliability calculated for {}: alpha={}, status={}",
@@ -275,31 +276,22 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
 
     @Override
     public BigDecimal calculateCronbachAlpha(UUID competencyId) {
-        // Get score matrix: [sessionId, questionId, normalizedScore]
-        List<Object[]> scoreMatrix = testAnswerRepository.getScoreMatrixForCompetency(competencyId);
+        ScoreMatrixData matrix = buildScoreMatrix(competencyId);
+        return calculateCronbachAlphaFromMatrix(matrix);
+    }
 
-        if (scoreMatrix.isEmpty()) {
-            logger.debug("No score data available for competency {}", competencyId);
+    /**
+     * Calculate Cronbach's Alpha from a pre-built ScoreMatrixData.
+     * Extracted to allow calculateCompetencyReliability to reuse an already-built matrix.
+     */
+    private BigDecimal calculateCronbachAlphaFromMatrix(ScoreMatrixData matrix) {
+        if (matrix.isEmpty()) {
+            logger.debug("No score data available in matrix");
             return null;
         }
 
-        // Build score matrix structure
-        // Map: sessionId -> (questionId -> score)
-        Map<UUID, Map<UUID, BigDecimal>> sessionScores = new LinkedHashMap<>();
-        Set<UUID> allQuestions = new LinkedHashSet<>();
-
-        for (Object[] row : scoreMatrix) {
-            UUID sessionId = (UUID) row[0];
-            UUID questionId = (UUID) row[1];
-            BigDecimal score = BigDecimal.valueOf(((Number) row[2]).doubleValue());
-
-            sessionScores.computeIfAbsent(sessionId, k -> new HashMap<>())
-                    .put(questionId, score);
-            allQuestions.add(questionId);
-        }
-
-        int k = allQuestions.size(); // number of items
-        int n = sessionScores.size(); // number of respondents
+        int k = matrix.itemCount(); // number of items
+        int n = matrix.sessionCount(); // number of respondents
 
         if (k < 2 || n < MIN_RESPONSES) {
             logger.debug("Insufficient data for alpha calculation: k={}, n={}", k, n);
@@ -307,12 +299,13 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         }
 
         // Convert to ordered list for consistent indexing
-        List<UUID> questionList = new ArrayList<>(allQuestions);
+        List<UUID> questionList = new ArrayList<>(matrix.allQuestions());
 
-        // Calculate item variances and total variance
-        // Only include sessions that have all items
-        List<Map<UUID, BigDecimal>> completeScores = sessionScores.values().stream()
-                .filter(scores -> scores.size() == k)
+        // Response completeness threshold: 90% for both competency and Big Five reliability
+        // Aligned per APA Standards - ensures comparable alpha values across measurement levels.
+        // Previous values: competency=100%, Big Five=80% (inconsistent, making comparisons unreliable)
+        List<Map<UUID, BigDecimal>> completeScores = matrix.sessionScores().values().stream()
+                .filter(scores -> scores.size() >= k * RESPONSE_COMPLETENESS_THRESHOLD)
                 .collect(Collectors.toList());
 
         if (completeScores.size() < MIN_RESPONSES) {
@@ -320,10 +313,20 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
             return null;
         }
 
+        // Guard: sample variance requires n > 1 to avoid division by zero
+        if (completeScores.size() <= 1) {
+            logger.debug("Cannot compute sample variance with n <= 1");
+            return null;
+        }
+
         // Calculate item means and variances
+        // Uses sample variance (÷(N-1)) per APA Standards for Educational and Psychological Testing.
+        // Sample variance is the unbiased estimator when data represents a sample from a larger population,
+        // which is the case for psychometric reliability analysis (respondents are a sample of test-takers).
         BigDecimal[] itemMeans = new BigDecimal[k];
         BigDecimal[] itemVariances = new BigDecimal[k];
         BigDecimal nDecimal = BigDecimal.valueOf(completeScores.size());
+        BigDecimal nMinus1 = BigDecimal.valueOf(completeScores.size() - 1);
 
         for (int i = 0; i < k; i++) {
             UUID questionId = questionList.get(i);
@@ -335,17 +338,17 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
             }
             itemMeans[i] = sum.divide(nDecimal, MATH_CONTEXT);
 
-            // Calculate variance for this item
+            // Calculate sample variance for this item (÷(N-1), Bessel's correction)
             BigDecimal sumSquaredDiff = BigDecimal.ZERO;
             for (Map<UUID, BigDecimal> scores : completeScores) {
                 BigDecimal score = scores.getOrDefault(questionId, BigDecimal.ZERO);
                 BigDecimal diff = score.subtract(itemMeans[i]);
                 sumSquaredDiff = sumSquaredDiff.add(diff.multiply(diff));
             }
-            itemVariances[i] = sumSquaredDiff.divide(nDecimal, MATH_CONTEXT);
+            itemVariances[i] = sumSquaredDiff.divide(nMinus1, MATH_CONTEXT);
         }
 
-        // Calculate total score variance
+        // Calculate total score variance (sample variance, ÷(N-1))
         BigDecimal totalMean = BigDecimal.ZERO;
         List<BigDecimal> totalScores = new ArrayList<>();
 
@@ -362,7 +365,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
             BigDecimal diff = total.subtract(totalMean);
             totalVariance = totalVariance.add(diff.multiply(diff));
         }
-        totalVariance = totalVariance.divide(nDecimal, MATH_CONTEXT);
+        totalVariance = totalVariance.divide(nMinus1, MATH_CONTEXT);
 
         if (totalVariance.compareTo(BigDecimal.ZERO) == 0) {
             logger.debug("Total variance is zero, cannot calculate alpha");
@@ -385,124 +388,144 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
 
     @Override
     public Map<UUID, BigDecimal> calculateAlphaIfDeleted(UUID competencyId) {
+        ScoreMatrixData matrix = buildScoreMatrix(competencyId);
+        return calculateAlphaIfDeletedFromMatrix(matrix);
+    }
+
+    /**
+     * Calculate alpha-if-item-deleted from a pre-built ScoreMatrixData.
+     * Extracted to allow calculateCompetencyReliability to reuse an already-built matrix.
+     */
+    private Map<UUID, BigDecimal> calculateAlphaIfDeletedFromMatrix(ScoreMatrixData matrix) {
         Map<UUID, BigDecimal> alphaIfDeleted = new HashMap<>();
 
-        // Get score matrix
-        List<Object[]> scoreMatrix = testAnswerRepository.getScoreMatrixForCompetency(competencyId);
-
-        if (scoreMatrix.isEmpty()) {
+        if (matrix.isEmpty()) {
             return alphaIfDeleted;
         }
 
-        // Build score matrix structure
-        Map<UUID, Map<UUID, BigDecimal>> sessionScores = new LinkedHashMap<>();
-        Set<UUID> allQuestions = new LinkedHashSet<>();
-
-        for (Object[] row : scoreMatrix) {
-            UUID sessionId = (UUID) row[0];
-            UUID questionId = (UUID) row[1];
-            BigDecimal score = BigDecimal.valueOf(((Number) row[2]).doubleValue());
-
-            sessionScores.computeIfAbsent(sessionId, k -> new HashMap<>())
-                    .put(questionId, score);
-            allQuestions.add(questionId);
-        }
-
-        int k = allQuestions.size();
+        int k = matrix.itemCount();
         if (k < 3) { // Need at least 3 items to calculate alpha-if-deleted meaningfully
             return alphaIfDeleted;
         }
 
-        // For each item, calculate alpha without it
-        for (UUID excludedQuestion : allQuestions) {
-            BigDecimal alphaWithout = calculateAlphaWithoutItem(sessionScores, allQuestions, excludedQuestion);
-            if (alphaWithout != null) {
-                alphaIfDeleted.put(excludedQuestion, alphaWithout.setScale(SCALE, RoundingMode.HALF_UP));
-            }
-        }
+        List<UUID> questionList = new ArrayList<>(matrix.allQuestions());
 
-        return alphaIfDeleted;
-    }
-
-    /**
-     * Calculate Cronbach's Alpha excluding a specific item.
-     */
-    private BigDecimal calculateAlphaWithoutItem(
-            Map<UUID, Map<UUID, BigDecimal>> sessionScores,
-            Set<UUID> allQuestions,
-            UUID excludedQuestion) {
-
-        Set<UUID> includedQuestions = new HashSet<>(allQuestions);
-        includedQuestions.remove(excludedQuestion);
-
-        int k = includedQuestions.size();
-        if (k < 2) {
-            return null;
-        }
-
-        List<UUID> questionList = new ArrayList<>(includedQuestions);
-
-        // Filter to complete responses
-        List<Map<UUID, BigDecimal>> completeScores = sessionScores.values().stream()
-                .filter(scores -> includedQuestions.stream().allMatch(scores::containsKey))
+        // Pre-compute: filter complete sessions once using ALL items (90% threshold)
+        List<Map<UUID, BigDecimal>> completeScores = matrix.sessionScores().values().stream()
+                .filter(scores -> scores.size() >= k * RESPONSE_COMPLETENESS_THRESHOLD)
                 .collect(Collectors.toList());
 
         if (completeScores.size() < MIN_RESPONSES) {
-            return null;
+            return alphaIfDeleted;
         }
 
-        BigDecimal nDecimal = BigDecimal.valueOf(completeScores.size());
+        // Guard: sample variance requires n > 1
+        if (completeScores.size() <= 1) {
+            return alphaIfDeleted;
+        }
 
-        // Calculate item variances
-        BigDecimal sumItemVariances = BigDecimal.ZERO;
-        for (UUID questionId : questionList) {
+        int n = completeScores.size();
+        BigDecimal nDecimal = BigDecimal.valueOf(n);
+        BigDecimal nMinus1 = BigDecimal.valueOf(n - 1);
+
+        // Pre-compute item means, item variances, and item scores per session (single pass O(k*n))
+        BigDecimal[] itemMeans = new BigDecimal[k];
+        BigDecimal[] itemVariances = new BigDecimal[k];
+        // itemScores[i][j] = score of item i for session j
+        BigDecimal[][] itemScores = new BigDecimal[k][n];
+
+        for (int i = 0; i < k; i++) {
+            UUID questionId = questionList.get(i);
+
+            // Collect scores and compute mean
             BigDecimal sum = BigDecimal.ZERO;
-            for (Map<UUID, BigDecimal> scores : completeScores) {
-                sum = sum.add(scores.getOrDefault(questionId, BigDecimal.ZERO));
+            for (int j = 0; j < n; j++) {
+                BigDecimal score = completeScores.get(j).getOrDefault(questionId, BigDecimal.ZERO);
+                itemScores[i][j] = score;
+                sum = sum.add(score);
             }
-            BigDecimal mean = sum.divide(nDecimal, MATH_CONTEXT);
+            itemMeans[i] = sum.divide(nDecimal, MATH_CONTEXT);
 
-            BigDecimal variance = BigDecimal.ZERO;
-            for (Map<UUID, BigDecimal> scores : completeScores) {
-                BigDecimal score = scores.getOrDefault(questionId, BigDecimal.ZERO);
-                BigDecimal diff = score.subtract(mean);
-                variance = variance.add(diff.multiply(diff));
+            // Compute sample variance (÷(N-1), Bessel's correction)
+            BigDecimal sumSquaredDiff = BigDecimal.ZERO;
+            for (int j = 0; j < n; j++) {
+                BigDecimal diff = itemScores[i][j].subtract(itemMeans[i]);
+                sumSquaredDiff = sumSquaredDiff.add(diff.multiply(diff));
             }
-            variance = variance.divide(nDecimal, MATH_CONTEXT);
-            sumItemVariances = sumItemVariances.add(variance);
+            itemVariances[i] = sumSquaredDiff.divide(nMinus1, MATH_CONTEXT);
         }
 
-        // Calculate total variance
-        BigDecimal totalMean = BigDecimal.ZERO;
-        List<BigDecimal> totalScores = new ArrayList<>();
+        // Pre-compute total scores per session and total variance
+        BigDecimal[] totalScoresArr = new BigDecimal[n];
+        BigDecimal totalMeanSum = BigDecimal.ZERO;
 
-        for (Map<UUID, BigDecimal> scores : completeScores) {
-            BigDecimal total = questionList.stream()
-                    .map(q -> scores.getOrDefault(q, BigDecimal.ZERO))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            totalScores.add(total);
-            totalMean = totalMean.add(total);
+        for (int j = 0; j < n; j++) {
+            BigDecimal total = BigDecimal.ZERO;
+            for (int i = 0; i < k; i++) {
+                total = total.add(itemScores[i][j]);
+            }
+            totalScoresArr[j] = total;
+            totalMeanSum = totalMeanSum.add(total);
         }
-        totalMean = totalMean.divide(nDecimal, MATH_CONTEXT);
+        BigDecimal totalMean = totalMeanSum.divide(nDecimal, MATH_CONTEXT);
 
         BigDecimal totalVariance = BigDecimal.ZERO;
-        for (BigDecimal total : totalScores) {
-            BigDecimal diff = total.subtract(totalMean);
+        for (int j = 0; j < n; j++) {
+            BigDecimal diff = totalScoresArr[j].subtract(totalMean);
             totalVariance = totalVariance.add(diff.multiply(diff));
         }
-        totalVariance = totalVariance.divide(nDecimal, MATH_CONTEXT);
+        totalVariance = totalVariance.divide(nMinus1, MATH_CONTEXT);
 
-        if (totalVariance.compareTo(BigDecimal.ZERO) == 0) {
-            return null;
+        // Pre-compute sum of all item variances
+        BigDecimal sumItemVar = BigDecimal.ZERO;
+        for (int i = 0; i < k; i++) {
+            sumItemVar = sumItemVar.add(itemVariances[i]);
         }
 
-        // Calculate alpha
-        BigDecimal kDecimal = BigDecimal.valueOf(k);
-        BigDecimal kMinus1 = BigDecimal.valueOf(k - 1);
-        BigDecimal factor = kDecimal.divide(kMinus1, MATH_CONTEXT);
-        BigDecimal varianceRatio = sumItemVariances.divide(totalVariance, MATH_CONTEXT);
+        // Pre-compute covariance of each item with the total score: cov(item_i, total)
+        // cov(X, Y) = (1/(N-1)) * sum((X_j - mean_X) * (Y_j - mean_Y))
+        BigDecimal[] itemCovWithTotal = new BigDecimal[k];
+        for (int i = 0; i < k; i++) {
+            BigDecimal covSum = BigDecimal.ZERO;
+            for (int j = 0; j < n; j++) {
+                BigDecimal diffItem = itemScores[i][j].subtract(itemMeans[i]);
+                BigDecimal diffTotal = totalScoresArr[j].subtract(totalMean);
+                covSum = covSum.add(diffItem.multiply(diffTotal));
+            }
+            itemCovWithTotal[i] = covSum.divide(nMinus1, MATH_CONTEXT);
+        }
 
-        return factor.multiply(BigDecimal.ONE.subtract(varianceRatio));
+        // For each deleted item, compute alpha incrementally in O(1) per item
+        // When removing item i:
+        //   k_new = k - 1
+        //   sumItemVar_new = sumItemVar - var_i
+        //   totalVar_new = totalVar - 2*cov(item_i, total) + var_i
+        //   alpha_without_i = (k_new / (k_new - 1)) * (1 - sumItemVar_new / totalVar_new)
+        BigDecimal kNew = BigDecimal.valueOf(k - 1);
+        BigDecimal kNewMinus1 = BigDecimal.valueOf(k - 2);
+        BigDecimal factor = kNew.divide(kNewMinus1, MATH_CONTEXT);
+        BigDecimal TWO = BigDecimal.valueOf(2);
+
+        for (int i = 0; i < k; i++) {
+            BigDecimal sumItemVarNew = sumItemVar.subtract(itemVariances[i]);
+            BigDecimal totalVarNew = totalVariance
+                    .subtract(TWO.multiply(itemCovWithTotal[i]))
+                    .add(itemVariances[i]);
+
+            if (totalVarNew.compareTo(BigDecimal.ZERO) == 0) {
+                // Cannot calculate alpha when total variance is zero
+                continue;
+            }
+
+            BigDecimal varianceRatio = sumItemVarNew.divide(totalVarNew, MATH_CONTEXT);
+            BigDecimal alphaWithout = factor.multiply(BigDecimal.ONE.subtract(varianceRatio));
+
+            alphaIfDeleted.put(questionList.get(i), alphaWithout.setScale(SCALE, RoundingMode.HALF_UP));
+        }
+
+        logger.debug("Alpha-if-deleted for {} items computed in single pass", k);
+
+        return alphaIfDeleted;
     }
 
     // ============================================
@@ -530,21 +553,21 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
             return bigFiveReliabilityRepository.save(reliability);
         }
 
-        // Aggregate score matrix across all mapped competencies
+        // Aggregate score matrix across all mapped competencies (streamed from DB)
         Map<UUID, Map<UUID, BigDecimal>> aggregatedScores = new LinkedHashMap<>();
         Set<UUID> allItems = new HashSet<>();
 
         for (Competency competency : mappedCompetencies) {
-            List<Object[]> scoreMatrix = testAnswerRepository.getScoreMatrixForCompetency(competency.getId());
+            try (Stream<Object[]> stream = testAnswerRepository.streamScoreMatrixForCompetency(competency.getId())) {
+                stream.forEach(row -> {
+                    UUID sessionId = (UUID) row[0];
+                    UUID questionId = (UUID) row[1];
+                    BigDecimal score = BigDecimal.valueOf(((Number) row[2]).doubleValue());
 
-            for (Object[] row : scoreMatrix) {
-                UUID sessionId = (UUID) row[0];
-                UUID questionId = (UUID) row[1];
-                BigDecimal score = BigDecimal.valueOf(((Number) row[2]).doubleValue());
-
-                aggregatedScores.computeIfAbsent(sessionId, k -> new HashMap<>())
-                        .put(questionId, score);
-                allItems.add(questionId);
+                    aggregatedScores.computeIfAbsent(sessionId, k -> new HashMap<>())
+                            .put(questionId, score);
+                    allItems.add(questionId);
+                });
             }
         }
 
@@ -566,22 +589,52 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
     }
 
     /**
+     * Pre-parsed score matrix data structure.
+     * Built once via streaming and reused across alpha/alpha-if-deleted calculations.
+     */
+    private record ScoreMatrixData(
+            Map<UUID, Map<UUID, BigDecimal>> sessionScores,
+            Set<UUID> allQuestions
+    ) {
+        boolean isEmpty() { return sessionScores.isEmpty(); }
+        int sessionCount() { return sessionScores.size(); }
+        int itemCount() { return allQuestions.size(); }
+    }
+
+    /**
+     * Build a ScoreMatrixData from the streaming repository query.
+     * Uses cursor-based fetching to avoid loading the entire result set into memory at once.
+     */
+    private ScoreMatrixData buildScoreMatrix(UUID competencyId) {
+        Map<UUID, Map<UUID, BigDecimal>> sessionScores = new LinkedHashMap<>();
+        Set<UUID> allQuestions = new LinkedHashSet<>();
+
+        try (Stream<Object[]> stream = testAnswerRepository.streamScoreMatrixForCompetency(competencyId)) {
+            stream.forEach(row -> {
+                UUID sessionId = (UUID) row[0];
+                UUID questionId = (UUID) row[1];
+                BigDecimal score = BigDecimal.valueOf(((Number) row[2]).doubleValue());
+
+                sessionScores.computeIfAbsent(sessionId, k -> new HashMap<>())
+                        .put(questionId, score);
+                allQuestions.add(questionId);
+            });
+        }
+
+        return new ScoreMatrixData(sessionScores, allQuestions);
+    }
+
+    /**
      * Find competencies mapped to a specific Big Five trait via standardCodes.
+     * Uses a native JSONB query to avoid loading all competencies into memory.
      */
     private List<Competency> findCompetenciesByBigFiveTrait(BigFiveTrait trait) {
-        return competencyRepository.findAll().stream()
-                .filter(c -> {
-                    if (c.getStandardCodes() == null || c.getStandardCodes().bigFiveRef() == null) {
-                        return false;
-                    }
-                    String competencyTrait = c.getStandardCodes().bigFiveRef().trait();
-                    return trait.name().equalsIgnoreCase(competencyTrait);
-                })
-                .collect(Collectors.toList());
+        return competencyRepository.findByBigFiveTrait(trait.name());
     }
 
     /**
      * Calculate Cronbach's Alpha from a pre-built score matrix.
+     * Uses aligned 90% completeness threshold and sample variance (÷(N-1)).
      */
     private BigDecimal calculateAlphaFromMatrix(
             Map<UUID, Map<UUID, BigDecimal>> sessionScores,
@@ -594,18 +647,25 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
 
         List<UUID> questionList = new ArrayList<>(allQuestions);
 
-        // Filter to complete responses
+        // Response completeness threshold: 90% for both competency and Big Five reliability
+        // Aligned per APA Standards - ensures comparable alpha values across measurement levels.
+        // Previous values: competency=100%, Big Five=80% (inconsistent, making comparisons unreliable)
         List<Map<UUID, BigDecimal>> completeScores = sessionScores.values().stream()
-                .filter(scores -> scores.size() >= k * 0.8) // Allow 80% completion for trait-level
+                .filter(scores -> scores.size() >= k * RESPONSE_COMPLETENESS_THRESHOLD)
                 .collect(Collectors.toList());
 
         if (completeScores.size() < MIN_RESPONSES) {
             return null;
         }
 
+        // Guard: sample variance requires n > 1 to avoid division by zero
+        if (completeScores.size() <= 1) {
+            return null;
+        }
+
         BigDecimal nDecimal = BigDecimal.valueOf(completeScores.size());
 
-        // Calculate item variances
+        // Calculate item variances (sample variance, ÷(N-1))
         BigDecimal sumItemVariances = BigDecimal.ZERO;
         for (UUID questionId : questionList) {
             BigDecimal sum = BigDecimal.ZERO;
@@ -618,7 +678,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 }
             }
 
-            if (validCount == 0) continue;
+            if (validCount <= 1) continue; // Need at least 2 for sample variance
 
             BigDecimal mean = sum.divide(BigDecimal.valueOf(validCount), MATH_CONTEXT);
 
@@ -630,11 +690,12 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                     variance = variance.add(diff.multiply(diff));
                 }
             }
-            variance = variance.divide(BigDecimal.valueOf(validCount), MATH_CONTEXT);
+            // Sample variance: ÷(N-1) per APA Standards
+            variance = variance.divide(BigDecimal.valueOf(validCount - 1), MATH_CONTEXT);
             sumItemVariances = sumItemVariances.add(variance);
         }
 
-        // Calculate total variance
+        // Calculate total variance (sample variance, ÷(N-1))
         BigDecimal totalMean = BigDecimal.ZERO;
         List<BigDecimal> totalScores = new ArrayList<>();
 
@@ -647,20 +708,21 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         }
         totalMean = totalMean.divide(nDecimal, MATH_CONTEXT);
 
+        BigDecimal nMinus1 = BigDecimal.valueOf(completeScores.size() - 1);
         BigDecimal totalVariance = BigDecimal.ZERO;
         for (BigDecimal total : totalScores) {
             BigDecimal diff = total.subtract(totalMean);
             totalVariance = totalVariance.add(diff.multiply(diff));
         }
-        totalVariance = totalVariance.divide(nDecimal, MATH_CONTEXT);
+        totalVariance = totalVariance.divide(nMinus1, MATH_CONTEXT);
 
         if (totalVariance.compareTo(BigDecimal.ZERO) == 0) {
             return null;
         }
 
         BigDecimal kDecimal = BigDecimal.valueOf(k);
-        BigDecimal kMinus1 = BigDecimal.valueOf(k - 1);
-        BigDecimal factor = kDecimal.divide(kMinus1, MATH_CONTEXT);
+        BigDecimal kMinus1Decimal = BigDecimal.valueOf(k - 1);
+        BigDecimal factor = kDecimal.divide(kMinus1Decimal, MATH_CONTEXT);
         BigDecimal varianceRatio = sumItemVariances.divide(totalVariance, MATH_CONTEXT);
 
         return factor.multiply(BigDecimal.ONE.subtract(varianceRatio)).setScale(SCALE, RoundingMode.HALF_UP);
@@ -893,7 +955,9 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 .topFlaggedItems(topFlaggedItems)
                 .bigFiveReliabilitySummary(bigFiveSummary)
                 .lastAuditRun(LocalDateTime.now())
-                .itemsAnalyzedSinceLastAudit(0)
+                .itemsAnalyzedSinceLastAudit(
+                        (int) itemStatisticsRepository.countByLastCalculatedAtAfter(
+                                LocalDateTime.now().minusDays(1)))
                 .build();
     }
 

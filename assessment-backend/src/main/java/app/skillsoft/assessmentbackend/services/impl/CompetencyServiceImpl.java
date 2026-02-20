@@ -6,7 +6,6 @@ import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -24,7 +23,6 @@ public class CompetencyServiceImpl implements CompetencyService {
 
     private final CompetencyRepository competencyRepository;
 
-    @Autowired
     public CompetencyServiceImpl(CompetencyRepository competencyRepository) {
         this.competencyRepository = competencyRepository;
     }

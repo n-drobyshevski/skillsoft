@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.domain.dto.simulation;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Result DTO for test simulation/dry run.
@@ -44,11 +45,18 @@ public record SimulationResultDto(
      * Total questions in the assembled test.
      */
     int totalQuestions,
-    
+
     /**
      * Simulation profile used.
      */
-    SimulationProfile profile
+    SimulationProfile profile,
+
+    /**
+     * Per-competency simulation score breakdown.
+     * Key: competencyId, Value: score details for that competency.
+     * Null for failed simulations.
+     */
+    Map<UUID, CompetencySimulationScore> competencyScores
 ) {
     /**
      * Builder for constructing SimulationResultDto.
@@ -66,6 +74,7 @@ public record SimulationResultDto(
         private Integer estimatedDurationMinutes;
         private int totalQuestions;
         private SimulationProfile profile;
+        private Map<UUID, CompetencySimulationScore> competencyScores;
 
         public Builder valid(boolean valid) {
             this.valid = valid;
@@ -107,10 +116,16 @@ public record SimulationResultDto(
             return this;
         }
 
+        public Builder competencyScores(Map<UUID, CompetencySimulationScore> competencyScores) {
+            this.competencyScores = competencyScores;
+            return this;
+        }
+
         public SimulationResultDto build() {
             return new SimulationResultDto(
                 valid, composition, sampleQuestions, warnings,
-                simulatedScore, estimatedDurationMinutes, totalQuestions, profile
+                simulatedScore, estimatedDurationMinutes, totalQuestions, profile,
+                competencyScores
             );
         }
     }
@@ -121,7 +136,7 @@ public record SimulationResultDto(
     public static SimulationResultDto failed(List<InventoryWarning> warnings) {
         return new SimulationResultDto(
             false, Map.of(), List.of(), warnings,
-            null, null, 0, null
+            null, null, 0, null, null
         );
     }
 }

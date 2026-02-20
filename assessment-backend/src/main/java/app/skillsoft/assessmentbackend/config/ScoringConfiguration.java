@@ -77,6 +77,16 @@ public class ScoringConfiguration {
         @DecimalMin("1.0")
         @DecimalMax("2.0")
         private double bigFiveBoost = 1.1;
+
+        /**
+         * Maximum weight multiplier cap to prevent single-competency domination.
+         * After all boosts are compounded (ESCO + Big Five + gap relevance + role weight),
+         * the final weight is capped at this value.
+         * Default: 3.0 (no competency can have more than 3x weight)
+         */
+        @DecimalMin("1.0")
+        @DecimalMax("10.0")
+        private double maxWeightMultiplier = 3.0;
     }
 
     /**

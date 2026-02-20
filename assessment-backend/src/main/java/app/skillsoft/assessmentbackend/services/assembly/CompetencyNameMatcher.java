@@ -61,10 +61,22 @@ public final class CompetencyNameMatcher {
             String normalizedCandidate = normalize(candidate);
 
             // Priority 1: Containment check (one name fully contains the other)
+            // Weight by length ratio to prevent trivially short names from perfect-matching
             if (normalizedOnet.contains(normalizedCandidate) || normalizedCandidate.contains(normalizedOnet)) {
-                // Containment is a strong signal - return immediately if found
-                // But still prefer the highest similarity if multiple containment matches exist
-                double containmentScore = 1.0;
+                String shorter = normalizedOnet.length() <= normalizedCandidate.length()
+                        ? normalizedOnet : normalizedCandidate;
+                String longer = normalizedOnet.length() > normalizedCandidate.length()
+                        ? normalizedOnet : normalizedCandidate;
+                double lengthRatio = (double) shorter.length() / longer.length();
+
+                double containmentScore;
+                // Require minimum 8 chars AND good length ratio for high containment score
+                if (shorter.length() >= 8) {
+                    containmentScore = Math.max(lengthRatio, 0.7); // Minimum 0.7 for genuine containment
+                } else {
+                    containmentScore = lengthRatio; // Short strings get proportional score
+                }
+
                 if (containmentScore > bestScore) {
                     bestScore = containmentScore;
                     bestMatch = candidate;

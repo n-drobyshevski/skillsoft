@@ -203,35 +203,37 @@ class TestResultServiceTest {
         @Test
         @DisplayName("Should return user results ordered by date")
         void shouldReturnUserResultsOrderedByDate() {
-            // Given - use new optimized query with JOIN FETCH
-            when(resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId))
-                    .thenReturn(List.of(mockResult));
+            // Given - use paginated query
+            Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(mockResult)));
 
             // When
-            List<TestResultSummaryDto> result = testResultService.findByUserOrderByDate(clerkUserId);
+            org.springframework.data.domain.Page<TestResultSummaryDto> result = testResultService.findByUserOrderByDate(clerkUserId, pageable);
 
             // Then
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).passed()).isTrue();
+            assertThat(result.getContent()).hasSize(1);
+            assertThat(result.getContent().get(0).passed()).isTrue();
 
-            verify(resultRepository).findByClerkUserIdWithSessionAndTemplate(clerkUserId);
+            verify(resultRepository).findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable);
         }
 
         @Test
         @DisplayName("Should return passed results for user")
         void shouldReturnPassedResults() {
-            // Given - use new optimized query with JOIN FETCH
-            when(resultRepository.findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId))
-                    .thenReturn(List.of(mockResult));
+            // Given - use paginated query
+            Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(resultRepository.findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(mockResult)));
 
             // When
-            List<TestResultSummaryDto> result = testResultService.findPassedByUser(clerkUserId);
+            org.springframework.data.domain.Page<TestResultSummaryDto> result = testResultService.findPassedByUser(clerkUserId, pageable);
 
             // Then
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).passed()).isTrue();
+            assertThat(result.getContent()).hasSize(1);
+            assertThat(result.getContent().get(0).passed()).isTrue();
 
-            verify(resultRepository).findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId);
+            verify(resultRepository).findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable);
         }
     }
 
@@ -316,16 +318,17 @@ class TestResultServiceTest {
             // Given
             LocalDateTime startDate = LocalDateTime.now().minusDays(7);
             LocalDateTime endDate = LocalDateTime.now();
-            when(resultRepository.findByCompletedAtBetween(startDate, endDate))
-                    .thenReturn(List.of(mockResult));
+            Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+            when(resultRepository.findByCompletedAtBetweenWithSessionAndTemplate(startDate, endDate, pageable))
+                    .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(mockResult)));
 
             // When
-            List<TestResultSummaryDto> result = testResultService.findByDateRange(startDate, endDate);
+            org.springframework.data.domain.Page<TestResultSummaryDto> result = testResultService.findByDateRange(startDate, endDate, pageable);
 
             // Then
-            assertThat(result).hasSize(1);
+            assertThat(result.getContent()).hasSize(1);
 
-            verify(resultRepository).findByCompletedAtBetween(startDate, endDate);
+            verify(resultRepository).findByCompletedAtBetweenWithSessionAndTemplate(startDate, endDate, pageable);
         }
     }
 }

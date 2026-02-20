@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * REST Controller for Test Result management.
@@ -68,31 +70,30 @@ public class TestResultController {
             @RequestParam UUID templateId,
             @RequestParam List<UUID> resultIds) {
         logger.info("GET /api/v1/tests/results/compare?templateId={}&resultIds={}", templateId, resultIds.size());
-        try {
-            CandidateComparisonDto comparison = candidateComparisonService.compareResults(resultIds, templateId);
-            return ResponseEntity.ok(comparison);
-        } catch (IllegalArgumentException e) {
-            logger.warn("Comparison validation failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        }
+
+        CandidateComparisonDto comparison = candidateComparisonService.compareResults(resultIds, templateId);
+        return ResponseEntity.ok(comparison);
     }
 
     /**
-     * Get results within a date range (for reporting).
+     * Get results within a date range (for reporting) with pagination.
      *
      * @param startDate Start of date range
      * @param endDate End of date range
-     * @return List of results in the range
+     * @param pageable Pagination parameters
+     * @return Page of results in the range
      */
     @GetMapping("/report")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
-    public ResponseEntity<List<TestResultSummaryDto>> getResultsByDateRange(
+    public ResponseEntity<Page<TestResultSummaryDto>> getResultsByDateRange(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @PageableDefault(size = 20, sort = "completedAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
         logger.info("GET /api/v1/tests/results/report?startDate={}&endDate={}", startDate, endDate);
 
-        List<TestResultSummaryDto> results = testResultService.findByDateRange(startDate, endDate);
-        logger.info("Found {} results between {} and {}", results.size(), startDate, endDate);
+        Page<TestResultSummaryDto> results = testResultService.findByDateRange(startDate, endDate, pageable);
+        logger.info("Found {} results between {} and {}", results.getTotalElements(), startDate, endDate);
 
         return ResponseEntity.ok(results);
     }
@@ -131,7 +132,9 @@ public class TestResultController {
         return testResultService.findById(resultId)
                 .map(result -> {
                     logger.info("Found result for session: {}", result.sessionId());
-                    return ResponseEntity.ok(result);
+                    return ResponseEntity.ok()
+                            .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
+                            .body(result);
                 })
                 .orElseGet(() -> {
                     logger.warn("Result not found: {}", resultId);
@@ -153,7 +156,9 @@ public class TestResultController {
         return testResultService.findBySessionId(sessionId)
                 .map(result -> {
                     logger.info("Found result for session {}, score: {}%", sessionId, result.overallPercentage());
-                    return ResponseEntity.ok(result);
+                    return ResponseEntity.ok()
+                            .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
+                            .body(result);
                 })
                 .orElseGet(() -> {
                     logger.warn("No result found for session: {}", sessionId);
@@ -175,17 +180,11 @@ public class TestResultController {
     public ResponseEntity<Integer> getPercentile(@PathVariable UUID resultId) {
         logger.info("GET /api/v1/tests/results/{}/percentile", resultId);
 
-        try {
-            int percentile = testResultService.calculatePercentile(resultId);
-            logger.info("Percentile for result {}: {}", resultId, percentile);
-            return ResponseEntity.ok(percentile);
-        } catch (RuntimeException e) {
-            if (e.getMessage() != null && e.getMessage().contains("not found")) {
-                logger.warn("Result not found: {}", resultId);
-                return ResponseEntity.notFound().build();
-            }
-            throw e;
-        }
+        int percentile = testResultService.calculatePercentile(resultId);
+        logger.info("Percentile for result {}: {}", resultId, percentile);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePrivate())
+                .body(percentile);
     }
 
     /**
@@ -206,16 +205,13 @@ public class TestResultController {
             @PathVariable UUID indicatorId) {
         logger.info("GET /api/v1/tests/results/{}/indicators/{}/questions", resultId, indicatorId);
 
-        try {
-            List<QuestionScoreDto> questionScores = questionScoreService.getQuestionScoresForIndicator(
-                    resultId, indicatorId);
-            logger.info("Returning {} question scores for indicator {} in result {}",
-                    questionScores.size(), indicatorId, resultId);
-            return ResponseEntity.ok(questionScores);
-        } catch (IllegalArgumentException e) {
-            logger.warn("Failed to get question scores: {}", e.getMessage());
-            return ResponseEntity.notFound().build();
-        }
+        List<QuestionScoreDto> questionScores = questionScoreService.getQuestionScoresForIndicator(
+                resultId, indicatorId);
+        logger.info("Returning {} question scores for indicator {} in result {}",
+                questionScores.size(), indicatorId, resultId);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
+                .body(questionScores);
     }
 
     // ==================== USER RESULTS ====================
@@ -242,19 +238,23 @@ public class TestResultController {
     }
 
     /**
-     * Get all results for a user ordered by date.
+     * Get all results for a user ordered by date with pagination.
      *
      * @param clerkUserId User's Clerk ID
-     * @return List of result summaries
+     * @param pageable Pagination parameters
+     * @return Page of result summaries
      */
     @GetMapping("/user/{clerkUserId}/all")
     @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
-    public ResponseEntity<List<TestResultSummaryDto>> getAllUserResults(@PathVariable String clerkUserId) {
+    public ResponseEntity<Page<TestResultSummaryDto>> getAllUserResults(
+            @PathVariable String clerkUserId,
+            @PageableDefault(size = 20, sort = "completedAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
         logger.info("GET /api/v1/tests/results/user/{}/all", clerkUserId);
-        
-        List<TestResultSummaryDto> results = testResultService.findByUserOrderByDate(clerkUserId);
-        logger.info("Found {} total results for user {}", results.size(), clerkUserId);
-        
+
+        Page<TestResultSummaryDto> results = testResultService.findByUserOrderByDate(clerkUserId, pageable);
+        logger.info("Found {} total results for user {}", results.getTotalElements(), clerkUserId);
+
         return ResponseEntity.ok(results);
     }
 
@@ -326,19 +326,23 @@ public class TestResultController {
     }
 
     /**
-     * Get passed results for a user.
+     * Get passed results for a user with pagination.
      *
      * @param clerkUserId User's Clerk ID
-     * @return List of results where user passed
+     * @param pageable Pagination parameters
+     * @return Page of results where user passed
      */
     @GetMapping("/user/{clerkUserId}/passed")
     @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
-    public ResponseEntity<List<TestResultSummaryDto>> getPassedResults(@PathVariable String clerkUserId) {
+    public ResponseEntity<Page<TestResultSummaryDto>> getPassedResults(
+            @PathVariable String clerkUserId,
+            @PageableDefault(size = 20, sort = "completedAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
         logger.info("GET /api/v1/tests/results/user/{}/passed", clerkUserId);
-        
-        List<TestResultSummaryDto> results = testResultService.findPassedByUser(clerkUserId);
-        logger.info("Found {} passed results for user {}", results.size(), clerkUserId);
-        
+
+        Page<TestResultSummaryDto> results = testResultService.findPassedByUser(clerkUserId, pageable);
+        logger.info("Found {} passed results for user {}", results.getTotalElements(), clerkUserId);
+
         return ResponseEntity.ok(results);
     }
 
@@ -357,10 +361,12 @@ public class TestResultController {
         logger.info("GET /api/v1/tests/results/user/{}/statistics", clerkUserId);
         
         TestResultService.UserTestStatistics stats = testResultService.getUserStatistics(clerkUserId);
-        logger.info("User {} statistics: {} tests completed, avg score: {}%", 
+        logger.info("User {} statistics: {} tests completed, avg score: {}%",
                 clerkUserId, stats.totalTests(), stats.averageScore());
-        
-        return ResponseEntity.ok(stats);
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePrivate())
+                .body(stats);
     }
 
     /**
@@ -376,10 +382,12 @@ public class TestResultController {
         logger.info("GET /api/v1/tests/results/template/{}/statistics", templateId);
         
         TestResultService.TemplateTestStatistics stats = testResultService.getTemplateStatistics(templateId);
-        logger.info("Template {} statistics: {} completions, avg score: {}%", 
+        logger.info("Template {} statistics: {} completions, avg score: {}%",
                 templateId, stats.totalAttempts(), stats.averageScore());
-        
-        return ResponseEntity.ok(stats);
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePrivate())
+                .body(stats);
     }
 
 }

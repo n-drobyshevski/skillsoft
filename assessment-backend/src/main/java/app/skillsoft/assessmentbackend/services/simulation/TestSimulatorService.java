@@ -4,8 +4,10 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.*;
 import app.skillsoft.assessmentbackend.domain.dto.validation.BlueprintValidationResult;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
+import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
@@ -38,6 +40,7 @@ public class TestSimulatorService {
 
     private final TestAssemblerFactory assemblerFactory;
     private final AssessmentQuestionRepository questionRepository;
+    private final CompetencyRepository competencyRepository;
     private final InventoryHeatmapService inventoryHeatmapService;
     private final BlueprintValidationService blueprintValidationService;
 
@@ -97,7 +100,7 @@ public class TestSimulatorService {
      */
     @Transactional(readOnly = true)
     @Cacheable(value = CacheConfig.SIMULATION_RESULTS_CACHE,
-               key = "#blueprint.hashCode() + '_' + #profile.name()",
+               key = "#blueprint.toString() + '_' + #profile.name()",
                condition = "#blueprint != null && #profile != null")
     public SimulationResultDto simulate(TestBlueprintDto blueprint, SimulationProfile profile) {
         if (blueprint == null) {
@@ -161,12 +164,15 @@ public class TestSimulatorService {
         var estimatedDuration = calculateEstimatedDuration(questions);
         var simulatedScore = calculateSimulatedScore(simulationRun);
 
+        // Step 6: Compute per-competency simulation scores
+        var competencyScores = calculateCompetencyScores(simulationRun);
+
         // Determine validity
         var valid = warnings.stream()
             .noneMatch(w -> w.level() == InventoryWarning.WarningLevel.ERROR);
 
-        log.info("Simulation complete: {} questions, score: {}, duration: {} min, valid: {}",
-            questions.size(), simulatedScore, estimatedDuration, valid);
+        log.info("Simulation complete: {} questions, score: {}, duration: {} min, valid: {}, competencies: {}",
+            questions.size(), simulatedScore, estimatedDuration, valid, competencyScores.size());
 
         return SimulationResultDto.builder()
             .valid(valid)
@@ -177,6 +183,7 @@ public class TestSimulatorService {
             .estimatedDurationMinutes(estimatedDuration)
             .totalQuestions(questions.size())
             .profile(profile)
+            .competencyScores(competencyScores)
             .build();
     }
 
@@ -222,26 +229,52 @@ public class TestSimulatorService {
 
     /**
      * Check inventory health and add warnings for issues.
+     * Resolves actual competency names and question counts from loaded data.
      */
     private void checkInventoryHealth(List<UUID> competencyIds, List<InventoryWarning> warnings) {
         var heatmap = inventoryHeatmapService.generateHeatmapFor(competencyIds);
-        
+
+        // Batch-load competency names for display in warnings
+        Map<UUID, String> competencyNames = competencyRepository.findAllById(competencyIds).stream()
+                .collect(Collectors.toMap(Competency::getId, Competency::getName));
+
+        // Calculate actual available question counts per competency from the detailed heatmap
+        Map<UUID, Long> availableCounts = new HashMap<>();
+        for (var detailEntry : heatmap.detailedCounts().entrySet()) {
+            String[] parts = detailEntry.getKey().split(":");
+            if (parts.length > 0) {
+                try {
+                    UUID compId = UUID.fromString(parts[0]);
+                    availableCounts.merge(compId, detailEntry.getValue(), Long::sum);
+                } catch (IllegalArgumentException ignored) {
+                    // Skip malformed keys
+                }
+            }
+        }
+
+        // Minimum recommended questions per competency for healthy inventory
+        int recommendedPerCompetency = 5;
+
         for (var entry : heatmap.competencyHealth().entrySet()) {
+            UUID compId = entry.getKey();
+            String compName = competencyNames.getOrDefault(compId, compId.toString());
+            int available = availableCounts.getOrDefault(compId, 0L).intValue();
+
             if (entry.getValue() == HealthStatus.CRITICAL) {
                 warnings.add(InventoryWarning.critical(
-                    entry.getKey(),
-                    "Unknown", // Would need to fetch name
+                    compId,
+                    compName,
                     "ALL",
-                    0, // Would need actual count
-                    5
+                    available,
+                    recommendedPerCompetency
                 ));
             } else if (entry.getValue() == HealthStatus.MODERATE) {
                 warnings.add(InventoryWarning.moderate(
-                    entry.getKey(),
-                    "Unknown",
+                    compId,
+                    compName,
                     "ALL",
-                    3,
-                    5
+                    available,
+                    recommendedPerCompetency
                 ));
             }
         }
@@ -306,6 +339,39 @@ public class TestSimulatorService {
             .sum();
         
         return (int) Math.ceil(totalSeconds / 60.0);
+    }
+
+    /**
+     * Calculate per-competency simulation scores by grouping question results.
+     * Zero additional DB queries -- data already exists in the simulation run.
+     */
+    private Map<UUID, CompetencySimulationScore> calculateCompetencyScores(
+            List<QuestionSummaryDto> results) {
+
+        if (results == null || results.isEmpty()) {
+            return Map.of();
+        }
+
+        return results.stream()
+            .collect(Collectors.groupingBy(QuestionSummaryDto::competencyId))
+            .entrySet().stream()
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                entry -> {
+                    var questions = entry.getValue();
+                    int total = questions.size();
+                    int correct = (int) questions.stream()
+                            .filter(QuestionSummaryDto::simulatedCorrect)
+                            .count();
+                    var difficultyBreakdown = questions.stream()
+                            .collect(Collectors.groupingBy(
+                                    QuestionSummaryDto::difficulty,
+                                    Collectors.collectingAndThen(Collectors.counting(), Long::intValue)
+                            ));
+                    return CompetencySimulationScore.of(
+                            entry.getKey(), total, correct, difficultyBreakdown);
+                }
+            ));
     }
 
     /**

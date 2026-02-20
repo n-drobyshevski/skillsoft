@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.AssessmentQuestionService;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +41,10 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.QUESTION_POOL_COUNTS_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.QUESTION_POOL_COUNTS_CACHE, allEntries = true),
+        @CacheEvict(value = CacheConfig.SIMULATION_RESULTS_CACHE, allEntries = true)
+    })
     public AssessmentQuestion createAssesmentQuestion(UUID behavioralIndicatorId, AssessmentQuestion assessmentQuestion) {
         // Fetch the actual BehavioralIndicator entity within transaction
         BehavioralIndicator behavioralIndicator = behavioralIndicatorRepository.findById(behavioralIndicatorId)
@@ -84,7 +88,10 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.QUESTION_POOL_COUNTS_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.QUESTION_POOL_COUNTS_CACHE, allEntries = true),
+        @CacheEvict(value = CacheConfig.SIMULATION_RESULTS_CACHE, allEntries = true)
+    })
     public AssessmentQuestion updateAssesmentQuestion( UUID assessmentQuestionId,
             AssessmentQuestion assessmentQuestion) {
         final UUID currentQuestionId = assessmentQuestionId; // Make effectively final for lambda
@@ -140,7 +147,10 @@ public class AssessmentQuestionServiceImpl implements AssessmentQuestionService 
     }
 
     @Override
-    @CacheEvict(value = CacheConfig.QUESTION_POOL_COUNTS_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.QUESTION_POOL_COUNTS_CACHE, allEntries = true),
+        @CacheEvict(value = CacheConfig.SIMULATION_RESULTS_CACHE, allEntries = true)
+    })
     public void deleteAssesmentQuestion( UUID assessmentQuestionId) {
         findAssesmentQuestionById(assessmentQuestionId)
             .ifPresent(assessmentQuestionRepository::delete);

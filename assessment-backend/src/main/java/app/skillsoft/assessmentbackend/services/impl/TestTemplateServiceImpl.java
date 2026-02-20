@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.services.impl;
 import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.TemplateStatus;
+import app.skillsoft.assessmentbackend.domain.entities.TemplateVisibility;
 import app.skillsoft.assessmentbackend.domain.dto.CreateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateSummaryDto;
@@ -20,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -59,6 +61,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     }
 
     @Override
+    @Cacheable(value = CacheConfig.ACTIVE_TEMPLATES_CACHE)
     public List<TestTemplateSummaryDto> listActiveTemplates() {
         // Return only active, non-deleted templates
         return templateRepository.findByIsActiveTrueAndDeletedAtIsNull().stream()
@@ -84,6 +87,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
     public TestTemplateDto createTemplate(CreateTestTemplateRequest request) {
         // Validate that template name is unique among non-deleted templates
         if (templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(request.name())) {
@@ -99,10 +103,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         
         // Set blueprint configuration (goal-specific assessment parameters)
         template.setBlueprint(request.blueprint());
-        
-        // Legacy: Set competencyIds for backward compatibility
-        template.setCompetencyIds(request.competencyIds());
-        
+
+        // Note: competencyIds is deprecated; not populated for new templates.
+        // Existing templates may still have data in this field for backward compatibility.
+
         template.setQuestionsPerIndicator(request.questionsPerIndicator());
         template.setTimeLimitMinutes(request.timeLimitMinutes());
         template.setPassingScore(request.passingScore());
@@ -122,7 +126,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id")
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public TestTemplateDto updateTemplate(UUID id, UpdateTestTemplateRequest request) {
         TestTemplate template = templateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
@@ -199,7 +206,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id")
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public boolean deleteTemplate(UUID id) {
         return templateRepository.findById(id)
                 .map(template -> {
@@ -213,7 +223,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id")
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public TestTemplateDto activateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
@@ -223,7 +236,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public TestTemplateDto deactivateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
@@ -258,7 +274,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#templateId")
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#templateId"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public PublishResult publishTemplate(UUID templateId) {
         log.info("Publishing template: {}", templateId);
 
@@ -296,6 +315,65 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 savedTemplate.getVersion(),
                 "Template published successfully"
         );
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    public TestTemplateDto cloneTemplate(UUID templateId) {
+        log.info("Cloning template: {}", templateId);
+
+        // 1. Find the source template
+        TestTemplate source = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", templateId));
+
+        // 2. Determine a unique name for the clone
+        String cloneName = "Copy of " + source.getName();
+        if (templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(cloneName)) {
+            cloneName = cloneName + " (" + System.currentTimeMillis() + ")";
+        }
+
+        // 3. Create new template with deep-copied fields and reset metadata
+        TestTemplate clone = new TestTemplate();
+        clone.setName(cloneName);
+        clone.setDescription(source.getDescription());
+        clone.setGoal(source.getGoal());
+
+        // Deep copy blueprint configurations
+        if (source.getBlueprint() != null) {
+            clone.setBlueprint(new java.util.HashMap<>(source.getBlueprint()));
+        }
+        if (source.getTypedBlueprint() != null) {
+            clone.setTypedBlueprint(source.getTypedBlueprint().deepCopy());
+        }
+        if (source.getCompetencyIds() != null) {
+            clone.setCompetencyIds(new ArrayList<>(source.getCompetencyIds()));
+        }
+
+        // Copy test configuration settings
+        clone.setQuestionsPerIndicator(source.getQuestionsPerIndicator());
+        clone.setTimeLimitMinutes(source.getTimeLimitMinutes());
+        clone.setPassingScore(source.getPassingScore());
+        clone.setShuffleQuestions(source.getShuffleQuestions());
+        clone.setShuffleOptions(source.getShuffleOptions());
+        clone.setAllowSkip(source.getAllowSkip());
+        clone.setAllowBackNavigation(source.getAllowBackNavigation());
+        clone.setShowResultsImmediately(source.getShowResultsImmediately());
+
+        // Reset metadata: brand new template, not a version
+        clone.setVersion(1);
+        clone.setParentId(null);
+        clone.setStatus(TemplateStatus.DRAFT);
+        clone.setIsActive(true);
+        clone.setVisibility(TemplateVisibility.PRIVATE);
+
+        // Auto-convert legacy blueprint to typed blueprint for test assembly
+        blueprintConversionService.ensureTypedBlueprint(clone);
+
+        TestTemplate saved = templateRepository.save(clone);
+        log.info("Cloned template {} -> new template {} (name: '{}')",
+                templateId, saved.getId(), saved.getName());
+        return toDto(saved);
     }
 
     /**

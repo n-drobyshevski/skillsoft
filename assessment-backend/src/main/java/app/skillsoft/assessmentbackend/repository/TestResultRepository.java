@@ -91,6 +91,16 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
     List<TestResult> findByCompletedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
 
     /**
+     * Find results within a date range with session and template eagerly loaded (paginated).
+     */
+    @Query(value = "SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.completedAt BETWEEN :startDate AND :endDate",
+           countQuery = "SELECT COUNT(r) FROM TestResult r WHERE r.completedAt BETWEEN :startDate AND :endDate")
+    Page<TestResult> findByCompletedAtBetweenWithSessionAndTemplate(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            Pageable pageable);
+
+    /**
      * Find results for a template (for template statistics)
      */
     @Query("SELECT r FROM TestResult r WHERE r.session.template.id = :templateId")
@@ -164,6 +174,13 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
      */
     @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND r.passed = true ORDER BY r.completedAt DESC")
     List<TestResult> findPassedByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId);
+
+    /**
+     * Find passed results for a user with session and template eagerly loaded (paginated).
+     */
+    @Query(value = "SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND r.passed = true",
+           countQuery = "SELECT COUNT(r) FROM TestResult r WHERE r.clerkUserId = :userId AND r.passed = true")
+    Page<TestResult> findPassedByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId, Pageable pageable);
 
     /**
      * Find user's results for a specific template with session eagerly loaded.
@@ -350,6 +367,11 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
     // ============================================
     // SUBSCALE PERCENTILE QUERIES (JSONB)
     // ============================================
+    // TODO: These JSONB array queries cannot effectively use GIN indexes because they
+    // require value extraction and numeric comparison (not just containment checks).
+    // jsonb_path_query_first with @@ only supports existence/containment, not aggregation.
+    // Future optimization: denormalize competency_scores into a dedicated
+    // `test_result_competency_scores` table with proper indexes on (template_id, competency_id, percentage).
 
     /**
      * Count results where a specific competency's percentage score is below a threshold.

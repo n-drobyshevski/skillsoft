@@ -283,12 +283,13 @@ class QuestionSelectionServiceTest {
         @DisplayName("should exclude RETIRED questions")
         void shouldExcludeRetiredQuestions() {
             List<AssessmentQuestion> questions = createQuestions(5, DifficultyLevel.INTERMEDIATE);
-            // Mark 2 questions as ineligible (RETIRED)
-            when(psychometricValidator.isEligibleForAssembly(questions.get(0).getId())).thenReturn(false);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(1).getId())).thenReturn(false);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(2).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(3).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(4).getId())).thenReturn(true);
+
+            // Mark 2 questions as RETIRED via ItemStatistics
+            ItemStatistics retiredStats0 = createItemStatistics(questions.get(0), ItemValidityStatus.RETIRED);
+            ItemStatistics retiredStats1 = createItemStatistics(questions.get(1), ItemValidityStatus.RETIRED);
+
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of(retiredStats0, retiredStats1));
 
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                     .thenReturn(questions);
@@ -304,7 +305,13 @@ class QuestionSelectionServiceTest {
         @DisplayName("should return empty when all questions are RETIRED")
         void shouldReturnEmptyWhenAllRetired() {
             List<AssessmentQuestion> questions = createQuestions(3, DifficultyLevel.INTERMEDIATE);
-            questions.forEach(q -> when(psychometricValidator.isEligibleForAssembly(q.getId())).thenReturn(false));
+
+            List<ItemStatistics> retiredStats = questions.stream()
+                    .map(q -> createItemStatistics(q, ItemValidityStatus.RETIRED))
+                    .toList();
+
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(retiredStats);
 
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                     .thenReturn(questions);
@@ -316,13 +323,16 @@ class QuestionSelectionServiceTest {
         }
 
         @Test
-        @DisplayName("filterByValidity should exclude ineligible questions")
-        void filterByValidityShouldExcludeIneligible() {
+        @DisplayName("filterByValidity should exclude RETIRED questions")
+        void filterByValidityShouldExcludeRetired() {
             List<AssessmentQuestion> questions = createQuestions(4, DifficultyLevel.INTERMEDIATE);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(0).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(1).getId())).thenReturn(false);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(2).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(3).getId())).thenReturn(false);
+
+            // questions 1 and 3 are RETIRED
+            ItemStatistics retiredStats1 = createItemStatistics(questions.get(1), ItemValidityStatus.RETIRED);
+            ItemStatistics retiredStats3 = createItemStatistics(questions.get(3), ItemValidityStatus.RETIRED);
+
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of(retiredStats1, retiredStats3));
 
             List<AssessmentQuestion> result = service.filterByValidity(questions);
 
@@ -1339,8 +1349,25 @@ class QuestionSelectionServiceTest {
                 .thenReturn(new ArrayList<>(questions));
     }
 
+    private ItemStatistics createItemStatistics(AssessmentQuestion question, ItemValidityStatus status) {
+        ItemStatistics stats = new ItemStatistics(question);
+        stats.setValidityStatus(status);
+        return stats;
+    }
+
+    /**
+     * Mock questions as eligible by returning empty item statistics (defaults to PROBATION,
+     * which is not RETIRED and thus passes filterByValidity).
+     *
+     * The implementation batch-loads ItemStatistics via itemStatisticsRepository.findByQuestionIdIn()
+     * and excludes only RETIRED items. When no statistics exist for a question, it defaults
+     * to PROBATION status which is allowed.
+     */
     private void mockAllQuestionsEligible(List<AssessmentQuestion> questions) {
-        questions.forEach(q ->
-            when(psychometricValidator.isEligibleForAssembly(q.getId())).thenReturn(true));
+        // The filterByValidity method now uses itemStatisticsRepository.findByQuestionIdIn()
+        // instead of psychometricValidator.isEligibleForAssembly() per question.
+        // Return empty list = all questions default to PROBATION (not RETIRED) = eligible.
+        lenient().when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                .thenReturn(List.of());
     }
 }

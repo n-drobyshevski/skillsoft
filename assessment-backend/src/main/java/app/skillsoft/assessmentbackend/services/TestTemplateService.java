@@ -81,6 +81,16 @@ public interface TestTemplateService {
     TemplateStatistics getStatistics();
 
     /**
+     * Clone an existing template with reset metadata.
+     * Creates a deep copy with name "Copy of X", new UUID, DRAFT status.
+     *
+     * @param templateId The ID of the template to clone
+     * @return The cloned template DTO
+     * @throws app.skillsoft.assessmentbackend.exception.ResourceNotFoundException if template not found
+     */
+    TestTemplateDto cloneTemplate(UUID templateId);
+
+    /**
      * Publish a test template, making it available for test sessions.
      *
      * Publishing transitions the template from DRAFT to PUBLISHED status,

@@ -764,11 +764,30 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
             return List.of();
         }
 
+        // Batch-load item statistics for all questions in a single query (N+1 fix).
+        // Questions are already confirmed active (fetched via findByBehavioralIndicator_IdAndIsActiveTrue),
+        // so we only need to check validity status -- skip redundant questionRepository.findById().
+        Set<UUID> questionIds = questions.stream()
+                .map(AssessmentQuestion::getId)
+                .collect(Collectors.toSet());
+
+        // Build a map of questionId -> validityStatus (default PROBATION if no stats exist)
+        Map<UUID, ItemValidityStatus> statusByQuestionId = itemStatisticsRepository
+                .findByQuestionIdIn(questionIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        ItemStatistics::getQuestionId,
+                        ItemStatistics::getValidityStatus,
+                        (a, b) -> a
+                ));
+
         return questions.stream()
                 .filter(q -> {
-                    // Use psychometric validator to check eligibility
-                    // This respects RETIRED status exclusion
-                    return psychometricValidator.isEligibleForAssembly(q.getId());
+                    // Default to PROBATION if no statistics exist (same as PsychometricBlueprintValidator)
+                    ItemValidityStatus status = statusByQuestionId
+                            .getOrDefault(q.getId(), ItemValidityStatus.PROBATION);
+                    // RETIRED items are never eligible for assembly
+                    return status != ItemValidityStatus.RETIRED;
                 })
                 .collect(Collectors.toList());
     }

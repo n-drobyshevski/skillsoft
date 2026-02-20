@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -459,8 +460,14 @@ public class TestSessionServiceImpl implements TestSessionService {
         }
 
         // Mark session as COMPLETED and commit (TX #1)
+        // Optimistic lock protects against concurrent complete + abandon/timeout
         session.complete();
-        sessionRepository.save(session);
+        try {
+            sessionRepository.save(session);
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            log.warn("Optimistic lock conflict while completing session={}, re-reading to resolve", sessionId);
+            return handleCompleteConflict(sessionId);
+        }
 
         log.info("Session marked as COMPLETED (TX #1 committed), delegating to scoring orchestration sessionId={}", sessionId);
 
@@ -474,6 +481,32 @@ public class TestSessionServiceImpl implements TestSessionService {
         return result;
     }
 
+    /**
+     * Handle optimistic lock conflict during session completion.
+     *
+     * Re-reads the session from the database. If another request already completed
+     * the session, this returns the existing result (idempotent). If the session
+     * was moved to an incompatible terminal state (ABANDONED, TIMED_OUT), throws
+     * IllegalStateException since the complete operation can no longer succeed.
+     */
+    private TestResultDto handleCompleteConflict(UUID sessionId) {
+        TestSession freshSession = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+
+        if (freshSession.getStatus() == SessionStatus.COMPLETED) {
+            // Another request already completed -- idempotent success
+            log.info("Session {} was already completed by a concurrent request, returning existing result", sessionId);
+            return scoringOrchestrationService.calculateAndSaveResult(sessionId);
+        }
+
+        // Session was moved to a different terminal state by a concurrent request
+        log.warn("Session {} moved to {} by concurrent request while attempting completion",
+                sessionId, freshSession.getStatus());
+        throw new IllegalStateException(
+                "Session was concurrently modified and is now " + freshSession.getStatus()
+                        + ". Cannot complete.");
+    }
+
     @Override
     @Transactional
     public TestSessionDto abandonSession(UUID sessionId) {
@@ -481,12 +514,51 @@ public class TestSessionServiceImpl implements TestSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
         session.abandon();
-        TestSession saved = sessionRepository.save(session);
+        try {
+            TestSession saved = sessionRepository.save(session);
 
-        // Record activity event for audit trail
-        activityTrackingService.recordSessionAbandoned(saved);
+            // Record activity event for audit trail
+            activityTrackingService.recordSessionAbandoned(saved);
 
-        return toDto(saved);
+            return toDto(saved);
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            log.warn("Optimistic lock conflict while abandoning session={}, re-reading to resolve", sessionId);
+            return handleAbandonConflict(sessionId);
+        }
+    }
+
+    /**
+     * Handle optimistic lock conflict during session abandonment.
+     *
+     * Re-reads the session. If it is already in a terminal state (COMPLETED,
+     * ABANDONED, TIMED_OUT), returns the current state (idempotent for ABANDONED,
+     * graceful acknowledgement for other terminal states). If still IN_PROGRESS,
+     * lets the exception propagate since the conflict is unexpected.
+     */
+    private TestSessionDto handleAbandonConflict(UUID sessionId) {
+        TestSession freshSession = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+
+        SessionStatus currentStatus = freshSession.getStatus();
+        if (currentStatus == SessionStatus.ABANDONED) {
+            // Already abandoned by concurrent request -- idempotent success
+            log.info("Session {} was already abandoned by a concurrent request", sessionId);
+            return toDto(freshSession);
+        }
+
+        if (currentStatus == SessionStatus.COMPLETED || currentStatus == SessionStatus.TIMED_OUT) {
+            // Session reached a different terminal state -- cannot abandon
+            log.warn("Session {} moved to {} by concurrent request while attempting abandon",
+                    sessionId, currentStatus);
+            throw new IllegalStateException(
+                    "Session was concurrently modified and is now " + currentStatus
+                            + ". Cannot abandon.");
+        }
+
+        // Unexpected: session is still in a non-terminal state but version conflicted
+        throw new IllegalStateException(
+                "Concurrent modification detected for session " + sessionId
+                        + ". Please retry.");
     }
 
     @Override
