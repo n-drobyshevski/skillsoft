@@ -84,6 +84,9 @@ class AnonymousTestServiceImplTest {
     @Mock
     private BlueprintConversionService blueprintConversionService;
 
+    @Mock
+    private CaptchaVerificationService captchaVerificationService;
+
     private AnonymousTestServiceImpl anonymousTestService;
 
     // Test data
@@ -116,7 +119,8 @@ class AnonymousTestServiceImplTest {
                 resultRepository,
                 scoringOrchestrationService,
                 assemblerFactory,
-                blueprintConversionService
+                blueprintConversionService,
+                captchaVerificationService
         );
 
         // Initialize test data
@@ -213,7 +217,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should successfully create anonymous session with valid share link")
         void createSession_WithValidShareLink_ShouldSucceed() {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
             SessionTokenService.TokenWithHash tokenWithHash =
                     new SessionTokenService.TokenWithHash(sessionAccessToken, tokenHash);
 
@@ -277,7 +281,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw ShareLinkException when link not found")
         void createSession_WithInvalidShareLink_ShouldThrowException() {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest("invalid_token");
+            AnonymousSessionRequest request = new AnonymousSessionRequest("invalid_token", null);
 
             doNothing().when(rateLimitService).checkRateLimit(ipAddress);
             when(shareLinkService.validateLink("invalid_token"))
@@ -296,7 +300,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw ShareLinkException when link expired")
         void createSession_WithExpiredShareLink_ShouldThrowException() {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
 
             doNothing().when(rateLimitService).checkRateLimit(ipAddress);
             when(shareLinkService.validateLink(shareToken))
@@ -315,7 +319,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw ShareLinkException when link revoked")
         void createSession_WithRevokedShareLink_ShouldThrowException() {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
 
             doNothing().when(rateLimitService).checkRateLimit(ipAddress);
             when(shareLinkService.validateLink(shareToken))
@@ -334,7 +338,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw ShareLinkException when max uses reached")
         void createSession_WithMaxUsesReached_ShouldThrowException() {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
 
             doNothing().when(rateLimitService).checkRateLimit(ipAddress);
             when(shareLinkService.validateLink(shareToken))
@@ -353,7 +357,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw RateLimitExceededException when rate limit exceeded")
         void createSession_WhenRateLimitExceeded_ShouldThrowException() {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
 
             doThrow(new RateLimitExceededException(3600L))
                     .when(rateLimitService).checkRateLimit(ipAddress);
@@ -371,7 +375,7 @@ class AnonymousTestServiceImplTest {
         void createSession_WithInactiveTemplate_ShouldThrowException() {
             // Given
             mockTemplate.setIsActive(false);
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
 
             doNothing().when(rateLimitService).checkRateLimit(ipAddress);
             when(shareLinkService.validateLink(shareToken))
@@ -392,7 +396,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw ShareLinkException when no questions available")
         void createSession_WithNoQuestionsAvailable_ShouldThrowException() {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
             SessionTokenService.TokenWithHash tokenWithHash =
                     new SessionTokenService.TokenWithHash(sessionAccessToken, tokenHash);
 
@@ -504,7 +508,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should return session for valid token")
         void getSession_WithValidToken_ShouldReturnSession() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -524,9 +528,8 @@ class AnonymousTestServiceImplTest {
         void getSession_WithInvalidToken_ShouldThrowException() {
             // Given
             String wrongToken = "wrong_token";
-            String wrongHash = "wrong_hash_value";
 
-            when(sessionTokenService.hashToken(wrongToken)).thenReturn(wrongHash);
+            when(sessionTokenService.validateToken(wrongToken, tokenHash)).thenReturn(false);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -563,7 +566,7 @@ class AnonymousTestServiceImplTest {
             mockSession.setCreatedAt(LocalDateTime.now().minusHours(25)); // Expired (24h limit)
             mockSession.setStatus(SessionStatus.IN_PROGRESS); // Not completed
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -579,7 +582,7 @@ class AnonymousTestServiceImplTest {
             mockSession.setCreatedAt(LocalDateTime.now().minusHours(25)); // Past normal expiry
             mockSession.setStatus(SessionStatus.COMPLETED); // But completed
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -604,7 +607,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should return current question for valid session")
         void getCurrentQuestion_ForValidSession_ShouldReturnQuestion() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(questionRepository.findById(questionId))
@@ -637,7 +640,7 @@ class AnonymousTestServiceImplTest {
             previousAnswer.setSelectedOptionIds(List.of("option-0"));
             previousAnswer.setAnsweredAt(LocalDateTime.now());
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(questionRepository.findById(questionId))
@@ -660,7 +663,7 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setStatus(SessionStatus.COMPLETED);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -677,7 +680,7 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setStatus(SessionStatus.TIMED_OUT);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -694,7 +697,7 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setCurrentQuestionIndex(3); // Beyond available questions
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -718,7 +721,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should submit new answer successfully")
         void submitAnswer_NewAnswer_ShouldSucceed() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(questionRepository.findById(questionId))
@@ -754,7 +757,7 @@ class AnonymousTestServiceImplTest {
             existingAnswer.setQuestion(mockQuestion);
             existingAnswer.setSelectedOptionIds(List.of("option-0"));
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(questionRepository.findById(questionId))
@@ -779,7 +782,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw IllegalArgumentException for invalid option index")
         void submitAnswer_InvalidOptionIndex_ShouldThrowException() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(questionRepository.findById(questionId))
@@ -800,7 +803,7 @@ class AnonymousTestServiceImplTest {
             // Given
             UUID unknownQuestionId = UUID.randomUUID();
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(questionRepository.findById(unknownQuestionId))
@@ -818,7 +821,7 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setStatus(SessionStatus.COMPLETED);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -845,7 +848,8 @@ class AnonymousTestServiceImplTest {
                     "John",
                     "Doe",
                     "john.doe@example.com",
-                    "Applied for senior position"
+                    "Applied for senior position",
+                    null
             );
 
             TestResultDto mockResult = new TestResultDto(
@@ -866,7 +870,7 @@ class AnonymousTestServiceImplTest {
                     LocalDateTime.now()
             );
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(sessionRepository.save(any(TestSession.class))).thenReturn(mockSession);
@@ -898,9 +902,9 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setStatus(SessionStatus.COMPLETED);
             AnonymousTakerInfoRequest takerInfo = new AnonymousTakerInfoRequest(
-                    "John", "Doe", null, null);
+                    "John", "Doe", null, null, null);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -1039,7 +1043,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should navigate forward successfully")
         void navigateToQuestion_Forward_ShouldSucceed() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(sessionRepository.save(any(TestSession.class))).thenReturn(mockSession);
@@ -1060,7 +1064,7 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setCurrentQuestionIndex(2);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(sessionRepository.save(any(TestSession.class))).thenReturn(mockSession);
@@ -1082,7 +1086,7 @@ class AnonymousTestServiceImplTest {
             mockTemplate.setAllowBackNavigation(false);
             mockSession.setCurrentQuestionIndex(2);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -1097,7 +1101,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should throw exception for invalid question index")
         void navigateToQuestion_InvalidIndex_ShouldThrowException() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -1121,7 +1125,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should update time remaining successfully")
         void updateTimeRemaining_WithValidData_ShouldSucceed() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(sessionRepository.save(any(TestSession.class))).thenReturn(mockSession);
@@ -1140,7 +1144,7 @@ class AnonymousTestServiceImplTest {
         @DisplayName("Should timeout session when time reaches zero")
         void updateTimeRemaining_WhenTimeReachesZero_ShouldTimeout() {
             // Given
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(sessionRepository.save(any(TestSession.class))).thenReturn(mockSession);
@@ -1160,7 +1164,7 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setStatus(SessionStatus.COMPLETED);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -1195,7 +1199,7 @@ class AnonymousTestServiceImplTest {
             mockResult.setPercentile(75);
             mockResult.setCompetencyScores(Collections.emptyList());
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(resultRepository.findBySession_Id(sessionId))
@@ -1217,7 +1221,7 @@ class AnonymousTestServiceImplTest {
             // Given
             mockSession.setStatus(SessionStatus.IN_PROGRESS);
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
 
@@ -1242,7 +1246,7 @@ class AnonymousTestServiceImplTest {
             mockResult.setPercentile(30);
             mockResult.setCompetencyScores(Collections.emptyList());
 
-            when(sessionTokenService.hashToken(sessionAccessToken)).thenReturn(tokenHash);
+            when(sessionTokenService.validateToken(sessionAccessToken, tokenHash)).thenReturn(true);
             when(sessionRepository.findByIdWithTemplateAndShareLink(sessionId))
                     .thenReturn(Optional.of(mockSession));
             when(resultRepository.findBySession_Id(sessionId))

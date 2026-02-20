@@ -52,17 +52,10 @@ public class TemplateVisibilityController {
     public ResponseEntity<VisibilityInfoDto> getVisibility(@PathVariable UUID id) {
         logger.info("GET /api/v1/tests/templates/{}/visibility", id);
 
-        try {
-            VisibilityInfoDto info = visibilityService.getVisibilityInfo(id);
-            logger.info("Visibility for template {}: {}", id, info.visibility());
-            return ResponseEntity.ok(info);
-        } catch (RuntimeException e) {
-            if (e.getMessage() != null && e.getMessage().contains("not found")) {
-                logger.warn("Template not found: {}", id);
-                return ResponseEntity.notFound().build();
-            }
-            throw e;
-        }
+        // Let GlobalExceptionHandler handle ResourceNotFoundException / EntityNotFoundException
+        VisibilityInfoDto info = visibilityService.getVisibilityInfo(id);
+        logger.info("Visibility for template {}: {}", id, info.visibility());
+        return ResponseEntity.ok(info);
     }
 
     /**
@@ -91,20 +84,11 @@ public class TemplateVisibilityController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        try {
-            VisibilityInfoDto info = visibilityService.changeVisibility(id, request.visibility(), clerkId);
-            logger.info("Changed visibility for template {} to {}", id, info.visibility());
-            return ResponseEntity.ok(info);
-        } catch (IllegalStateException e) {
-            logger.warn("Visibility change failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (RuntimeException e) {
-            if (e.getMessage() != null && e.getMessage().contains("not found")) {
-                logger.warn("Template not found: {}", id);
-                return ResponseEntity.notFound().build();
-            }
-            throw e;
-        }
+        // Let GlobalExceptionHandler handle IllegalStateException (business rule violations)
+        // and RuntimeException (not found, etc.) with proper error response bodies
+        VisibilityInfoDto info = visibilityService.changeVisibility(id, request.visibility(), clerkId);
+        logger.info("Changed visibility for template {} to {}", id, info.visibility());
+        return ResponseEntity.ok(info);
     }
 
     /**

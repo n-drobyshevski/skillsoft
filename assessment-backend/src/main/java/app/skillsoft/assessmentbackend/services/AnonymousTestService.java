@@ -134,6 +134,23 @@ public interface AnonymousTestService {
     );
 
     /**
+     * Update advisory metadata for an anonymous session.
+     *
+     * <p>Stores tracking data such as tab switch count for template owners
+     * to review. This is purely advisory — no automatic action is taken.</p>
+     *
+     * @param sessionId The session ID
+     * @param sessionAccessToken The session access token
+     * @param tabSwitchCount Number of times the taker switched away from the test tab
+     * @throws app.skillsoft.assessmentbackend.exception.InvalidSessionTokenException if token is invalid
+     */
+    void updateSessionMetadata(
+            UUID sessionId,
+            String sessionAccessToken,
+            Integer tabSwitchCount
+    );
+
+    /**
      * Complete an anonymous session with taker info.
      *
      * <p>Collects the anonymous taker's information (name, optional email/notes),
@@ -173,6 +190,44 @@ public interface AnonymousTestService {
      * @return Page of anonymous result summaries
      */
     Page<AnonymousResultSummaryDto> listAnonymousResults(UUID templateId, Pageable pageable);
+
+    /**
+     * List anonymous results for a template with optional filters.
+     *
+     * @param templateId The template ID
+     * @param filters Optional filter criteria (date range, score range, pass/fail, share link)
+     * @param pageable Pagination parameters
+     * @return Page of anonymous result summaries matching the filters
+     */
+    Page<AnonymousResultSummaryDto> listAnonymousResults(UUID templateId, AnonymousResultFilter filters, Pageable pageable);
+
+    /**
+     * Filter criteria for anonymous results.
+     *
+     * @param dateFrom Start of date range (inclusive)
+     * @param dateTo End of date range (inclusive)
+     * @param minScore Minimum overall percentage score
+     * @param maxScore Maximum overall percentage score
+     * @param passed Filter by pass/fail status (null = all)
+     * @param shareLinkId Filter by specific share link
+     */
+    record AnonymousResultFilter(
+            java.time.LocalDateTime dateFrom,
+            java.time.LocalDateTime dateTo,
+            Double minScore,
+            Double maxScore,
+            Boolean passed,
+            UUID shareLinkId
+    ) {
+        public static AnonymousResultFilter empty() {
+            return new AnonymousResultFilter(null, null, null, null, null, null);
+        }
+
+        public boolean hasFilters() {
+            return dateFrom != null || dateTo != null || minScore != null
+                    || maxScore != null || passed != null || shareLinkId != null;
+        }
+    }
 
     /**
      * Get detailed result for template owners.

@@ -10,6 +10,7 @@ import app.skillsoft.assessmentbackend.domain.entities.TemplateVisibility;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.domain.entities.User;
 import app.skillsoft.assessmentbackend.repository.TemplateShareLinkRepository;
+import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import org.slf4j.Logger;
@@ -41,6 +42,7 @@ public class TemplateShareLinkServiceImpl implements TemplateShareLinkService {
     private static final Logger log = LoggerFactory.getLogger(TemplateShareLinkServiceImpl.class);
 
     private final TemplateShareLinkRepository linkRepository;
+    private final TestSessionRepository sessionRepository;
     private final TestTemplateRepository templateRepository;
     private final UserRepository userRepository;
 
@@ -49,9 +51,11 @@ public class TemplateShareLinkServiceImpl implements TemplateShareLinkService {
 
     public TemplateShareLinkServiceImpl(
             TemplateShareLinkRepository linkRepository,
+            TestSessionRepository sessionRepository,
             TestTemplateRepository templateRepository,
             UserRepository userRepository) {
         this.linkRepository = linkRepository;
+        this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.userRepository = userRepository;
     }
@@ -196,7 +200,14 @@ public class TemplateShareLinkServiceImpl implements TemplateShareLinkService {
 
         link.revoke();
         linkRepository.save(link);
-        log.info("Revoked share link {}", linkId);
+
+        // Abandon all active anonymous sessions for this link
+        int abandonedCount = sessionRepository.abandonSessionsByShareLinkId(linkId);
+        if (abandonedCount > 0) {
+            log.info("Revoked share link {} and abandoned {} active sessions", linkId, abandonedCount);
+        } else {
+            log.info("Revoked share link {}", linkId);
+        }
     }
 
     @Override
@@ -247,7 +258,15 @@ public class TemplateShareLinkServiceImpl implements TemplateShareLinkService {
         log.debug("Revoking all active links for template {}", templateId);
 
         int revokedCount = linkRepository.revokeAllByTemplateId(templateId);
-        log.info("Revoked {} share links for template {}", revokedCount, templateId);
+
+        // Abandon all active anonymous sessions for this template's share links
+        int abandonedCount = sessionRepository.abandonAnonymousSessionsByTemplateId(templateId);
+        if (abandonedCount > 0) {
+            log.info("Revoked {} share links and abandoned {} active sessions for template {}",
+                    revokedCount, abandonedCount, templateId);
+        } else {
+            log.info("Revoked {} share links for template {}", revokedCount, templateId);
+        }
 
         return revokedCount;
     }
@@ -272,11 +291,15 @@ public class TemplateShareLinkServiceImpl implements TemplateShareLinkService {
             return false;
         }
 
-        link.recordUsage();
-        linkRepository.save(link);
-        log.debug("Recorded usage for share link {}, current uses: {}",
-                link.getId(), link.getCurrentUses());
+        // Use atomic increment to prevent race conditions with maxUses limit.
+        // Returns 0 if the link has reached its usage limit (concurrent request won the race).
+        int updated = linkRepository.incrementUsage(link.getId());
+        if (updated == 0) {
+            log.debug("Cannot record usage: share link {} has reached its usage limit", link.getId());
+            return false;
+        }
 
+        log.debug("Recorded usage for share link {} (atomic increment)", link.getId());
         return true;
     }
 

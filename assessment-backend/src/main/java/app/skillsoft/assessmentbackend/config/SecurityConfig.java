@@ -120,6 +120,10 @@ public class SecurityConfig {
                 // These endpoints use session access tokens instead of Clerk JWT
                 .requestMatchers("/api/v1/anonymous/**").permitAll()
 
+                // Allow public read access for persistent anonymous result URLs
+                // These endpoints use HMAC-signed tokens for authentication
+                .requestMatchers(HttpMethod.GET, "/api/v1/public/results/**").permitAll()
+
                 // All other requests require authentication
                 // Role-based access is handled by @PreAuthorize annotations
                 .anyRequest().authenticated()

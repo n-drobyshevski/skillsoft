@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.controller;
 
+import app.skillsoft.assessmentbackend.domain.dto.AnonymousCompletionResponse;
 import app.skillsoft.assessmentbackend.domain.dto.AnonymousResultDetailDto;
 import app.skillsoft.assessmentbackend.domain.dto.AnonymousSessionRequest;
 import app.skillsoft.assessmentbackend.domain.dto.AnonymousSessionResponse;
@@ -7,6 +8,8 @@ import app.skillsoft.assessmentbackend.domain.dto.AnonymousTakerInfoRequest;
 import app.skillsoft.assessmentbackend.domain.dto.TestAnswerDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.services.AnonymousTestService;
+import app.skillsoft.assessmentbackend.services.CaptchaVerificationService;
+import app.skillsoft.assessmentbackend.services.ResultTokenService;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -61,9 +64,15 @@ public class AnonymousTestController {
     private static final String SESSION_TOKEN_HEADER = "X-Session-Token";
 
     private final AnonymousTestService anonymousTestService;
+    private final ResultTokenService resultTokenService;
+    private final CaptchaVerificationService captchaVerificationService;
 
-    public AnonymousTestController(AnonymousTestService anonymousTestService) {
+    public AnonymousTestController(AnonymousTestService anonymousTestService,
+                                   ResultTokenService resultTokenService,
+                                   CaptchaVerificationService captchaVerificationService) {
         this.anonymousTestService = anonymousTestService;
+        this.resultTokenService = resultTokenService;
+        this.captchaVerificationService = captchaVerificationService;
     }
 
     // ==================== SESSION LIFECYCLE ====================
@@ -275,7 +284,7 @@ public class AnonymousTestController {
     @ApiResponse(responseCode = "401", description = "Invalid or missing session token")
     @ApiResponse(responseCode = "400", description = "Invalid taker information")
     @PostMapping("/sessions/{sessionId}/complete")
-    public ResponseEntity<TestResultDto> completeSession(
+    public ResponseEntity<AnonymousCompletionResponse> completeSession(
             @PathVariable UUID sessionId,
             @RequestHeader(SESSION_TOKEN_HEADER) String sessionToken,
             @Valid @RequestBody AnonymousTakerInfoRequest takerInfo) {
@@ -287,10 +296,13 @@ public class AnonymousTestController {
                 sessionId, sessionToken, takerInfo
         );
 
-        log.info("Anonymous session {} completed with score: {}%",
+        // Generate persistent result view token (HMAC-signed, 7-day expiry)
+        String resultViewToken = resultTokenService.generateToken(result.id(), result.sessionId());
+
+        log.info("Anonymous session {} completed with score: {}%, result token generated",
                 sessionId, result.overallPercentage());
 
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(new AnonymousCompletionResponse(result, resultViewToken));
     }
 
     /**
@@ -317,6 +329,60 @@ public class AnonymousTestController {
         AnonymousResultDetailDto result = anonymousTestService.getResult(sessionId, sessionToken);
 
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Update advisory metadata for a session (e.g. tab switch count).
+     *
+     * <p>This endpoint is fire-and-forget from the client side. The data is stored
+     * for template owners to review and does NOT trigger any automatic action.</p>
+     *
+     * @param sessionId Session UUID
+     * @param sessionToken Session access token from header
+     * @param request Metadata to update
+     * @return 204 No Content
+     */
+    @Operation(
+            summary = "Update session metadata",
+            description = "Store advisory metadata such as tab switch count. Does not affect scoring."
+    )
+    @ApiResponse(responseCode = "204", description = "Metadata updated successfully")
+    @ApiResponse(responseCode = "401", description = "Invalid or missing session token")
+    @PatchMapping("/sessions/{sessionId}/metadata")
+    public ResponseEntity<Void> updateSessionMetadata(
+            @PathVariable UUID sessionId,
+            @RequestHeader(SESSION_TOKEN_HEADER) String sessionToken,
+            @RequestBody SessionMetadataUpdateRequest request) {
+
+        log.debug("PATCH /api/v1/anonymous/sessions/{}/metadata - tabSwitchCount={}",
+                sessionId, request.tabSwitchCount());
+
+        anonymousTestService.updateSessionMetadata(sessionId, sessionToken, request.tabSwitchCount());
+
+        return ResponseEntity.noContent().build();
+    }
+
+    // ==================== CONFIGURATION ====================
+
+    /**
+     * Get CAPTCHA configuration for the anonymous test landing page.
+     *
+     * <p>Returns whether CAPTCHA is enabled and the site key needed
+     * to render the hCaptcha widget on the client.</p>
+     *
+     * @return CAPTCHA configuration (200 OK)
+     */
+    @Operation(
+            summary = "Get CAPTCHA configuration",
+            description = "Returns whether CAPTCHA is required and the site key for rendering."
+    )
+    @ApiResponse(responseCode = "200", description = "Configuration retrieved")
+    @GetMapping("/config/captcha")
+    public ResponseEntity<CaptchaConfigResponse> getCaptchaConfig() {
+        return ResponseEntity.ok(new CaptchaConfigResponse(
+                captchaVerificationService.isEnabled(),
+                captchaVerificationService.isEnabled() ? captchaVerificationService.getSiteKey() : null
+        ));
     }
 
     // ==================== HELPER METHODS ====================
@@ -356,5 +422,26 @@ public class AnonymousTestController {
     public record AnswerSubmissionRequest(
             UUID questionId,
             int selectedOptionIndex
+    ) {}
+
+    /**
+     * Request body for updating session metadata.
+     *
+     * @param tabSwitchCount Number of times the taker switched away from the test tab.
+     *                       Nullable — a null value is a no-op for that field.
+     */
+    public record SessionMetadataUpdateRequest(
+            Integer tabSwitchCount
+    ) {}
+
+    /**
+     * Response for CAPTCHA configuration endpoint.
+     *
+     * @param enabled Whether CAPTCHA is required
+     * @param siteKey hCaptcha site key (null when disabled)
+     */
+    public record CaptchaConfigResponse(
+            boolean enabled,
+            String siteKey
     ) {}
 }

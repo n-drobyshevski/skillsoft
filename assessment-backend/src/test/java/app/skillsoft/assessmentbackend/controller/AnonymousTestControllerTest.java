@@ -77,6 +77,12 @@ class AnonymousTestControllerTest {
     @MockBean
     private AnonymousTestService anonymousTestService;
 
+    @MockBean
+    private app.skillsoft.assessmentbackend.services.ResultTokenService resultTokenService;
+
+    @MockBean
+    private app.skillsoft.assessmentbackend.services.CaptchaVerificationService captchaVerificationService;
+
     // Test data
     private UUID sessionId;
     private UUID templateId;
@@ -220,6 +226,10 @@ class AnonymousTestControllerTest {
                 takerInfo,
                 sessionMetadata
         );
+
+        // Stub result token generation for completion tests
+        when(resultTokenService.generateToken(any(UUID.class), any(UUID.class)))
+                .thenReturn("test-result-view-token");
     }
 
     // ==================== POST /sessions - Create Session Tests ====================
@@ -232,7 +242,7 @@ class AnonymousTestControllerTest {
         @DisplayName("Should create session successfully with valid share token")
         void shouldCreateSessionSuccessfully() throws Exception {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
             when(anonymousTestService.createSession(any(AnonymousSessionRequest.class), any(), any()))
                     .thenReturn(sessionResponse);
 
@@ -270,7 +280,7 @@ class AnonymousTestControllerTest {
         @DisplayName("Should return 400 when share token is blank")
         void shouldReturn400WhenShareTokenBlank() throws Exception {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest("   ");
+            AnonymousSessionRequest request = new AnonymousSessionRequest("   ", null);
 
             // When & Then
             mockMvc.perform(post(BASE_URL + "/sessions")
@@ -284,7 +294,7 @@ class AnonymousTestControllerTest {
         @DisplayName("Should return 400 when share link is invalid")
         void shouldReturn400WhenShareLinkInvalid() throws Exception {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest("invalid_token");
+            AnonymousSessionRequest request = new AnonymousSessionRequest("invalid_token", null);
             when(anonymousTestService.createSession(any(AnonymousSessionRequest.class), any(), any()))
                     .thenThrow(new ShareLinkException(ShareLinkException.ErrorCode.LINK_NOT_FOUND));
 
@@ -302,7 +312,7 @@ class AnonymousTestControllerTest {
         @DisplayName("Should return 429 when rate limit exceeded")
         void shouldReturn429WhenRateLimitExceeded() throws Exception {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
             when(anonymousTestService.createSession(any(AnonymousSessionRequest.class), any(), any()))
                     .thenThrow(new RateLimitExceededException(3600));
 
@@ -586,7 +596,8 @@ class AnonymousTestControllerTest {
                     "John",
                     "Doe",
                     "john.doe@example.com",
-                    "Candidate for manager position"
+                    "Candidate for manager position",
+                    null
             );
             when(anonymousTestService.completeSession(eq(sessionId), eq(validSessionToken), any(AnonymousTakerInfoRequest.class)))
                     .thenReturn(testResultDto);
@@ -598,10 +609,11 @@ class AnonymousTestControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(takerInfo)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.id").value(resultId.toString()))
-                    .andExpect(jsonPath("$.sessionId").value(sessionId.toString()))
-                    .andExpect(jsonPath("$.overallPercentage").value(85.0))
-                    .andExpect(jsonPath("$.passed").value(true));
+                    .andExpect(jsonPath("$.result.id").value(resultId.toString()))
+                    .andExpect(jsonPath("$.result.sessionId").value(sessionId.toString()))
+                    .andExpect(jsonPath("$.result.overallPercentage").value(85.0))
+                    .andExpect(jsonPath("$.result.passed").value(true))
+                    .andExpect(jsonPath("$.resultViewToken").value("test-result-view-token"));
 
             verify(anonymousTestService).completeSession(eq(sessionId), eq(validSessionToken), any(AnonymousTakerInfoRequest.class));
         }
@@ -614,7 +626,8 @@ class AnonymousTestControllerTest {
                     "John",
                     "Doe",
                     null, // email optional
-                    null  // notes optional
+                    null, // notes optional
+                    null  // gdprConsentGiven optional
             );
             when(anonymousTestService.completeSession(eq(sessionId), eq(validSessionToken), any(AnonymousTakerInfoRequest.class)))
                     .thenReturn(testResultDto);
@@ -626,7 +639,8 @@ class AnonymousTestControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(takerInfo)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.passed").value(true));
+                    .andExpect(jsonPath("$.result.passed").value(true))
+                    .andExpect(jsonPath("$.resultViewToken").isNotEmpty());
 
             verify(anonymousTestService).completeSession(eq(sessionId), eq(validSessionToken), any(AnonymousTakerInfoRequest.class));
         }
@@ -636,7 +650,7 @@ class AnonymousTestControllerTest {
         void shouldReturn401WhenTokenMissing() throws Exception {
             // Given
             AnonymousTakerInfoRequest takerInfo = new AnonymousTakerInfoRequest(
-                    "John", "Doe", null, null
+                    "John", "Doe", null, null, null
             );
 
             // When & Then
@@ -653,7 +667,7 @@ class AnonymousTestControllerTest {
             // Given
             String invalidToken = "invalid_token";
             AnonymousTakerInfoRequest takerInfo = new AnonymousTakerInfoRequest(
-                    "John", "Doe", null, null
+                    "John", "Doe", null, null, null
             );
             when(anonymousTestService.completeSession(eq(sessionId), eq(invalidToken), any(AnonymousTakerInfoRequest.class)))
                     .thenThrow(new InvalidSessionTokenException());
@@ -717,6 +731,7 @@ class AnonymousTestControllerTest {
                     "John",
                     "Doe",
                     "not-an-email", // invalid email
+                    null,
                     null
             );
 
@@ -734,7 +749,7 @@ class AnonymousTestControllerTest {
         void shouldReturn400WhenSessionAlreadyCompleted() throws Exception {
             // Given
             AnonymousTakerInfoRequest takerInfo = new AnonymousTakerInfoRequest(
-                    "John", "Doe", null, null
+                    "John", "Doe", null, null, null
             );
             when(anonymousTestService.completeSession(eq(sessionId), eq(validSessionToken), any(AnonymousTakerInfoRequest.class)))
                     .thenThrow(new IllegalStateException("Session is already completed"));
@@ -969,7 +984,8 @@ class AnonymousTestControllerTest {
                     "Иван",
                     "Петров",
                     "ivan.petrov@example.ru",
-                    "Кандидат на должность менеджера"
+                    "Кандидат на должность менеджера",
+                    null
             );
             when(anonymousTestService.completeSession(eq(sessionId), eq(validSessionToken), any(AnonymousTakerInfoRequest.class)))
                     .thenReturn(testResultDto);
@@ -990,7 +1006,7 @@ class AnonymousTestControllerTest {
         @DisplayName("Should extract client IP from X-Forwarded-For header")
         void shouldExtractIpFromForwardedHeader() throws Exception {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
             when(anonymousTestService.createSession(any(AnonymousSessionRequest.class), any(), any()))
                     .thenReturn(sessionResponse);
 
@@ -1010,7 +1026,7 @@ class AnonymousTestControllerTest {
         @DisplayName("Should extract client IP from X-Real-IP header when X-Forwarded-For is absent")
         void shouldExtractIpFromRealIpHeader() throws Exception {
             // Given
-            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken);
+            AnonymousSessionRequest request = new AnonymousSessionRequest(shareToken, null);
             when(anonymousTestService.createSession(any(AnonymousSessionRequest.class), any(), any()))
                     .thenReturn(sessionResponse);
 

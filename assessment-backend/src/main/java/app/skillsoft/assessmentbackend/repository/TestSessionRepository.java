@@ -292,4 +292,37 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
 
     @Query("SELECT COUNT(s) FROM TestSession s WHERE s.shareLink.id = :shareLinkId")
     long countByShareLinkId(@Param("shareLinkId") UUID shareLinkId);
+
+    /**
+     * Abandon all in-progress sessions for a specific share link.
+     * Used when a share link is revoked to prevent takers from continuing on revoked links.
+     */
+    @Modifying
+    @Query("UPDATE TestSession s SET s.status = 'ABANDONED', s.completedAt = CURRENT_TIMESTAMP " +
+           "WHERE s.shareLink.id = :linkId AND s.status IN ('IN_PROGRESS', 'NOT_STARTED')")
+    int abandonSessionsByShareLinkId(@Param("linkId") UUID linkId);
+
+    /**
+     * Abandon all in-progress sessions for all share links of a template.
+     * Used when all links are bulk-revoked.
+     */
+    @Modifying
+    @Query("UPDATE TestSession s SET s.status = 'ABANDONED', s.completedAt = CURRENT_TIMESTAMP " +
+           "WHERE s.shareLink.template.id = :templateId AND s.status IN ('IN_PROGRESS', 'NOT_STARTED') " +
+           "AND s.clerkUserId IS NULL")
+    int abandonAnonymousSessionsByTemplateId(@Param("templateId") UUID templateId);
+
+    /**
+     * Anonymize PII on completed anonymous sessions older than the retention cutoff.
+     * Sets anonymousTakerInfo to NULL while preserving the test result data.
+     * Only targets sessions that still have PII data (anonymousTakerInfo IS NOT NULL).
+     *
+     * @param cutoff sessions completed before this timestamp will be anonymized
+     * @return the number of sessions anonymized
+     */
+    @Modifying
+    @Query("UPDATE TestSession s SET s.anonymousTakerInfo = NULL " +
+           "WHERE s.status = 'COMPLETED' AND s.clerkUserId IS NULL " +
+           "AND s.completedAt < :cutoff AND s.anonymousTakerInfo IS NOT NULL")
+    int anonymizePiiForExpiredSessions(@Param("cutoff") LocalDateTime cutoff);
 }

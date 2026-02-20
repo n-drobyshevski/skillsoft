@@ -107,11 +107,14 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
     // ============================================
 
     /**
-     * Increment usage count for a link.
+     * Atomically increment usage count for a link, respecting maxUses limit.
+     * Returns 1 if successfully incremented, 0 if the link has reached its usage limit.
+     * This prevents race conditions where two concurrent requests both pass validation.
      */
     @Modifying
     @Query("UPDATE TemplateShareLink l SET l.currentUses = l.currentUses + 1, " +
-           "l.lastUsedAt = CURRENT_TIMESTAMP WHERE l.id = :linkId")
+           "l.lastUsedAt = CURRENT_TIMESTAMP WHERE l.id = :linkId " +
+           "AND (l.maxUses IS NULL OR l.currentUses < l.maxUses)")
     int incrementUsage(@Param("linkId") UUID linkId);
 
     // ============================================

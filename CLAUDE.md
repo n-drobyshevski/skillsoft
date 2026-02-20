@@ -55,7 +55,7 @@ At the very end of your response, if you detected any inconsistencies (e.g., leg
 | **Backend** | Spring Boot | **v3.5.6**, Java **21**, Maven |
 | **DB** | PostgreSQL | `jsonb` (Hypersistence Utils), H2 (Test) |
 | **Auth** | Clerk + Spring Security | `svix` (Webhook verification), Role-based Access |
-| **Frontend** | Next.js | **v16.0.7** (App Router), React **19** |
+| **Frontend** | Next.js | **v16.0.7** (App Router), React **19.2.1** |
 | **UI** | Tailwind CSS | **v4**, Radix UI, shadcn/ui |
 | **State** | Zustand | Global Store (avoid context for complex state) |
 | **Testing** | Vitest / JUnit 5 | Mockito, MSW, React Testing Library |
@@ -75,8 +75,8 @@ At the very end of your response, if you detected any inconsistencies (e.g., leg
    * **Structure:** Use Interface + `*ServiceImpl` implementation.
 
 3. **Entity Pattern:**
-   * **IDs:** Primary Keys must be `UUID` with `@GeneratedValue(strategy = GenerationType.UUID)`.
-   * **JSONB:** Use `@Type(JsonType.class)` for `jsonb` columns (PostgreSQL).
+   * **IDs:** Primary Keys must be `UUID` with `@GeneratedValue(strategy = GenerationType.UUID)`. **Note:** `User.java` uses `GenerationType.AUTO` (Clerk-managed external IDs).
+   * **JSONB:** Use `@JdbcTypeCode(SqlTypes.JSON)` for `jsonb` columns (preferred for Hibernate 6.3+). Legacy code may use `@Type(JsonType.class)`.
    * **Language:** Support bilingual content (English/Russian) in text fields.
 
 4. **Testing:**
@@ -155,13 +155,15 @@ Do not hallucinate logic. If working on these features, you must read the specif
 | Test Assembly | `services/assembly/` | `docs/11-deep-dives/test-assembly-system.md` |
 | Scoring System | `services/scoring/` | `docs/11-deep-dives/scoring-system.md` |
 | Test Results UI | `test-templates/results/` | `docs/11-deep-dives/test-results-visualization.md` |
-| Test Drive Mode | `test-player/insights/` | `docs/11-deep-dives/test-drive-mode.md` |
+| Test Drive Mode | `src/components/test-player/insights/` | `docs/11-deep-dives/test-drive-mode.md` |
 | Psychometrics | `services/psychometrics/` | `docs/11-deep-dives/psychometric-validation-system.md` |
 | Lens/Role System | `hooks/useLens.ts` | `docs/11-deep-dives/lens-system.md` |
-| Review System | `test-player/answer-summary/` | `docs/11-deep-dives/answer-summary-review.md` |
+| Review System | `src/components/test-player/answer-summary/` | `docs/11-deep-dives/answer-summary-review.md` |
+| Anonymous Sessions | `controller/AnonymousTestController` | `docs/11-deep-dives/anonymous-sessions.md` |
+| Template Versioning | `domain/entities/TestTemplate` | `docs/11-deep-dives/template-versioning-system.md` |
 
 ---
 
-**Last Updated:** 2025-12-27
-**Documentation Version:** 3.0 (Hub & Spoke Architecture)
+**Last Updated:** 2026-02-20
+**Documentation Version:** 3.1 (Post-Audit Cleanup)
 **Project Version:** SkillSoft 1.0

@@ -12,6 +12,13 @@ public record AnonymousSessionRequest(
          * Obtained from the share link URL.
          */
         @NotBlank(message = "Share token is required")
-        String shareToken
+        String shareToken,
+
+        /**
+         * Optional hCaptcha response token.
+         * Required when CAPTCHA is enabled via {@code skillsoft.captcha.enabled=true}.
+         * Null or absent when CAPTCHA is disabled.
+         */
+        String captchaToken
 ) {
 }

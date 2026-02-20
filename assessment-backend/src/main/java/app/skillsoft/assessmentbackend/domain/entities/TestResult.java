@@ -25,6 +25,21 @@ import java.util.UUID;
 })
 public class TestResult {
 
+    // ----------------------------------------
+    // Time anomaly detection constants
+    // ----------------------------------------
+
+    /**
+     * Key used in extendedMetrics JSONB to flag suspiciously fast completion.
+     */
+    public static final String METRIC_SUSPICIOUSLY_FAST = "suspiciouslyFast";
+
+    /**
+     * Minimum acceptable average time (in seconds) per answered question.
+     * Submissions below this threshold are flagged for owner review.
+     */
+    public static final double MIN_AVG_SECONDS_PER_QUESTION = 15.0;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -276,6 +291,20 @@ public class TestResult {
     @Transient
     public UUID getSessionId() {
         return session != null ? session.getId() : null;
+    }
+
+    /**
+     * Check if this result was completed suspiciously fast.
+     *
+     * <p>Returns true when the extendedMetrics map contains the
+     * {@link #METRIC_SUSPICIOUSLY_FAST} key set to {@code Boolean.TRUE}.
+     * Advisory only — does not affect scoring or pass/fail status.</p>
+     *
+     * @return true if the time anomaly flag is set
+     */
+    @Transient
+    public boolean isSuspiciouslyFast() {
+        return extendedMetrics != null && Boolean.TRUE.equals(extendedMetrics.get(METRIC_SUSPICIOUSLY_FAST));
     }
 
     /**

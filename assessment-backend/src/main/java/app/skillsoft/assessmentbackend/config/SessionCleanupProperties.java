@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
  * skillsoft.session.cleanup.cron=0 0 3 * * ?
  * skillsoft.session.cleanup.stale-hours=24
  * skillsoft.session.cleanup.delete-empty-after-days=7
+ * skillsoft.session.cleanup.pii-retention-days=90
  * </pre>
  */
 @Configuration
@@ -49,6 +50,15 @@ public class SessionCleanupProperties {
      */
     private int deleteEmptyAfterDays = 7;
 
+    /**
+     * Days after which PII (anonymousTakerInfo) is removed from completed anonymous sessions.
+     * The test result data is preserved; only the personally identifiable information
+     * (name, email) is set to NULL.
+     * Set to 0 or negative to disable PII anonymization.
+     * Default: 90 days
+     */
+    private int piiRetentionDays = 90;
+
     // Getters and setters
 
     public boolean isEnabled() {
@@ -81,5 +91,13 @@ public class SessionCleanupProperties {
 
     public void setDeleteEmptyAfterDays(int deleteEmptyAfterDays) {
         this.deleteEmptyAfterDays = deleteEmptyAfterDays;
+    }
+
+    public int getPiiRetentionDays() {
+        return piiRetentionDays;
+    }
+
+    public void setPiiRetentionDays(int piiRetentionDays) {
+        this.piiRetentionDays = piiRetentionDays;
     }
 }

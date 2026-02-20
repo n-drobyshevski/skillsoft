@@ -62,6 +62,24 @@ public class AnonymousTakerInfo implements Serializable {
      */
     private LocalDateTime collectedAt;
 
+    /**
+     * Whether the taker gave explicit GDPR consent for data processing.
+     * Must not be pre-checked in the UI.
+     */
+    private Boolean gdprConsentGiven;
+
+    /**
+     * Timestamp when GDPR consent was given.
+     */
+    private LocalDateTime gdprConsentAt;
+
+    /**
+     * Number of times the taker switched away from the test tab during the assessment.
+     * Advisory metadata only — does NOT trigger auto-disqualification.
+     * Null means tracking data was not collected (e.g., older sessions).
+     */
+    private Integer tabSwitchCount;
+
     // ========================================
     // Constructors
     // ========================================
@@ -178,6 +196,30 @@ public class AnonymousTakerInfo implements Serializable {
 
     public void setCollectedAt(LocalDateTime collectedAt) {
         this.collectedAt = collectedAt;
+    }
+
+    public Boolean getGdprConsentGiven() {
+        return gdprConsentGiven;
+    }
+
+    public void setGdprConsentGiven(Boolean gdprConsentGiven) {
+        this.gdprConsentGiven = gdprConsentGiven;
+    }
+
+    public LocalDateTime getGdprConsentAt() {
+        return gdprConsentAt;
+    }
+
+    public void setGdprConsentAt(LocalDateTime gdprConsentAt) {
+        this.gdprConsentAt = gdprConsentAt;
+    }
+
+    public Integer getTabSwitchCount() {
+        return tabSwitchCount;
+    }
+
+    public void setTabSwitchCount(Integer tabSwitchCount) {
+        this.tabSwitchCount = tabSwitchCount;
     }
 
     // ========================================

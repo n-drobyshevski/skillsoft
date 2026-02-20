@@ -64,7 +64,20 @@ public record AnonymousResultSummaryDto(
         /**
          * Number of questions skipped.
          */
-        Integer questionsSkipped
+        Integer questionsSkipped,
+
+        /**
+         * Whether the result was flagged by time anomaly detection.
+         * True when average time per question was below the minimum threshold.
+         * Null when no anomaly was detected (avoids sending the field at all for normal results).
+         */
+        Boolean suspiciouslyFast,
+
+        /**
+         * Number of times the taker switched away from the test tab during the assessment.
+         * Advisory metadata only — null means tracking was not available for this session.
+         */
+        Integer tabSwitchCount
 ) {
     /**
      * Create from TestResult entity.
@@ -82,6 +95,11 @@ public record AnonymousResultSummaryDto(
             shareLinkLabel = result.getSession().getShareLink().getLabel();
         }
 
+        // Emit true only when flagged; null otherwise to keep the JSON payload clean
+        Boolean suspiciouslyFast = result.isSuspiciouslyFast() ? Boolean.TRUE : null;
+
+        Integer tabSwitchCount = takerInfo != null ? takerInfo.getTabSwitchCount() : null;
+
         return new AnonymousResultSummaryDto(
                 result.getId(),
                 result.getSessionId(),
@@ -93,7 +111,9 @@ public record AnonymousResultSummaryDto(
                 shareLinkLabel,
                 result.getTotalTimeSeconds(),
                 result.getQuestionsAnswered(),
-                result.getQuestionsSkipped()
+                result.getQuestionsSkipped(),
+                suspiciouslyFast,
+                tabSwitchCount
         );
     }
 }

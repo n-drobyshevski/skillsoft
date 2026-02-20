@@ -20,7 +20,9 @@ import java.util.List;
  * <ol>
  *   <li>Mark IN_PROGRESS sessions inactive for > configured hours as ABANDONED</li>
  *   <li>Mark NOT_STARTED sessions older than configured hours as ABANDONED</li>
+ *   <li>Abandon expired anonymous sessions (24h TTL)</li>
  *   <li>Delete empty ABANDONED sessions (no answers, no results) older than configured days</li>
+ *   <li>Anonymize PII on completed anonymous sessions older than the retention period</li>
  * </ol>
  *
  * <p>Configuration via {@code skillsoft.session.cleanup.*} properties.
@@ -66,14 +68,22 @@ public class SessionCleanupJob {
             // Phase 2: Mark old NOT_STARTED sessions as ABANDONED
             result.notStartedAbandoned = abandonOldNotStartedSessions();
 
-            // Phase 3: Delete empty abandoned sessions (optional)
+            // Phase 3: Abandon expired anonymous sessions (24h TTL)
+            result.anonymousExpired = abandonExpiredAnonymousSessions();
+
+            // Phase 4: Delete empty abandoned sessions (optional)
             result.emptySessionsDeleted = deleteEmptyAbandonedSessions();
+
+            // Phase 5: Anonymize PII on old completed anonymous sessions
+            result.piiAnonymized = anonymizeExpiredPii();
 
             var duration = System.currentTimeMillis() - startTime;
             log.info("Session cleanup completed in {}ms: {} IN_PROGRESS abandoned, " +
-                    "{} NOT_STARTED abandoned, {} empty sessions deleted",
+                    "{} NOT_STARTED abandoned, {} anonymous expired, {} empty sessions deleted, " +
+                    "{} PII anonymized",
                     duration, result.inProgressAbandoned,
-                    result.notStartedAbandoned, result.emptySessionsDeleted);
+                    result.notStartedAbandoned, result.anonymousExpired,
+                    result.emptySessionsDeleted, result.piiAnonymized);
 
         } catch (Exception e) {
             log.error("Session cleanup job failed", e);
@@ -130,6 +140,31 @@ public class SessionCleanupJob {
     }
 
     /**
+     * Find and abandon anonymous sessions that have exceeded the 24-hour TTL.
+     * Anonymous sessions have a strict 24h expiry regardless of activity.
+     */
+    private int abandonExpiredAnonymousSessions() {
+        LocalDateTime cutoffTime = LocalDateTime.now().minusHours(24);
+
+        List<TestSession> staleSessions = sessionRepository.findStaleAnonymousSessions(cutoffTime);
+
+        int count = 0;
+        for (TestSession session : staleSessions) {
+            try {
+                session.setStatus(SessionStatus.ABANDONED);
+                session.setCompletedAt(LocalDateTime.now());
+                sessionRepository.save(session);
+                count++;
+                log.debug("Abandoned expired anonymous session: {}", session.getId());
+            } catch (Exception e) {
+                log.warn("Failed to abandon anonymous session {}: {}", session.getId(), e.getMessage());
+            }
+        }
+
+        return count;
+    }
+
+    /**
      * Delete abandoned sessions that have no answers and are old enough.
      * This is an aggressive cleanup for sessions that add no value.
      */
@@ -162,6 +197,31 @@ public class SessionCleanupJob {
     }
 
     /**
+     * Anonymize PII (anonymousTakerInfo) on completed anonymous sessions
+     * that are older than the configured retention period.
+     * The test result data is preserved; only the name/email is removed.
+     */
+    private int anonymizeExpiredPii() {
+        if (config.getPiiRetentionDays() <= 0) {
+            return 0; // Feature disabled
+        }
+
+        LocalDateTime cutoffTime = LocalDateTime.now().minusDays(config.getPiiRetentionDays());
+
+        try {
+            int count = sessionRepository.anonymizePiiForExpiredSessions(cutoffTime);
+            if (count > 0) {
+                log.info("Anonymized PII on {} completed anonymous sessions older than {} days",
+                        count, config.getPiiRetentionDays());
+            }
+            return count;
+        } catch (Exception e) {
+            log.warn("Failed to anonymize PII on expired sessions: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * Manual trigger for cleanup (can be called from admin API).
      * @return Result of the cleanup operation
      */
@@ -172,7 +232,9 @@ public class SessionCleanupJob {
         CleanupResult result = new CleanupResult();
         result.inProgressAbandoned = abandonStaleInProgressSessions();
         result.notStartedAbandoned = abandonOldNotStartedSessions();
+        result.anonymousExpired = abandonExpiredAnonymousSessions();
         result.emptySessionsDeleted = deleteEmptyAbandonedSessions();
+        result.piiAnonymized = anonymizeExpiredPii();
 
         return result;
     }
@@ -183,16 +245,20 @@ public class SessionCleanupJob {
     public static class CleanupResult {
         public int inProgressAbandoned = 0;
         public int notStartedAbandoned = 0;
+        public int anonymousExpired = 0;
         public int emptySessionsDeleted = 0;
+        public int piiAnonymized = 0;
 
         public int getTotalProcessed() {
-            return inProgressAbandoned + notStartedAbandoned + emptySessionsDeleted;
+            return inProgressAbandoned + notStartedAbandoned + anonymousExpired
+                    + emptySessionsDeleted + piiAnonymized;
         }
 
         @Override
         public String toString() {
-            return String.format("CleanupResult{inProgress=%d, notStarted=%d, deleted=%d, total=%d}",
-                    inProgressAbandoned, notStartedAbandoned, emptySessionsDeleted, getTotalProcessed());
+            return String.format("CleanupResult{inProgress=%d, notStarted=%d, anonymousExpired=%d, deleted=%d, piiAnonymized=%d, total=%d}",
+                    inProgressAbandoned, notStartedAbandoned, anonymousExpired,
+                    emptySessionsDeleted, piiAnonymized, getTotalProcessed());
         }
     }
 }

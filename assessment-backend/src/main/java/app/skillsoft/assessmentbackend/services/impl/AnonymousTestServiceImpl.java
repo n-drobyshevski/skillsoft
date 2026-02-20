@@ -12,6 +12,7 @@ import app.skillsoft.assessmentbackend.domain.dto.sharing.LinkValidationResult;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.*;
 import app.skillsoft.assessmentbackend.repository.*;
+import app.skillsoft.assessmentbackend.repository.spec.AnonymousResultSpecification;
 import app.skillsoft.assessmentbackend.services.*;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
@@ -20,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,6 +70,7 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
     private final ScoringOrchestrationService scoringOrchestrationService;
     private final TestAssemblerFactory assemblerFactory;
     private final BlueprintConversionService blueprintConversionService;
+    private final CaptchaVerificationService captchaVerificationService;
 
     public AnonymousTestServiceImpl(
             TemplateShareLinkService shareLinkService,
@@ -81,7 +84,8 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
             TestResultRepository resultRepository,
             ScoringOrchestrationService scoringOrchestrationService,
             TestAssemblerFactory assemblerFactory,
-            BlueprintConversionService blueprintConversionService) {
+            BlueprintConversionService blueprintConversionService,
+            CaptchaVerificationService captchaVerificationService) {
         this.shareLinkService = shareLinkService;
         this.sessionTokenService = sessionTokenService;
         this.rateLimitService = rateLimitService;
@@ -94,6 +98,7 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
         this.scoringOrchestrationService = scoringOrchestrationService;
         this.assemblerFactory = assemblerFactory;
         this.blueprintConversionService = blueprintConversionService;
+        this.captchaVerificationService = captchaVerificationService;
     }
 
     @Override
@@ -107,6 +112,14 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
 
         // Step 1: Check rate limit
         rateLimitService.checkRateLimit(ipAddress);
+
+        // Step 1b: Verify CAPTCHA (when enabled)
+        if (captchaVerificationService.isEnabled()) {
+            if (!captchaVerificationService.verify(request.captchaToken())) {
+                log.warn("CAPTCHA verification failed for IP {}", ipAddress);
+                throw new IllegalArgumentException("CAPTCHA verification failed");
+            }
+        }
 
         // Step 2: Validate share link
         LinkValidationResult validation = shareLinkService.validateLink(request.shareToken());
@@ -327,6 +340,27 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
     }
 
     @Override
+    public void updateSessionMetadata(
+            UUID sessionId,
+            String sessionAccessToken,
+            Integer tabSwitchCount) {
+
+        TestSession session = validateAndGetSession(sessionId, sessionAccessToken);
+
+        AnonymousTakerInfo takerInfo = session.getAnonymousTakerInfo();
+        if (takerInfo == null) {
+            takerInfo = new AnonymousTakerInfo();
+            session.setAnonymousTakerInfo(takerInfo);
+        }
+
+        takerInfo.setTabSwitchCount(tabSwitchCount);
+        sessionRepository.save(session);
+
+        log.debug("Updated tab switch metadata for session {}: tabSwitchCount={}",
+                sessionId, tabSwitchCount);
+    }
+
+    @Override
     public TestResultDto completeSession(
             UUID sessionId,
             String sessionAccessToken,
@@ -348,6 +382,10 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
         info.setEmail(takerInfo.email());
         info.setNotes(takerInfo.notes());
         info.setCollectedAt(LocalDateTime.now());
+        if (Boolean.TRUE.equals(takerInfo.gdprConsentGiven())) {
+            info.setGdprConsentGiven(true);
+            info.setGdprConsentAt(LocalDateTime.now());
+        }
 
         session.setAnonymousTakerInfo(info);
 
@@ -362,6 +400,28 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
 
         log.info("Anonymous session {} completed with score: {}%",
                 sessionId, result.overallPercentage());
+
+        // Time anomaly detection — runs after scoring to avoid interfering with score calculation
+        resultRepository.findBySession_Id(sessionId).ifPresent(savedResult -> {
+            if (savedResult.getTotalTimeSeconds() != null && savedResult.getQuestionsAnswered() != null
+                    && savedResult.getQuestionsAnswered() > 0) {
+                double avgSecondsPerQuestion =
+                        (double) savedResult.getTotalTimeSeconds() / savedResult.getQuestionsAnswered();
+                if (avgSecondsPerQuestion < TestResult.MIN_AVG_SECONDS_PER_QUESTION) {
+                    if (savedResult.getExtendedMetrics() == null) {
+                        savedResult.setExtendedMetrics(new java.util.HashMap<>());
+                    }
+                    savedResult.getExtendedMetrics().put(TestResult.METRIC_SUSPICIOUSLY_FAST, true);
+                    savedResult.getExtendedMetrics().put(
+                            "avgSecondsPerQuestion",
+                            Math.round(avgSecondsPerQuestion * 10.0) / 10.0);
+                    resultRepository.save(savedResult);
+                    log.info("Time anomaly detected for session {}: avg {}s/question (threshold: {}s)",
+                            session.getId(), avgSecondsPerQuestion,
+                            TestResult.MIN_AVG_SECONDS_PER_QUESTION);
+                }
+            }
+        });
 
         return result;
     }
@@ -391,6 +451,32 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
         }
 
         Page<TestResult> results = resultRepository.findAnonymousByTemplateId(templateId, pageable);
+        return results.map(AnonymousResultSummaryDto::from);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AnonymousResultSummaryDto> listAnonymousResults(
+            UUID templateId, AnonymousResultFilter filters, Pageable pageable) {
+        // Verify template exists
+        if (!templateRepository.existsById(templateId)) {
+            throw new ResourceNotFoundException("Template", templateId);
+        }
+
+        // If no filters, delegate to the simple query for better performance
+        if (filters == null || !filters.hasFilters()) {
+            return listAnonymousResults(templateId, pageable);
+        }
+
+        // Build specification chain
+        Specification<TestResult> spec = Specification
+                .where(AnonymousResultSpecification.anonymousForTemplate(templateId))
+                .and(AnonymousResultSpecification.completedBetween(filters.dateFrom(), filters.dateTo()))
+                .and(AnonymousResultSpecification.scoreBetween(filters.minScore(), filters.maxScore()))
+                .and(AnonymousResultSpecification.passedIs(filters.passed()))
+                .and(AnonymousResultSpecification.fromShareLink(filters.shareLinkId()));
+
+        Page<TestResult> results = resultRepository.findAll(spec, pageable);
         return results.map(AnonymousResultSummaryDto::from);
     }
 
@@ -471,13 +557,11 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
             throw new InvalidSessionTokenException();
         }
 
-        String tokenHash = sessionTokenService.hashToken(sessionAccessToken);
-
         TestSession session = sessionRepository.findByIdWithTemplateAndShareLink(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
-        // Validate token matches
-        if (!tokenHash.equals(session.getSessionAccessTokenHash())) {
+        // Validate token using constant-time comparison to prevent timing attacks
+        if (!sessionTokenService.validateToken(sessionAccessToken, session.getSessionAccessTokenHash())) {
             log.warn("Token mismatch for session {}", sessionId);
             throw new InvalidSessionTokenException();
         }

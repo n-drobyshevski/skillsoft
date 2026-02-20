@@ -87,10 +87,13 @@ logs/
 *.tmp
 *.bak
 .cache/
+*_validation_log.txt
+test-output.txt
 
 # ====================
 # Project Specific
 # ====================
+prompts/
 docs/
 !docs/output/.gitkeep
 infrastructure/database/postgres-data/
