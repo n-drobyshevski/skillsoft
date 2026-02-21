@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.domain.dto.sharing;
 
+import app.skillsoft.assessmentbackend.domain.entities.TemplateStatus;
 import app.skillsoft.assessmentbackend.domain.entities.TemplateVisibility;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 
@@ -16,6 +17,7 @@ import java.util.UUID;
  * @param ownerName The owner's display name
  * @param activeSharesCount Number of active user/team shares
  * @param activeLinksCount Number of active share links
+ * @param templateStatus The template lifecycle status (DRAFT, PUBLISHED, ARCHIVED)
  */
 public record VisibilityInfoDto(
         UUID templateId,
@@ -24,7 +26,8 @@ public record VisibilityInfoDto(
         UUID ownerId,
         String ownerName,
         long activeSharesCount,
-        long activeLinksCount
+        long activeLinksCount,
+        TemplateStatus templateStatus
 ) {
     /**
      * Create a VisibilityInfoDto from a template entity with counts.
@@ -50,7 +53,8 @@ public record VisibilityInfoDto(
                 ownerId,
                 ownerName,
                 activeSharesCount,
-                activeLinksCount
+                activeLinksCount,
+                template.getStatus()
         );
     }
 }
