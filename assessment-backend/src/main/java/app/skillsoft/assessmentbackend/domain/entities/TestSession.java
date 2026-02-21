@@ -31,7 +31,6 @@ import java.util.UUID;
 public class TestSession {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     /**
@@ -41,7 +40,7 @@ public class TestSession {
      */
     @Version
     @Column(name = "version", nullable = false)
-    private Long version = 0L;
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id", nullable = false)
@@ -144,6 +143,7 @@ public class TestSession {
      * @param clerkUserId The Clerk user ID
      */
     public TestSession(TestTemplate template, String clerkUserId) {
+        this.id = UUID.randomUUID();
         this.template = template;
         this.clerkUserId = clerkUserId;
         this.status = SessionStatus.NOT_STARTED;
@@ -163,6 +163,7 @@ public class TestSession {
      */
     public TestSession(TestTemplate template, TemplateShareLink shareLink,
                        String sessionAccessTokenHash, String ipAddress, String userAgent) {
+        this.id = UUID.randomUUID();
         this.template = template;
         this.shareLink = shareLink;
         this.sessionAccessTokenHash = sessionAccessTokenHash;

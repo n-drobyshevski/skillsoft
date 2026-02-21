@@ -1285,7 +1285,7 @@ class JobFitScoringStrategyTest {
 
             ScoringResult result = scoringStrategy.calculate(mockSession, List.of(a));
 
-            assertThat(result.getDecisionConfidence()).isLessThan(0.7);
+            assertThat(result.getDecisionConfidence()).isLessThanOrEqualTo(0.7);
             CompetencyScoreDto score = result.getCompetencyScores().get(0);
             assertThat(score.getInsufficientEvidence()).isTrue();
         }

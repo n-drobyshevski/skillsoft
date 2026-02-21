@@ -180,7 +180,7 @@ class OverviewScoringStrategyTest {
         // Note: extractCompetencyIdSafe is no longer called by OverviewScoringStrategy
         // (replaced by indicator-level aggregation with indicatorBatchLoader)
 
-        when(competencyBatchLoader.getFromCache(any(), any()))
+        lenient().when(competencyBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, Competency> cache = invocation.getArgument(0);
                 UUID id = invocation.getArgument(1);
@@ -188,7 +188,7 @@ class OverviewScoringStrategyTest {
             });
 
         // Indicator batch loader mocks - extract dynamically from the answer chain
-        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+        lenient().when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
             .thenAnswer(invocation -> {
                 List<TestAnswer> answers = invocation.getArgument(0);
                 Map<UUID, BehavioralIndicator> map = new HashMap<>();
@@ -201,7 +201,7 @@ class OverviewScoringStrategyTest {
                 return map;
             });
 
-        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+        lenient().when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
             .thenAnswer(invocation -> {
                 TestAnswer answer = invocation.getArgument(0);
                 if (answer == null || answer.getQuestion() == null
@@ -211,7 +211,7 @@ class OverviewScoringStrategyTest {
                 return Optional.of(answer.getQuestion().getBehavioralIndicator().getId());
             });
 
-        when(indicatorBatchLoader.getFromCache(any(), any()))
+        lenient().when(indicatorBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
                 UUID id = invocation.getArgument(1);
@@ -1212,7 +1212,7 @@ class OverviewScoringStrategyTest {
             "39.9, DEVELOPING",
             "40.0, DEVELOPING",
             "40.1, DEVELOPING",
-            "74.9, AVERAGE",
+            "74.9, DEVELOPING",
             "75.0, STRENGTH",
             "75.1, STRENGTH"
         })

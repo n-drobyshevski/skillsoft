@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
+import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.domain.dto.DeletionPreviewDto;
 import app.skillsoft.assessmentbackend.domain.dto.DeletionResultDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
@@ -8,6 +9,8 @@ import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.TemplateDeletionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -123,11 +126,19 @@ public class TemplateDeletionServiceImpl implements TemplateDeletionService {
     }
 
     @Override
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#templateId"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public DeletionResultDto deleteTemplate(UUID templateId, DeletionMode mode, boolean confirmedByUser) {
         return deleteTemplate(templateId, mode, confirmedByUser, null);
     }
 
     @Override
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#templateId"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public DeletionResultDto deleteTemplate(UUID templateId, DeletionMode mode, boolean confirmedByUser, User deletedBy) {
         log.info("Deleting template {} with mode: {}", templateId, mode);
 
@@ -264,6 +275,7 @@ public class TemplateDeletionServiceImpl implements TemplateDeletionService {
     }
 
     @Override
+    @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
     public boolean restoreTemplate(UUID templateId) {
         log.info("Restoring soft-deleted template: {}", templateId);
 

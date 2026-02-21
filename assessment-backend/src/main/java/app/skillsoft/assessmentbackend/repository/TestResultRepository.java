@@ -160,7 +160,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
     /**
      * Find results for a user with session and template eagerly loaded.
      */
-    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId ORDER BY r.completedAt DESC")
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId ORDER BY r.completedAt ASC")
     List<TestResult> findByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId);
 
     /**
@@ -186,7 +186,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
     /**
      * Find user's results for a specific template with session eagerly loaded.
      */
-    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND s.template.id = :templateId ORDER BY r.completedAt DESC")
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND s.template.id = :templateId ORDER BY r.completedAt ASC")
     List<TestResult> findByUserAndTemplateWithSession(
             @Param("userId") String clerkUserId,
             @Param("templateId") UUID templateId);
