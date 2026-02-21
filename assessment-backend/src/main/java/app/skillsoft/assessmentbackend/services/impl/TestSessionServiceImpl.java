@@ -123,15 +123,11 @@ public class TestSessionServiceImpl implements TestSessionService {
             throw new DuplicateSessionException(existing.getId(), request.templateId(), request.clerkUserId());
         }
 
-        // Create new session with pre-assigned UUID for deterministic question ordering (BE-008)
+        // Create new session — UUID is assigned in the constructor for deterministic
+        // question ordering (BE-008). The same sessionId always produces the same
+        // question order, enabling psychometric validation of test forms.
         TestSession session = new TestSession(template, request.clerkUserId());
-        UUID sessionId = UUID.randomUUID();
-        session.setId(sessionId);
-
-        // Seed the question selection service for reproducible test form generation.
-        // The same sessionId always produces the same question order, enabling
-        // psychometric validation of test forms.
-        questionSelectionService.setSessionSeed(sessionId);
+        questionSelectionService.setSessionSeed(session.getId());
 
         // Generate question order based on template configuration
         // Pass clerkUserId for Delta Testing (gap-based question selection)

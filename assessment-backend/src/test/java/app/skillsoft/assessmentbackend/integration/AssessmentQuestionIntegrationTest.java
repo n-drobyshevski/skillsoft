@@ -573,6 +573,7 @@ class AssessmentQuestionIntegrationTest {
             updateRequestMap.put("scoringRubric", "Новая система оценки кризисного лидерства");
             updateRequestMap.put("difficultyLevel", "EXPERT");
             updateRequestMap.put("isActive", true);
+            updateRequestMap.put("orderIndex", 1);
 
             // Then - Verify update
             mockMvc.perform(put("/api/questions/{questionId}", createdDto.id())

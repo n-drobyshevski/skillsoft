@@ -227,7 +227,7 @@ class TeamFitScoringStrategyTest {
         when(competencyBatchLoader.loadCompetenciesForAnswers(anyList()))
             .thenReturn(competencyMap);
 
-        when(competencyBatchLoader.getFromCache(any(), any()))
+        lenient().when(competencyBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, Competency> cache = invocation.getArgument(0);
                 UUID id = invocation.getArgument(1);
@@ -237,7 +237,7 @@ class TeamFitScoringStrategyTest {
         // Build indicator cache from competencyMap and answers
         // The production code calls indicatorBatchLoader.loadIndicatorsForAnswers(answers)
         // which returns Map<UUID, BehavioralIndicator>
-        when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
+        lenient().when(indicatorBatchLoader.loadIndicatorsForAnswers(anyList()))
             .thenAnswer(invocation -> {
                 List<TestAnswer> answers = invocation.getArgument(0);
                 Map<UUID, BehavioralIndicator> cache = new HashMap<>();
@@ -251,7 +251,7 @@ class TeamFitScoringStrategyTest {
             });
 
         // extractIndicatorIdSafe: extract indicator ID from answer -> question -> indicator
-        when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
+        lenient().when(indicatorBatchLoader.extractIndicatorIdSafe(any(TestAnswer.class)))
             .thenAnswer(invocation -> {
                 TestAnswer answer = invocation.getArgument(0);
                 if (answer == null || answer.getQuestion() == null
@@ -262,7 +262,7 @@ class TeamFitScoringStrategyTest {
             });
 
         // getFromCache for indicators
-        when(indicatorBatchLoader.getFromCache(any(), any()))
+        lenient().when(indicatorBatchLoader.getFromCache(any(), any()))
             .thenAnswer(invocation -> {
                 Map<UUID, BehavioralIndicator> cache = invocation.getArgument(0);
                 UUID id = invocation.getArgument(1);
@@ -270,7 +270,7 @@ class TeamFitScoringStrategyTest {
             });
 
         // Set up score normalizer to delegate to real normalization logic
-        when(scoreNormalizer.normalize(any(TestAnswer.class)))
+        lenient().when(scoreNormalizer.normalize(any(TestAnswer.class)))
             .thenAnswer(invocation -> {
                 TestAnswer answer = invocation.getArgument(0);
                 if (answer == null || Boolean.TRUE.equals(answer.getIsSkipped())) {
