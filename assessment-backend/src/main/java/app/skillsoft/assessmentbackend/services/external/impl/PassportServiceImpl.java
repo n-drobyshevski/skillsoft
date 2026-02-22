@@ -1,6 +1,11 @@
 package app.skillsoft.assessmentbackend.services.external.impl;
 
 import app.skillsoft.assessmentbackend.config.CacheConfig;
+import app.skillsoft.assessmentbackend.config.PassportProperties;
+import app.skillsoft.assessmentbackend.domain.entities.CompetencyPassportEntity;
+import app.skillsoft.assessmentbackend.domain.entities.User;
+import app.skillsoft.assessmentbackend.repository.CompetencyPassportRepository;
+import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -8,34 +13,42 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
- * Mock implementation of PassportService for development and testing.
+ * Database-backed implementation of PassportService.
  *
- * In production, this would integrate with a persistent storage system
- * for candidate competency passports.
+ * Persists Competency Passport data in PostgreSQL via {@link CompetencyPassportEntity},
+ * replacing the previous in-memory ConcurrentHashMap mock.
  *
- * Resilience patterns applied:
+ * Resilience patterns preserved:
  * - Circuit Breaker: Opens after 50% failure rate over 10 calls, stays open 30s
  * - Retry: Up to 3 attempts with 500ms wait for transient failures
  * - Caching: L1 cache with Caffeine for frequently accessed passports
  */
 @Service
 @Slf4j
+@Transactional(readOnly = true)
 public class PassportServiceImpl implements PassportService {
 
-    // In-memory storage for mock passports (keyed by candidateId UUID)
-    private final Map<UUID, CompetencyPassport> passportStore = new ConcurrentHashMap<>();
+    private final CompetencyPassportRepository passportRepository;
+    private final UserRepository userRepository;
+    private final PassportProperties passportProperties;
 
-    // Mapping from Clerk User ID to internal candidate UUID
-    // In production, this would be handled by a UserProfile service/repository
-    private final Map<String, UUID> clerkUserIdToCandidateId = new ConcurrentHashMap<>();
+    public PassportServiceImpl(CompetencyPassportRepository passportRepository,
+                               UserRepository userRepository,
+                               PassportProperties passportProperties) {
+        this.passportRepository = passportRepository;
+        this.userRepository = userRepository;
+        this.passportProperties = passportProperties;
+    }
 
     @Override
     @CircuitBreaker(name = "passportService", fallbackMethod = "getPassportFallback")
@@ -47,14 +60,13 @@ public class PassportServiceImpl implements PassportService {
     )
     public Optional<CompetencyPassport> getPassport(UUID candidateId) {
         log.debug("Fetching passport for candidate: {} (cache miss)", candidateId);
-        return Optional.ofNullable(passportStore.get(candidateId))
-            .filter(CompetencyPassport::isValid);
+
+        return userRepository.findById(candidateId)
+            .map(User::getClerkId)
+            .flatMap(this::findValidPassportEntity)
+            .map(entity -> toRecord(entity, candidateId));
     }
 
-    /**
-     * Fallback method for getPassport when circuit breaker is open or external call fails.
-     * Returns empty Optional to signal unavailability.
-     */
     private Optional<CompetencyPassport> getPassportFallback(UUID candidateId, Exception e) {
         log.warn("Passport service unavailable for candidate {}: {}", candidateId, e.getMessage());
         return Optional.empty();
@@ -64,14 +76,13 @@ public class PassportServiceImpl implements PassportService {
     @CircuitBreaker(name = "passportService", fallbackMethod = "getCompetencyScoreFallback")
     @Retry(name = "externalServices")
     public Optional<Double> getCompetencyScore(UUID candidateId, UUID competencyId) {
-        return getPassportInternal(candidateId)
-            .map(passport -> passport.competencyScores().get(competencyId));
+        // Direct entity lookup to avoid self-invocation through proxy (cache bypass issue)
+        return userRepository.findById(candidateId)
+            .map(User::getClerkId)
+            .flatMap(this::findValidPassportEntity)
+            .map(entity -> entity.getCompetencyScores().get(competencyId.toString()));
     }
 
-    /**
-     * Fallback method for getCompetencyScore when circuit breaker is open or call fails.
-     * Returns empty Optional to signal unavailability.
-     */
     private Optional<Double> getCompetencyScoreFallback(UUID candidateId, UUID competencyId, Exception e) {
         log.warn("Passport competency score unavailable for candidate {} / competency {}: {}",
                  candidateId, competencyId, e.getMessage());
@@ -82,13 +93,12 @@ public class PassportServiceImpl implements PassportService {
     @CircuitBreaker(name = "passportService", fallbackMethod = "hasValidPassportFallback")
     @Retry(name = "externalServices")
     public boolean hasValidPassport(UUID candidateId) {
-        return getPassportInternal(candidateId).isPresent();
+        return userRepository.findById(candidateId)
+            .map(User::getClerkId)
+            .map(clerkId -> passportRepository.existsValidByClerkUserId(clerkId, LocalDateTime.now()))
+            .orElse(false);
     }
 
-    /**
-     * Fallback method for hasValidPassport when circuit breaker is open or call fails.
-     * Returns false to signal unable to validate.
-     */
     private boolean hasValidPassportFallback(UUID candidateId, Exception e) {
         log.warn("Passport validation unavailable for candidate {}: {}", candidateId, e.getMessage());
         return false;
@@ -110,20 +120,16 @@ public class PassportServiceImpl implements PassportService {
 
         log.debug("Fetching passport for clerkUserId: {} (cache miss)", clerkUserId);
 
-        // Look up the internal candidate ID from the Clerk User ID mapping
-        UUID candidateId = clerkUserIdToCandidateId.get(clerkUserId);
-        if (candidateId == null) {
-            log.debug("No candidate ID mapping found for clerkUserId: {}", clerkUserId);
-            return Optional.empty();
-        }
-
-        return getPassportInternal(candidateId);
+        return findValidPassportEntity(clerkUserId)
+            .map(entity -> {
+                // Resolve internal UUID from User entity for the record
+                UUID candidateId = userRepository.findByClerkId(clerkUserId)
+                    .map(User::getId)
+                    .orElse(null);
+                return toRecord(entity, candidateId);
+            });
     }
 
-    /**
-     * Fallback method for getPassportByClerkUserId when circuit breaker is open or call fails.
-     * Returns empty Optional to signal unavailability.
-     */
     private Optional<CompetencyPassport> getPassportByClerkUserIdFallback(String clerkUserId, Exception e) {
         log.warn("Passport service unavailable for Clerk user {}: {}", clerkUserId, e.getMessage());
         return Optional.empty();
@@ -133,108 +139,116 @@ public class PassportServiceImpl implements PassportService {
     @CircuitBreaker(name = "passportService", fallbackMethod = "hasValidPassportByClerkUserIdFallback")
     @Retry(name = "externalServices")
     public boolean hasValidPassportByClerkUserId(String clerkUserId) {
-        return getPassportByClerkUserIdInternal(clerkUserId).isPresent();
+        if (clerkUserId == null || clerkUserId.isBlank()) {
+            return false;
+        }
+        return passportRepository.existsValidByClerkUserId(clerkUserId, LocalDateTime.now());
     }
 
-    /**
-     * Fallback method for hasValidPassportByClerkUserId when circuit breaker is open or call fails.
-     * Returns false to signal unable to validate.
-     */
     private boolean hasValidPassportByClerkUserIdFallback(String clerkUserId, Exception e) {
         log.warn("Passport validation unavailable for Clerk user {}: {}", clerkUserId, e.getMessage());
         return false;
     }
 
     @Override
+    @Transactional
     @CacheEvict(value = CacheConfig.PASSPORT_SCORES_CACHE, key = "#passport.candidateId()")
     public void savePassport(CompetencyPassport passport) {
         log.debug("Saving passport for candidate: {} (cache evicted)", passport.candidateId());
-        passportStore.put(passport.candidateId(), passport);
-    }
 
-    /**
-     * Invalidate the cached passport when candidate data changes.
-     *
-     * @param candidateId The candidate ID to evict from cache
-     */
-    @CacheEvict(value = CacheConfig.PASSPORT_SCORES_CACHE, key = "#candidateId")
-    public void invalidatePassportCache(UUID candidateId) {
-        log.debug("Invalidating passport cache for candidate: {}", candidateId);
-    }
+        // Resolve clerkUserId from candidateId (internal UUID -> Clerk ID)
+        String clerkUserId = userRepository.findById(passport.candidateId())
+            .map(User::getClerkId)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "No User found for candidateId: " + passport.candidateId()));
 
-    /**
-     * Internal passport lookup without circuit breaker (to avoid double-wrapping).
-     * Used by other methods that already have circuit breaker protection.
-     */
-    private Optional<CompetencyPassport> getPassportInternal(UUID candidateId) {
-        return Optional.ofNullable(passportStore.get(candidateId))
-            .filter(CompetencyPassport::isValid);
-    }
-
-    /**
-     * Internal passport lookup by Clerk user ID without circuit breaker.
-     * Used by other methods that already have circuit breaker protection.
-     */
-    private Optional<CompetencyPassport> getPassportByClerkUserIdInternal(String clerkUserId) {
-        if (clerkUserId == null || clerkUserId.isBlank()) {
-            return Optional.empty();
-        }
-        UUID candidateId = clerkUserIdToCandidateId.get(clerkUserId);
-        if (candidateId == null) {
-            return Optional.empty();
-        }
-        return getPassportInternal(candidateId);
-    }
-
-    /**
-     * Create a demo passport for testing purposes.
-     *
-     * @param candidateId The candidate ID
-     * @param competencyScores Map of competency IDs to scores
-     * @return The created passport
-     */
-    public CompetencyPassport createDemoPassport(UUID candidateId, Map<UUID, Double> competencyScores) {
-        CompetencyPassport passport = new CompetencyPassport(
-            candidateId,
-            competencyScores,
-            Map.of(
-                "OPENNESS", 3.5,
-                "CONSCIENTIOUSNESS", 4.0,
-                "EXTRAVERSION", 3.2,
-                "AGREEABLENESS", 3.8,
-                "NEUROTICISM", 2.5
-            ),
-            LocalDateTime.now(),
-            true
+        savePassportForClerkUser(
+            clerkUserId,
+            passport.competencyScores(),
+            passport.bigFiveProfile(),
+            null // no source result ID when saving via interface method
         );
-        savePassport(passport);
-        return passport;
     }
 
     /**
-     * Create a demo passport for testing purposes with Clerk User ID mapping.
-     * This allows testing the Delta Testing flow end-to-end.
+     * Save or update a passport directly by Clerk user ID.
+     * Used by {@link app.skillsoft.assessmentbackend.events.listeners.PassportUpdateListener}
+     * for event-driven auto-creation from scoring results.
      *
-     * @param clerkUserId The Clerk user ID to map
-     * @param competencyScores Map of competency IDs to scores
-     * @return The created passport
+     * @param clerkUserId   the Clerk user ID
+     * @param scores        competency UUID to score (1.0–5.0) mapping
+     * @param bigFive       Big Five personality profile (may be null)
+     * @param sourceResultId the TestResult ID that produced these scores (may be null)
      */
-    public CompetencyPassport createDemoPassportWithClerkId(String clerkUserId, Map<UUID, Double> competencyScores) {
-        UUID candidateId = UUID.randomUUID();
-        clerkUserIdToCandidateId.put(clerkUserId, candidateId);
-        log.debug("Mapped clerkUserId {} to candidateId {}", clerkUserId, candidateId);
-        return createDemoPassport(candidateId, competencyScores);
+    @Transactional
+    @CacheEvict(value = CacheConfig.PASSPORT_SCORES_CACHE, key = "'clerk:' + #clerkUserId")
+    public void savePassportForClerkUser(String clerkUserId,
+                                         Map<UUID, Double> scores,
+                                         Map<String, Double> bigFive,
+                                         UUID sourceResultId) {
+        log.debug("Saving passport for clerkUserId: {}", clerkUserId);
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plusDays(passportProperties.getValidityDays());
+
+        // Convert UUID keys to String keys for JSONB storage
+        Map<String, Double> stringKeyedScores = scores.entrySet().stream()
+            .collect(Collectors.toMap(
+                e -> e.getKey().toString(),
+                Map.Entry::getValue
+            ));
+
+        // Upsert: find existing or create new
+        CompetencyPassportEntity entity = passportRepository.findByClerkUserId(clerkUserId)
+            .orElseGet(() -> {
+                CompetencyPassportEntity newEntity = new CompetencyPassportEntity();
+                newEntity.setClerkUserId(clerkUserId);
+                return newEntity;
+            });
+
+        entity.setCompetencyScores(stringKeyedScores);
+        entity.setBigFiveProfile(bigFive);
+        entity.setLastAssessed(now);
+        entity.setExpiresAt(expiresAt);
+        entity.setSourceResultId(sourceResultId);
+
+        passportRepository.save(entity);
+
+        log.info("Passport saved for clerkUserId={}, expiresAt={}, competencies={}",
+                clerkUserId, expiresAt, stringKeyedScores.size());
+    }
+
+    // ---- Internal helpers ----
+
+    /**
+     * Find a valid (non-expired) passport entity by Clerk user ID.
+     * Private helper to avoid Spring AOP self-invocation issues.
+     */
+    private Optional<CompetencyPassportEntity> findValidPassportEntity(String clerkUserId) {
+        return passportRepository.findValidByClerkUserId(clerkUserId, LocalDateTime.now());
     }
 
     /**
-     * Register a mapping between Clerk User ID and internal candidate UUID.
-     * In production, this would be handled by a UserProfile service.
+     * Convert a JPA entity to the public interface record.
      *
-     * @param clerkUserId The Clerk user ID
-     * @param candidateId The internal candidate UUID
+     * @param entity      the persisted passport entity
+     * @param candidateId the internal User UUID (may be null if unresolvable)
+     * @return the public CompetencyPassport record
      */
-    public void registerClerkUserMapping(String clerkUserId, UUID candidateId) {
-        clerkUserIdToCandidateId.put(clerkUserId, candidateId);
-        log.debug("Registered mapping: clerkUserId {} -> candidateId {}", clerkUserId, candidateId);
+    private CompetencyPassport toRecord(CompetencyPassportEntity entity, UUID candidateId) {
+        // Convert String keys back to UUID keys
+        Map<UUID, Double> uuidKeyedScores = entity.getCompetencyScores().entrySet().stream()
+            .collect(Collectors.toMap(
+                e -> UUID.fromString(e.getKey()),
+                Map.Entry::getValue
+            ));
+
+        return new CompetencyPassport(
+            candidateId,
+            uuidKeyedScores,
+            entity.getBigFiveProfile() != null ? entity.getBigFiveProfile() : new HashMap<>(),
+            entity.getLastAssessed(),
+            entity.isValid()
+        );
     }
 }
