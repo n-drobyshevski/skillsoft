@@ -4,14 +4,19 @@ import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto;
 import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto.CompetencyStatsDto;
 import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto.IndicatorStatsDto;
 import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto.QuestionStatsDto;
+import app.skillsoft.assessmentbackend.domain.dto.stats.NavigationBadgeCountsDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.repository.ItemStatisticsRepository;
+import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
+import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.EntityStatsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,15 +29,24 @@ public class EntityStatsServiceImpl implements EntityStatsService {
     private final CompetencyRepository competencyRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
     private final AssessmentQuestionRepository questionRepository;
+    private final TestSessionRepository testSessionRepository;
+    private final ItemStatisticsRepository itemStatisticsRepository;
+    private final UserRepository userRepository;
 
     public EntityStatsServiceImpl(
             CompetencyRepository competencyRepository,
             BehavioralIndicatorRepository indicatorRepository,
-            AssessmentQuestionRepository questionRepository
+            AssessmentQuestionRepository questionRepository,
+            TestSessionRepository testSessionRepository,
+            ItemStatisticsRepository itemStatisticsRepository,
+            UserRepository userRepository
     ) {
         this.competencyRepository = competencyRepository;
         this.indicatorRepository = indicatorRepository;
         this.questionRepository = questionRepository;
+        this.testSessionRepository = testSessionRepository;
+        this.itemStatisticsRepository = itemStatisticsRepository;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -109,6 +123,28 @@ public class EntityStatsServiceImpl implements EntityStatsService {
         }
 
         return new QuestionStatsDto(total, active, withActiveIndicators, hardQuestions, avgTimeLimit, byDifficulty, byQuestionType);
+    }
+
+    @Override
+    public NavigationBadgeCountsDto getNavigationBadgeCounts(String clerkUserId) {
+        long inProgressTests = (clerkUserId != null && !clerkUserId.isBlank())
+                ? testSessionRepository.countByClerkUserIdAndStatus(clerkUserId, SessionStatus.IN_PROGRESS)
+                : 0L;
+
+        long pendingCompetencies = competencyRepository.countByApprovalStatus(ApprovalStatus.PENDING_REVIEW);
+
+        long flaggedItems = itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.FLAGGED_FOR_REVIEW);
+
+        long newUsers = userRepository.countByCreatedAtAfterAndIsActiveTrue(
+                LocalDateTime.now().minusDays(7));
+
+        return new NavigationBadgeCountsDto(
+                inProgressTests,
+                0L,
+                pendingCompetencies,
+                flaggedItems,
+                newUsers
+        );
     }
 
     private static double round1(double value) {

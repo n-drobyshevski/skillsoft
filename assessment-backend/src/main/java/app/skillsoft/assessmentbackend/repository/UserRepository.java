@@ -62,6 +62,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     List<User> findByCreatedAtAfter(LocalDateTime date);
 
     /**
+     * Count active users created after a specific date.
+     * Used for "new users" navigation badge (rolling 7-day window).
+     */
+    long countByCreatedAtAfterAndIsActiveTrue(LocalDateTime date);
+
+    /**
      * Find users who haven't logged in since a specific date.
      */
     List<User> findByLastLoginBeforeOrLastLoginIsNull(LocalDateTime date);

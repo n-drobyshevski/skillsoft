@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.repository;
 
+import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -33,6 +34,8 @@ public interface CompetencyRepository extends JpaRepository<Competency, UUID> {
     List<Competency> findByBigFiveTrait(@Param("trait") String trait);
 
     long countByIsActiveTrue();
+
+    long countByApprovalStatus(ApprovalStatus status);
 
     @Query("SELECT c.category, COUNT(c) FROM Competency c GROUP BY c.category")
     List<Object[]> countByCategory();
