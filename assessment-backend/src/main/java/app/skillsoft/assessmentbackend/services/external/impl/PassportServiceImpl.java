@@ -151,6 +151,32 @@ public class PassportServiceImpl implements PassportService {
     }
 
     @Override
+    @CircuitBreaker(name = "passportService", fallbackMethod = "getPassportDetailsByClerkUserIdFallback")
+    @Retry(name = "externalServices")
+    public Optional<PassportDetails> getPassportDetailsByClerkUserId(String clerkUserId) {
+        if (clerkUserId == null || clerkUserId.isBlank()) {
+            log.debug("Attempted to fetch passport details with null/blank clerkUserId");
+            return Optional.empty();
+        }
+
+        log.debug("Fetching passport details for clerkUserId: {}", clerkUserId);
+
+        return findValidPassportEntity(clerkUserId)
+            .map(entity -> {
+                UUID candidateId = userRepository.findByClerkId(clerkUserId)
+                    .map(User::getId)
+                    .orElse(null);
+                CompetencyPassport passport = toRecord(entity, candidateId);
+                return new PassportDetails(entity.getId(), passport, clerkUserId, entity.getExpiresAt());
+            });
+    }
+
+    private Optional<PassportDetails> getPassportDetailsByClerkUserIdFallback(String clerkUserId, Exception e) {
+        log.warn("Passport details unavailable for Clerk user {}: {}", clerkUserId, e.getMessage());
+        return Optional.empty();
+    }
+
+    @Override
     @Transactional
     @CacheEvict(value = CacheConfig.PASSPORT_SCORES_CACHE, key = "#passport.candidateId()")
     public void savePassport(CompetencyPassport passport) {
