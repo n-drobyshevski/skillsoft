@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.repository;
 
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import app.skillsoft.assessmentbackend.domain.entities.QuestionType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -206,4 +207,23 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
         WHERE bi.competency_id = :competencyId
         """, nativeQuery = true)
     Object[] getQuestionAvailabilityDiagnostics(@Param("competencyId") UUID competencyId);
+
+    long countByIsActiveTrue();
+
+    @Query("""
+        SELECT COUNT(q) FROM AssessmentQuestion q
+        JOIN q.behavioralIndicator bi
+        WHERE q.isActive = true AND bi.isActive = true
+        """)
+    long countWithActiveIndicators();
+
+    long countByDifficultyLevel(DifficultyLevel difficultyLevel);
+
+    @Query("SELECT COUNT(q) FROM AssessmentQuestion q WHERE q.isActive = true AND q.difficultyLevel IN :levels")
+    long countByDifficultyLevelIn(@Param("levels") List<DifficultyLevel> levels);
+
+    long countByQuestionType(QuestionType questionType);
+
+    @Query("SELECT COALESCE(AVG(q.timeLimit), 0) FROM AssessmentQuestion q WHERE q.isActive = true AND q.timeLimit IS NOT NULL")
+    double averageTimeLimit();
 }

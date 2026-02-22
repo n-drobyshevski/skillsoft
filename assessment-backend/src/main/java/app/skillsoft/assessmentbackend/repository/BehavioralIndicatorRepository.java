@@ -13,6 +13,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import app.skillsoft.assessmentbackend.domain.entities.IndicatorMeasurementType;
+
 @Repository
 public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralIndicator, UUID> {
 
@@ -50,4 +52,31 @@ public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralI
          * @return List of indicators matching the specified scope
          */
         public List<BehavioralIndicator> findByContextScope(ContextScope contextScope);
+
+        long countByIsActiveTrue();
+
+        long countByContextScope(ContextScope contextScope);
+
+        @Query("""
+            SELECT COUNT(DISTINCT bi) FROM BehavioralIndicator bi
+            JOIN AssessmentQuestion q ON q.behavioralIndicator = bi
+            WHERE q.isActive = true
+            """)
+        long countWithActiveQuestions();
+
+        @Query("SELECT COUNT(bi) FROM BehavioralIndicator bi WHERE bi.measurementType IN :types")
+        long countByMeasurementTypeIn(@Param("types") List<IndicatorMeasurementType> types);
+
+        @Query("""
+            SELECT COALESCE(AVG(
+                CASE bi.observabilityLevel
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.DIRECTLY_OBSERVABLE THEN 1.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.PARTIALLY_OBSERVABLE THEN 2.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.INFERRED THEN 3.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.SELF_REPORTED THEN 4.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.REQUIRES_DOCUMENTATION THEN 5.0
+                END
+            ), 0) FROM BehavioralIndicator bi WHERE bi.isActive = true
+            """)
+        double averageObservabilityComplexity();
 }

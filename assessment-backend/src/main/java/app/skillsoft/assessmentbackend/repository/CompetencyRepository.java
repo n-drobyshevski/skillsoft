@@ -31,4 +31,15 @@ public interface CompetencyRepository extends JpaRepository<Competency, UUID> {
     @Query(value = "SELECT c.* FROM competencies c WHERE c.standard_codes->'bigFiveRef'->>'trait' = :trait",
             nativeQuery = true)
     List<Competency> findByBigFiveTrait(@Param("trait") String trait);
+
+    long countByIsActiveTrue();
+
+    @Query("SELECT c.category, COUNT(c) FROM Competency c GROUP BY c.category")
+    List<Object[]> countByCategory();
+
+    @Query("SELECT COUNT(DISTINCT c) FROM Competency c JOIN c.behavioralIndicators bi")
+    long countWithIndicators();
+
+    @Query("SELECT COALESCE(AVG(bi.weight), 0) FROM BehavioralIndicator bi")
+    double averageIndicatorWeight();
 }
