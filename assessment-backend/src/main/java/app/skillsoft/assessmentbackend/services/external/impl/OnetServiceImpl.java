@@ -1,32 +1,45 @@
 package app.skillsoft.assessmentbackend.services.external.impl;
 
 import app.skillsoft.assessmentbackend.config.CacheConfig;
+import app.skillsoft.assessmentbackend.config.OnetProperties;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
+import app.skillsoft.assessmentbackend.services.external.impl.OnetApiResponses.*;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Mock implementation of OnetService for development and testing.
+ * O*NET Service implementation with real API integration and mock fallback.
  *
- * In production, this would integrate with the actual O*NET Web Services API
- * or a locally cached O*NET database.
+ * <p>When {@code skillsoft.onet.enabled=true} and credentials are configured,
+ * makes real HTTP calls to the O*NET Web Services API. Otherwise, falls back
+ * to hardcoded mock data for 9 common occupations.</p>
  *
- * Resilience patterns applied:
- * - Circuit Breaker: Opens after 50% failure rate over 10 calls, stays open 30s
- * - Retry: Up to 3 attempts with 500ms wait for transient failures
- * - Caching: L1 cache with Caffeine for frequently accessed profiles
+ * <p>Resilience patterns applied:</p>
+ * <ul>
+ *   <li>Circuit Breaker: Opens after 50% failure rate over 10 calls, stays open 30s</li>
+ *   <li>Retry: Up to 3 attempts with 500ms wait for transient failures</li>
+ *   <li>Caching: L1 cache with Caffeine (24h TTL) for frequently accessed profiles</li>
+ * </ul>
  */
 @Service
 @Slf4j
 public class OnetServiceImpl implements OnetService {
 
-    // Mock data for common occupations
+    private final OnetProperties properties;
+    private final RestClient restClient;
+
+    // Mock data for common occupations (fallback when API is disabled)
     private static final Map<String, OnetProfile> MOCK_PROFILES = new HashMap<>();
 
     static {
@@ -293,6 +306,29 @@ public class OnetServiceImpl implements OnetService {
         ));
     }
 
+    public OnetServiceImpl(OnetProperties properties) {
+        this.properties = properties;
+        if (properties.isEnabled() && hasCredentials(properties)) {
+            this.restClient = RestClient.builder()
+                    .baseUrl(properties.getBaseUrl())
+                    .defaultHeader(HttpHeaders.AUTHORIZATION, basicAuth(properties))
+                    .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                    .build();
+            log.info("O*NET API integration enabled (base URL: {})", properties.getBaseUrl());
+        } else {
+            this.restClient = null;
+            log.info("O*NET API integration disabled — using mock data");
+        }
+    }
+
+    /**
+     * Package-private constructor for testing with an injected RestClient.
+     */
+    OnetServiceImpl(OnetProperties properties, RestClient restClient) {
+        this.properties = properties;
+        this.restClient = restClient;
+    }
+
     @Override
     @CircuitBreaker(name = "onetService", fallbackMethod = "getProfileFallback")
     @Retry(name = "externalServices")
@@ -303,13 +339,14 @@ public class OnetServiceImpl implements OnetService {
     )
     public Optional<OnetProfile> getProfile(String socCode) {
         log.debug("Fetching O*NET profile for SOC code: {} (cache miss)", socCode);
-        return Optional.ofNullable(MOCK_PROFILES.get(socCode));
+
+        if (!isApiEnabled()) {
+            return Optional.ofNullable(MOCK_PROFILES.get(socCode));
+        }
+
+        return fetchProfileFromApi(socCode);
     }
 
-    /**
-     * Fallback method for getProfile when circuit breaker is open or external call fails.
-     * Returns empty Optional to signal unavailability.
-     */
     private Optional<OnetProfile> getProfileFallback(String socCode, Exception e) {
         log.warn("O*NET service unavailable for SOC code {}: {}", socCode, e.getMessage());
         return Optional.empty();
@@ -321,7 +358,6 @@ public class OnetServiceImpl implements OnetService {
     public Optional<Double> getBenchmark(String socCode, String competencyName) {
         return getProfileInternal(socCode)
             .flatMap(profile -> {
-                // Check all categories for the competency
                 Double benchmark = profile.benchmarks().get(competencyName);
                 if (benchmark != null) return Optional.of(benchmark);
 
@@ -336,10 +372,6 @@ public class OnetServiceImpl implements OnetService {
             });
     }
 
-    /**
-     * Fallback method for getBenchmark when circuit breaker is open or external call fails.
-     * Returns empty Optional to signal unavailability.
-     */
     private Optional<Double> getBenchmarkFallback(String socCode, String competencyName, Exception e) {
         log.warn("O*NET benchmark unavailable for SOC code {} / competency {}: {}",
                  socCode, competencyName, e.getMessage());
@@ -350,13 +382,9 @@ public class OnetServiceImpl implements OnetService {
     @CircuitBreaker(name = "onetService", fallbackMethod = "isValidSocCodeFallback")
     @Retry(name = "externalServices")
     public boolean isValidSocCode(String socCode) {
-        return MOCK_PROFILES.containsKey(socCode);
+        return getProfileInternal(socCode).isPresent();
     }
 
-    /**
-     * Fallback method for isValidSocCode when circuit breaker is open or external call fails.
-     * Returns false to signal unable to validate.
-     */
     private boolean isValidSocCodeFallback(String socCode, Exception e) {
         log.warn("O*NET SOC code validation unavailable for {}: {}", socCode, e.getMessage());
         return false;
@@ -372,6 +400,105 @@ public class OnetServiceImpl implements OnetService {
         if (keyword == null || keyword.isBlank()) {
             return List.of();
         }
+
+        if (!isApiEnabled()) {
+            return searchMockProfiles(keyword);
+        }
+
+        return searchFromApi(keyword);
+    }
+
+    // ===== API Methods =====
+
+    private Optional<OnetProfile> fetchProfileFromApi(String socCode) {
+        // 1. Fetch occupation details
+        OccupationWrapper wrapper = restClient.get()
+                .uri("/online/occupations/{socCode}", socCode)
+                .retrieve()
+                .body(OccupationWrapper.class);
+
+        if (wrapper == null || wrapper.occupation() == null) {
+            return Optional.empty();
+        }
+
+        OccupationDetail detail = wrapper.occupation();
+
+        // 2. Fetch skills
+        Map<String, Double> skills = fetchCategoryScores(
+                "/online/occupations/{socCode}/summary/skills", socCode);
+
+        // 3. Fetch abilities
+        Map<String, Double> abilities = fetchCategoryScores(
+                "/online/occupations/{socCode}/summary/abilities", socCode);
+
+        // 4. Fetch knowledge areas
+        Map<String, Double> knowledgeAreas = fetchCategoryScores(
+                "/online/occupations/{socCode}/summary/knowledge", socCode);
+
+        // Benchmarks = merged skills + abilities (matching mock data structure)
+        Map<String, Double> benchmarks = new LinkedHashMap<>(skills);
+        benchmarks.putAll(abilities);
+
+        return Optional.of(new OnetProfile(
+                detail.code(),
+                detail.title(),
+                detail.description(),
+                Collections.unmodifiableMap(benchmarks),
+                Collections.unmodifiableMap(knowledgeAreas),
+                Collections.unmodifiableMap(skills),
+                Collections.unmodifiableMap(abilities)
+        ));
+    }
+
+    private Map<String, Double> fetchCategoryScores(String uriTemplate, String socCode) {
+        CategoryResponse response = restClient.get()
+                .uri(uriTemplate, socCode)
+                .retrieve()
+                .body(CategoryResponse.class);
+
+        if (response == null || response.element() == null) {
+            return Map.of();
+        }
+
+        return convertScores(response.element());
+    }
+
+    private List<OnetProfile> searchFromApi(String keyword) {
+        try {
+            SearchResponse response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/online/search")
+                            .queryParam("keyword", keyword)
+                            .queryParam("end", 10)
+                            .build())
+                    .retrieve()
+                    .body(SearchResponse.class);
+
+            if (response == null || response.occupation() == null) {
+                return List.of();
+            }
+
+            return response.occupation().stream()
+                    .map(occ -> new OnetProfile(
+                            occ.code(),
+                            occ.title(),
+                            "",
+                            Map.of(),
+                            Map.of(),
+                            Map.of(),
+                            Map.of()
+                    ))
+                    .collect(Collectors.toList());
+        } catch (RestClientException e) {
+            log.warn("O*NET search API failed for keyword '{}', falling back to mock: {}",
+                     keyword, e.getMessage());
+            return searchMockProfiles(keyword);
+        }
+    }
+
+    // ===== Mock Methods =====
+
+    private List<OnetProfile> searchMockProfiles(String keyword) {
         String lowerKeyword = keyword.toLowerCase();
         return MOCK_PROFILES.values().stream()
             .filter(p -> p.socCode().toLowerCase().startsWith(lowerKeyword)
@@ -382,10 +509,45 @@ public class OnetServiceImpl implements OnetService {
     }
 
     /**
-     * Internal profile lookup without circuit breaker (to avoid double-wrapping).
-     * Used by other methods that already have circuit breaker protection.
+     * Internal profile lookup without circuit breaker (avoids double-wrapping).
      */
     private Optional<OnetProfile> getProfileInternal(String socCode) {
-        return Optional.ofNullable(MOCK_PROFILES.get(socCode));
+        if (!isApiEnabled()) {
+            return Optional.ofNullable(MOCK_PROFILES.get(socCode));
+        }
+        return fetchProfileFromApi(socCode);
+    }
+
+    // ===== Helpers =====
+
+    private boolean isApiEnabled() {
+        return properties.isEnabled() && restClient != null;
+    }
+
+    /**
+     * Convert O*NET element scores to a name→score map.
+     * Only uses "LV" (Level) scale scores, converts from 0-100 to 1-5 scale.
+     */
+    private Map<String, Double> convertScores(List<ElementScore> elements) {
+        Map<String, Double> result = new LinkedHashMap<>();
+        for (ElementScore element : elements) {
+            if (element.score() != null && "LV".equals(element.score().scaleId())) {
+                double converted = (element.score().value() / 100.0) * 5.0;
+                double clamped = Math.max(1.0, Math.min(5.0, converted));
+                result.put(element.name(), clamped);
+            }
+        }
+        return result;
+    }
+
+    private static boolean hasCredentials(OnetProperties props) {
+        return props.getUsername() != null && !props.getUsername().isBlank()
+                && props.getApiKey() != null && !props.getApiKey().isBlank();
+    }
+
+    private static String basicAuth(OnetProperties props) {
+        String credentials = props.getUsername() + ":" + props.getApiKey();
+        return "Basic " + Base64.getEncoder().encodeToString(
+                credentials.getBytes(StandardCharsets.UTF_8));
     }
 }
