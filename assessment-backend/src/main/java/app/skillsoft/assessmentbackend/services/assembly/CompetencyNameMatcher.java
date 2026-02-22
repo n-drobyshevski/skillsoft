@@ -143,13 +143,14 @@ public final class CompetencyNameMatcher {
     /**
      * Normalize a competency name for matching.
      * Converts to lowercase and strips all punctuation characters.
+     * Supports Unicode letters (Latin, Cyrillic, etc.) via {@code \\p{L}}.
      *
      * @param name The name to normalize
      * @return Normalized name
      */
     static String normalize(String name) {
         return name.toLowerCase()
-                .replaceAll("[^a-z0-9\\s]", "")
+                .replaceAll("[^\\p{L}\\p{N}\\s]", "")
                 .trim();
     }
 

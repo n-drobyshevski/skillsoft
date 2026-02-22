@@ -45,16 +45,18 @@ public class OnetServiceImpl implements OnetService {
 
     static {
         // Software Developer profile
+        // Benchmarks use O*NET Work Style names that resolve to internal competencies
+        // via standardCodes.onetRef.title in the competency lookup chain.
         MOCK_PROFILES.put("15-1252.00", new OnetProfile(
             "15-1252.00",
             "Software Developers",
             "Research, design, and develop computer and network software or specialized utility programs.",
             Map.of(
-                "Critical Thinking", 4.25,
-                "Complex Problem Solving", 4.12,
-                "Programming", 4.50,
-                "Systems Analysis", 3.88,
-                "Quality Control Analysis", 3.62
+                "Analytical Thinking", 4.25,
+                "Innovation", 4.12,
+                "Initiative", 3.88,
+                "Dependability", 3.75,
+                "Cooperation", 3.62
             ),
             Map.of(
                 "Computers and Electronics", 4.50,
@@ -80,10 +82,10 @@ public class OnetServiceImpl implements OnetService {
             "Plan, direct, or coordinate operations of organizations.",
             Map.of(
                 "Leadership", 4.25,
-                "Critical Thinking", 4.00,
-                "Coordination", 4.12,
-                "Time Management", 4.00,
-                "Decision Making", 4.25
+                "Analytical Thinking", 4.00,
+                "Cooperation", 4.12,
+                "Initiative", 4.00,
+                "Dependability", 4.25
             ),
             Map.of(
                 "Administration and Management", 4.25,
@@ -108,10 +110,10 @@ public class OnetServiceImpl implements OnetService {
             "Develop and implement methods for collecting, processing, and analyzing data.",
             Map.of(
                 "Analytical Thinking", 4.50,
-                "Statistical Analysis", 4.25,
-                "Machine Learning", 4.00,
-                "Data Visualization", 3.88,
-                "Critical Thinking", 4.25
+                "Innovation", 4.25,
+                "Initiative", 4.00,
+                "Adaptability/Flexibility", 3.88,
+                "Dependability", 3.75
             ),
             Map.of(
                 "Mathematics", 4.50,
@@ -136,12 +138,12 @@ public class OnetServiceImpl implements OnetService {
             "Registered Nurses",
             "Assess patient health problems and needs, develop and implement nursing care plans, and maintain medical records.",
             Map.of(
-                "Critical Thinking", 4.12,
-                "Active Listening", 4.25,
-                "Social Perceptiveness", 4.00,
-                "Service Orientation", 4.12,
-                "Coordination", 3.75,
-                "Monitoring", 4.00
+                "Cooperation", 4.25,
+                "Social Orientation", 4.12,
+                "Self-Control", 4.00,
+                "Stress Tolerance", 4.12,
+                "Dependability", 4.00,
+                "Analytical Thinking", 3.75
             ),
             Map.of(
                 "Medicine and Dentistry", 4.25,
@@ -167,10 +169,10 @@ public class OnetServiceImpl implements OnetService {
             "Examine, analyze, and interpret accounting records to prepare financial statements and ensure compliance.",
             Map.of(
                 "Analytical Thinking", 4.25,
-                "Attention to Detail", 4.50,
-                "Critical Thinking", 3.88,
-                "Mathematical Reasoning", 4.00,
-                "Integrity", 4.25
+                "Dependability", 4.50,
+                "Self-Control", 3.88,
+                "Initiative", 4.00,
+                "Cooperation", 3.75
             ),
             Map.of(
                 "Economics and Accounting", 4.50,
@@ -195,10 +197,10 @@ public class OnetServiceImpl implements OnetService {
             "Elementary School Teachers",
             "Teach students basic academic, social, and other formative skills in public or private schools.",
             Map.of(
-                "Instructing", 4.38,
-                "Active Listening", 4.12,
-                "Social Perceptiveness", 4.00,
-                "Learning Strategies", 4.25
+                "Social Orientation", 4.38,
+                "Cooperation", 4.12,
+                "Leadership", 4.00,
+                "Adaptability/Flexibility", 4.25
             ),
             Map.of(
                 "Education and Training", 4.50,
@@ -224,11 +226,11 @@ public class OnetServiceImpl implements OnetService {
             "Plan, direct, or coordinate marketing policies and programs. Determine demand for products and services.",
             Map.of(
                 "Leadership", 4.12,
-                "Critical Thinking", 4.00,
-                "Persuasion", 4.25,
-                "Coordination", 3.88,
-                "Judgment and Decision Making", 4.12,
-                "Negotiation", 3.75
+                "Analytical Thinking", 4.00,
+                "Innovation", 4.25,
+                "Cooperation", 3.88,
+                "Initiative", 4.12,
+                "Social Orientation", 3.75
             ),
             Map.of(
                 "Sales and Marketing", 4.50,
@@ -253,11 +255,11 @@ public class OnetServiceImpl implements OnetService {
             "Web and Digital Interface Designers",
             "Design digital user interfaces or websites. Develop and test layouts, interfaces, functionality, and navigation for usability.",
             Map.of(
-                "Critical Thinking", 3.88,
-                "Complex Problem Solving", 3.75,
-                "Active Learning", 3.62,
-                "Judgment and Decision Making", 3.50,
-                "Systems Evaluation", 3.38
+                "Analytical Thinking", 3.88,
+                "Innovation", 3.75,
+                "Initiative", 3.62,
+                "Cooperation", 3.50,
+                "Adaptability/Flexibility", 3.38
             ),
             Map.of(
                 "Computers and Electronics", 4.25,
@@ -284,10 +286,10 @@ public class OnetServiceImpl implements OnetService {
             "Secretaries and Administrative Assistants",
             "Perform routine administrative functions such as drafting correspondence, scheduling, and organizing files.",
             Map.of(
-                "Attention to Detail", 4.00,
-                "Time Management", 3.88,
-                "Active Listening", 3.62,
-                "Service Orientation", 3.75
+                "Dependability", 4.00,
+                "Cooperation", 3.88,
+                "Self-Control", 3.62,
+                "Social Orientation", 3.75
             ),
             Map.of(
                 "Administrative", 4.12,

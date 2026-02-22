@@ -33,6 +33,13 @@ public interface CompetencyRepository extends JpaRepository<Competency, UUID> {
             nativeQuery = true)
     List<Competency> findByBigFiveTrait(@Param("trait") String trait);
 
+    /**
+     * Load all active competencies.
+     * Used as fallback when name-based matching fails (e.g., cross-language mismatch).
+     * Safe for small competency tables (~15-50 rows).
+     */
+    List<Competency> findByIsActiveTrue();
+
     long countByIsActiveTrue();
 
     long countByApprovalStatus(ApprovalStatus status);

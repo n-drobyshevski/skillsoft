@@ -295,14 +295,30 @@ public class JobFitAssembler implements TestAssembler {
      * Uses WEIGHTED distribution with gap magnitude as weight.
      * Larger gaps receive more questions.
      *
-     * Loads all competencies and their indicators in batch upfront to avoid N+1 queries.
+     * Loads competencies using a two-phase strategy:
+     * 1. Try name-based lookup (fast path for matching names)
+     * 2. If insufficient, fall back to ALL active competencies and match via
+     *    standardCodes fields (onetRef.title, escoRef.title) + fuzzy matching
+     *
+     * This handles cross-language scenarios where O*NET benchmark names (English)
+     * differ from internal competency names (e.g., Russian).
      */
     private List<UUID> selectQuestionsForGaps(Map<String, GapInfo> gapAnalysis, int strictnessLevel) {
-        // Batch load only benchmark-relevant competencies (scoped query instead of findAll)
         Set<String> benchmarkNames = gapAnalysis.keySet().stream()
             .map(String::toLowerCase)
             .collect(Collectors.toSet());
+
+        // Phase 1: try direct name match
         List<Competency> allCompetencies = competencyRepository.findByNameInIgnoreCase(benchmarkNames);
+
+        // Phase 2: if name match found fewer competencies than benchmarks, broaden search
+        if (allCompetencies.size() < benchmarkNames.size()) {
+            log.warn("Name-based competency lookup matched only {}/{} benchmarks. " +
+                     "Falling back to full active competency scan for cross-reference matching.",
+                allCompetencies.size(), benchmarkNames.size());
+            allCompetencies = competencyRepository.findByIsActiveTrue();
+        }
+
         Map<String, List<Competency>> competencyByName = buildCompetencyLookupMaps(allCompetencies);
 
         // Batch load indicators for all competencies at once
@@ -342,7 +358,11 @@ public class JobFitAssembler implements TestAssembler {
         }
 
         if (indicatorWeights.isEmpty()) {
-            log.warn("No indicators found for gap analysis competencies");
+            log.warn("No indicators found for ANY gap analysis competencies. " +
+                     "Benchmark names {} could not be resolved to internal competencies. " +
+                     "Available lookup keys: {}",
+                gapAnalysis.keySet(),
+                competencyByName.keySet());
             return List.of();
         }
 
@@ -400,7 +420,9 @@ public class JobFitAssembler implements TestAssembler {
     }
 
     /**
-     * Build lookup maps from competency name/O*NET code/title to competency list.
+     * Build lookup maps from competency name/O*NET code/title/ESCO title to competency list.
+     * Indexes each competency by ALL known identifiers so cross-language/cross-taxonomy
+     * matching works (e.g., English O*NET names → Russian internal names via ESCO titles).
      * Called once per assembly to avoid repeated findAll() calls.
      */
     private Map<String, List<Competency>> buildCompetencyLookupMaps(List<Competency> competencies) {
@@ -409,15 +431,25 @@ public class JobFitAssembler implements TestAssembler {
             // Index by name (case-insensitive)
             lookup.computeIfAbsent(c.getName().toLowerCase(), k -> new ArrayList<>()).add(c);
 
-            // Index by O*NET code and title
             var standardCodes = c.getStandardCodes();
-            if (standardCodes != null && standardCodes.hasOnetMapping()) {
+            if (standardCodes == null) continue;
+
+            // Index by O*NET code and title
+            if (standardCodes.hasOnetMapping()) {
                 var onetRef = standardCodes.onetRef();
                 if (onetRef.code() != null && !onetRef.code().isBlank()) {
                     lookup.computeIfAbsent(onetRef.code().toLowerCase(), k -> new ArrayList<>()).add(c);
                 }
                 if (onetRef.title() != null && !onetRef.title().isBlank()) {
                     lookup.computeIfAbsent(onetRef.title().toLowerCase(), k -> new ArrayList<>()).add(c);
+                }
+            }
+
+            // Index by ESCO title (English, often close to O*NET skill names)
+            if (standardCodes.hasEscoMapping()) {
+                var escoRef = standardCodes.escoRef();
+                if (escoRef.title() != null && !escoRef.title().isBlank()) {
+                    lookup.computeIfAbsent(escoRef.title().toLowerCase(), k -> new ArrayList<>()).add(c);
                 }
             }
         }
