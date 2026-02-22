@@ -343,7 +343,8 @@ public class OnetServiceImpl implements OnetService {
         }
         String lowerKeyword = keyword.toLowerCase();
         return MOCK_PROFILES.values().stream()
-            .filter(p -> p.occupationTitle().toLowerCase().contains(lowerKeyword)
+            .filter(p -> p.socCode().toLowerCase().startsWith(lowerKeyword)
+                      || p.occupationTitle().toLowerCase().contains(lowerKeyword)
                       || p.description().toLowerCase().contains(lowerKeyword))
             .limit(10)
             .collect(Collectors.toList());
