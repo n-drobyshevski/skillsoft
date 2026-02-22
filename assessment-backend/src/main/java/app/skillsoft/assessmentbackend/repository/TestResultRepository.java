@@ -26,6 +26,13 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
     Optional<TestResult> findBySession_Id(UUID sessionId);
 
     /**
+     * Find results by multiple session IDs (batch lookup).
+     * Used for activity tracking to avoid N+1 queries when enriching DTOs with scores.
+     */
+    @Query("SELECT r FROM TestResult r WHERE r.session.id IN :sessionIds")
+    List<TestResult> findBySessionIdIn(@Param("sessionIds") Iterable<UUID> sessionIds);
+
+    /**
      * Find result by session ID and status.
      * Used for idempotency checks to detect already-completed scoring.
      *

@@ -233,6 +233,37 @@ public class OnetServiceImpl implements OnetService {
             )
         ));
 
+        // Web and Digital Interface Designers profile
+        MOCK_PROFILES.put("15-1255.00", new OnetProfile(
+            "15-1255.00",
+            "Web and Digital Interface Designers",
+            "Design digital user interfaces or websites. Develop and test layouts, interfaces, functionality, and navigation for usability.",
+            Map.of(
+                "Critical Thinking", 3.88,
+                "Complex Problem Solving", 3.75,
+                "Active Learning", 3.62,
+                "Judgment and Decision Making", 3.50,
+                "Systems Evaluation", 3.38
+            ),
+            Map.of(
+                "Computers and Electronics", 4.25,
+                "Design", 4.50,
+                "Communications and Media", 3.88,
+                "English Language", 3.50
+            ),
+            Map.of(
+                "Programming", 4.00,
+                "Technology Design", 4.25,
+                "Operations Analysis", 3.50
+            ),
+            Map.of(
+                "Fluency of Ideas", 4.00,
+                "Originality", 3.88,
+                "Information Ordering", 3.75,
+                "Visualization", 4.12
+            )
+        ));
+
         // Secretaries and Administrative Assistants profile
         MOCK_PROFILES.put("43-6014.00", new OnetProfile(
             "43-6014.00",
@@ -268,7 +299,7 @@ public class OnetServiceImpl implements OnetService {
     @Cacheable(
         value = CacheConfig.ONET_PROFILES_CACHE,
         key = "#socCode",
-        unless = "#result == null || !#result.isPresent()"
+        unless = "#result == null"
     )
     public Optional<OnetProfile> getProfile(String socCode) {
         log.debug("Fetching O*NET profile for SOC code: {} (cache miss)", socCode);

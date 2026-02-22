@@ -72,21 +72,24 @@ public class ActivityTrackingServiceImpl implements ActivityTrackingService {
             return List.of();
         }
 
-        // Batch fetch users to avoid N+1
+        // Batch fetch users to avoid N+1 (filter out null clerkUserIds from anonymous sessions)
         Set<String> clerkUserIds = sessions.stream()
                 .map(TestSession::getClerkUserId)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<String, User> userMap = userRepository.findByClerkIdIn(clerkUserIds).stream()
-                .collect(Collectors.toMap(User::getClerkId, u -> u));
+        Map<String, User> userMap = clerkUserIds.isEmpty()
+                ? Map.of()
+                : userRepository.findByClerkIdIn(clerkUserIds).stream()
+                        .collect(Collectors.toMap(User::getClerkId, u -> u));
 
-        // Batch fetch results for completed sessions
+        // Batch fetch results for completed sessions (query by session ID, not result primary key)
         Set<UUID> sessionIds = sessions.stream()
                 .filter(s -> s.getStatus() == SessionStatus.COMPLETED)
                 .map(TestSession::getId)
                 .collect(Collectors.toSet());
         Map<UUID, TestResult> resultMap = new HashMap<>();
         if (!sessionIds.isEmpty()) {
-            resultRepository.findAllById(sessionIds).forEach(r -> {
+            resultRepository.findBySessionIdIn(sessionIds).forEach(r -> {
                 if (r.getSession() != null) {
                     resultMap.put(r.getSession().getId(), r);
                 }
@@ -119,39 +122,34 @@ public class ActivityTrackingServiceImpl implements ActivityTrackingService {
             return Page.empty();
         }
 
-        // Batch fetch users
+        // Batch fetch users (filter out null clerkUserIds from anonymous sessions)
         Set<String> clerkUserIds = sessions.stream()
                 .map(TestSession::getClerkUserId)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<String, User> userMap = userRepository.findByClerkIdIn(clerkUserIds).stream()
-                .collect(Collectors.toMap(User::getClerkId, u -> u));
+        Map<String, User> userMap = clerkUserIds.isEmpty()
+                ? Map.of()
+                : userRepository.findByClerkIdIn(clerkUserIds).stream()
+                        .collect(Collectors.toMap(User::getClerkId, u -> u));
 
-        // Batch fetch results for completed sessions
+        // Batch fetch results for completed sessions (query by session ID, not result primary key)
         Set<UUID> sessionIds = sessions.stream()
                 .filter(s -> s.getStatus() == SessionStatus.COMPLETED)
                 .map(TestSession::getId)
                 .collect(Collectors.toSet());
         Map<UUID, TestResult> resultMap = new HashMap<>();
         if (!sessionIds.isEmpty()) {
-            resultRepository.findAllById(sessionIds).forEach(r -> {
+            resultRepository.findBySessionIdIn(sessionIds).forEach(r -> {
                 if (r.getSession() != null) {
                     resultMap.put(r.getSession().getId(), r);
                 }
             });
         }
 
-        // Map to DTOs with optional passed filter
+        // Map to DTOs
         return sessions.map(session -> {
             TestResult result = resultMap.get(session.getId());
-            TestActivityDto dto = mapToActivityDto(session, userMap.get(session.getClerkUserId()), result);
-
-            // Apply passed filter if specified
-            if (params.passed() != null && result != null) {
-                if (!params.passed().equals(result.getPassed())) {
-                    return null;
-                }
-            }
-            return dto;
+            return mapToActivityDto(session, userMap.get(session.getClerkUserId()), result);
         });
     }
 
