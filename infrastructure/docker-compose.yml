@@ -1,0 +1,7 @@
+# Production Docker Compose Configuration
+# Status: Placeholder — not yet configured
+#
+# For development, use: docker-compose -f docker-compose.dev.yml up
+#
+# This file will be populated when production deployment is configured.
+# See docs/07-deployment/ for deployment documentation.
