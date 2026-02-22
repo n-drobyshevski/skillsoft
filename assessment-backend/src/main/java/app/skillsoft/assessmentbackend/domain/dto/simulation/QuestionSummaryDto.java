@@ -15,7 +15,9 @@ public record QuestionSummaryDto(
     String questionType,
     Integer timeLimitSeconds,
     boolean simulatedCorrect,
-    String simulatedAnswer
+    String simulatedAnswer,
+    String competencyName,
+    String indicatorTitle
 ) {
     /**
      * Create a summary from simulation run.
@@ -29,12 +31,15 @@ public record QuestionSummaryDto(
             String questionType,
             Integer timeLimitSeconds,
             boolean simulatedCorrect,
-            String simulatedAnswer
+            String simulatedAnswer,
+            String competencyName,
+            String indicatorTitle
     ) {
         return new QuestionSummaryDto(
             id, competencyId, behavioralIndicatorId,
             questionText, difficulty, questionType,
-            timeLimitSeconds, simulatedCorrect, simulatedAnswer
+            timeLimitSeconds, simulatedCorrect, simulatedAnswer,
+            competencyName, indicatorTitle
         );
     }
 }

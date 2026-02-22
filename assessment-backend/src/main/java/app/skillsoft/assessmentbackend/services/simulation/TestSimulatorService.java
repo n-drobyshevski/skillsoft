@@ -19,18 +19,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
  * Service for simulating test execution ("Dry Run").
- * 
+ *
  * Provides a way to verify test configuration before actual deployment:
  * - Assembles questions using the appropriate strategy
  * - Simulates candidate responses based on persona profiles
  * - Calculates estimated scores and duration
  * - Identifies inventory issues and configuration problems
- * 
+ *
  * This is a validation tool, not an actual test execution engine.
  */
 @Service
@@ -44,24 +43,13 @@ public class TestSimulatorService {
     private final InventoryHeatmapService inventoryHeatmapService;
     private final BlueprintValidationService blueprintValidationService;
 
-    /**
-     * Default time per question in seconds (for estimation).
-     */
     private static final int DEFAULT_TIME_PER_QUESTION_SECONDS = 60;
 
     /**
      * Simulate test execution with pre-validation against a full template.
-     *
-     * <p>Runs {@link BlueprintValidationService#validateForSimulation(TestTemplate)}
-     * before attempting assembly. If the blueprint fails validation, the simulation
-     * returns a failed result with the validation errors as warnings.</p>
-     *
-     * @param template The test template containing the blueprint
-     * @param profile  The simulation persona (PERFECT, RANDOM, FAILING)
-     * @return Simulation results, or a failed result if validation fails
      */
     @Transactional(readOnly = true)
-    public SimulationResultDto simulateWithValidation(TestTemplate template, SimulationProfile profile) {
+    public SimulationResultDto simulateWithValidation(TestTemplate template, SimulationProfile profile, int abilityLevel) {
         if (template == null) {
             return SimulationResultDto.failed(List.of(
                 InventoryWarning.info("Template is null")
@@ -82,27 +70,35 @@ public class TestSimulatorService {
             return SimulationResultDto.failed(warnings);
         }
 
-        // Log any non-blocking warnings
         if (validationResult.hasWarnings()) {
             log.info("Template {} has {} simulation warnings",
                     template.getId(), validationResult.warnings().size());
         }
 
-        return simulate(template.getTypedBlueprint(), profile);
+        return simulate(template.getTypedBlueprint(), profile, abilityLevel);
     }
 
     /**
-     * Simulate test execution with the given blueprint and profile.
+     * Backward-compatible overload defaulting abilityLevel to 50.
+     */
+    @Transactional(readOnly = true)
+    public SimulationResultDto simulateWithValidation(TestTemplate template, SimulationProfile profile) {
+        return simulateWithValidation(template, profile, 50);
+    }
+
+    /**
+     * Simulate test execution with the given blueprint, profile, and ability level.
      *
-     * @param blueprint The test blueprint configuration
-     * @param profile The simulation persona (PERFECT, RANDOM, FAILING)
+     * @param blueprint    The test blueprint configuration
+     * @param profile      The simulation persona (PERFECT, RANDOM, FAILING)
+     * @param abilityLevel Ability slider value (0-100); shifts the persona's response curve
      * @return Simulation results with composition, sample questions, and warnings
      */
     @Transactional(readOnly = true)
     @Cacheable(value = CacheConfig.SIMULATION_RESULTS_CACHE,
-               key = "#blueprint.toString() + '_' + #profile.name()",
+               key = "#blueprint.toString() + '_' + #profile.name() + '_' + #abilityLevel",
                condition = "#blueprint != null && #profile != null")
-    public SimulationResultDto simulate(TestBlueprintDto blueprint, SimulationProfile profile) {
+    public SimulationResultDto simulate(TestBlueprintDto blueprint, SimulationProfile profile, int abilityLevel) {
         if (blueprint == null) {
             return SimulationResultDto.failed(List.of(
                 InventoryWarning.info("Blueprint is null")
@@ -113,8 +109,8 @@ public class TestSimulatorService {
             profile = SimulationProfile.RANDOM_GUESSER;
         }
 
-        log.info("Starting simulation with profile: {} for strategy: {}",
-            profile, blueprint.getStrategy());
+        log.info("Starting simulation with profile: {}, abilityLevel: {} for strategy: {}",
+            profile, abilityLevel, blueprint.getStrategy());
 
         var warnings = new ArrayList<InventoryWarning>();
 
@@ -137,6 +133,7 @@ public class TestSimulatorService {
                 .warnings(warnings)
                 .totalQuestions(0)
                 .profile(profile)
+                .abilityLevel(abilityLevel)
                 .build();
         }
 
@@ -144,10 +141,10 @@ public class TestSimulatorService {
 
         // Step 2: Hydrate question UUIDs to entities
         var questions = hydrateQuestions(questionIds);
-        
+
         if (questions.size() < questionIds.size()) {
             warnings.add(InventoryWarning.info(
-                String.format("Only %d of %d questions could be loaded", 
+                String.format("Only %d of %d questions could be loaded",
                     questions.size(), questionIds.size())
             ));
         }
@@ -156,8 +153,8 @@ public class TestSimulatorService {
         var competencyIds = extractCompetencyIds(questions);
         checkInventoryHealth(competencyIds, warnings);
 
-        // Step 4: Run persona simulation
-        var simulationRun = runPersonaSimulation(questions, profile);
+        // Step 4: Run persona simulation with psychometric curves
+        var simulationRun = runPersonaSimulation(questions, profile, abilityLevel);
 
         // Step 5: Calculate composition and statistics
         var composition = calculateComposition(questions);
@@ -171,8 +168,8 @@ public class TestSimulatorService {
         var valid = warnings.stream()
             .noneMatch(w -> w.level() == InventoryWarning.WarningLevel.ERROR);
 
-        log.info("Simulation complete: {} questions, score: {}, duration: {} min, valid: {}, competencies: {}",
-            questions.size(), simulatedScore, estimatedDuration, valid, competencyScores.size());
+        log.info("Simulation complete: {} questions, score: {}, abilityLevel: {}, duration: {} min, valid: {}, competencies: {}",
+            questions.size(), simulatedScore, abilityLevel, estimatedDuration, valid, competencyScores.size());
 
         return SimulationResultDto.builder()
             .valid(valid)
@@ -184,12 +181,20 @@ public class TestSimulatorService {
             .totalQuestions(questions.size())
             .profile(profile)
             .competencyScores(competencyScores)
+            .abilityLevel(abilityLevel)
             .build();
     }
 
     /**
+     * Backward-compatible overload defaulting abilityLevel to 50.
+     */
+    @Transactional(readOnly = true)
+    public SimulationResultDto simulate(TestBlueprintDto blueprint, SimulationProfile profile) {
+        return simulate(blueprint, profile, 50);
+    }
+
+    /**
      * Quick validation without full simulation.
-     * Just checks if assembly would succeed and inventory is sufficient.
      */
     @Transactional(readOnly = true)
     public boolean validate(TestBlueprintDto blueprint) {
@@ -203,23 +208,16 @@ public class TestSimulatorService {
         }
     }
 
-    /**
-     * Hydrate question UUIDs to full entities.
-     */
     private List<AssessmentQuestion> hydrateQuestions(List<UUID> questionIds) {
         var questionsById = questionRepository.findAllById(questionIds).stream()
             .collect(Collectors.toMap(AssessmentQuestion::getId, q -> q));
-        
-        // Preserve order from assembly
+
         return questionIds.stream()
             .map(questionsById::get)
             .filter(Objects::nonNull)
             .toList();
     }
 
-    /**
-     * Extract unique competency IDs from questions.
-     */
     private List<UUID> extractCompetencyIds(List<AssessmentQuestion> questions) {
         return questions.stream()
             .map(q -> q.getBehavioralIndicator().getCompetency().getId())
@@ -227,18 +225,12 @@ public class TestSimulatorService {
             .toList();
     }
 
-    /**
-     * Check inventory health and add warnings for issues.
-     * Resolves actual competency names and question counts from loaded data.
-     */
     private void checkInventoryHealth(List<UUID> competencyIds, List<InventoryWarning> warnings) {
         var heatmap = inventoryHeatmapService.generateHeatmapFor(competencyIds);
 
-        // Batch-load competency names for display in warnings
         Map<UUID, String> competencyNames = competencyRepository.findAllById(competencyIds).stream()
                 .collect(Collectors.toMap(Competency::getId, Competency::getName));
 
-        // Calculate actual available question counts per competency from the detailed heatmap
         Map<UUID, Long> availableCounts = new HashMap<>();
         for (var detailEntry : heatmap.detailedCounts().entrySet()) {
             String[] parts = detailEntry.getKey().split(":");
@@ -247,12 +239,10 @@ public class TestSimulatorService {
                     UUID compId = UUID.fromString(parts[0]);
                     availableCounts.merge(compId, detailEntry.getValue(), Long::sum);
                 } catch (IllegalArgumentException ignored) {
-                    // Skip malformed keys
                 }
             }
         }
 
-        // Minimum recommended questions per competency for healthy inventory
         int recommendedPerCompetency = 5;
 
         for (var entry : heatmap.competencyHealth().entrySet()) {
@@ -262,66 +252,70 @@ public class TestSimulatorService {
 
             if (entry.getValue() == HealthStatus.CRITICAL) {
                 warnings.add(InventoryWarning.critical(
-                    compId,
-                    compName,
-                    "ALL",
-                    available,
-                    recommendedPerCompetency
+                    compId, compName, "ALL", available, recommendedPerCompetency
                 ));
             } else if (entry.getValue() == HealthStatus.MODERATE) {
                 warnings.add(InventoryWarning.moderate(
-                    compId,
-                    compName,
-                    "ALL",
-                    available,
-                    recommendedPerCompetency
+                    compId, compName, "ALL", available, recommendedPerCompetency
                 ));
             }
         }
     }
 
     /**
-     * Run persona simulation through questions.
+     * Run persona simulation using IRT-inspired psychometric response curves.
+     *
+     * <p>For each question, the probability of a correct answer is computed as:</p>
+     * <ol>
+     *   <li>Base probability from the persona's difficulty curve</li>
+     *   <li>Ability modifier shifts the curve in logit space</li>
+     *   <li>Per-competency noise adds natural inter-competency variation</li>
+     *   <li>Seeded RNG ensures deterministic, cacheable results</li>
+     * </ol>
      */
     private List<QuestionSummaryDto> runPersonaSimulation(
-            List<AssessmentQuestion> questions, 
-            SimulationProfile profile
+            List<AssessmentQuestion> questions,
+            SimulationProfile profile,
+            int abilityLevel
     ) {
         var results = new ArrayList<QuestionSummaryDto>();
-        var random = ThreadLocalRandom.current();
-        var correctProbability = profile.getCorrectAnswerProbability();
+
+        long seed = SimulationMath.computeSimulationSeed(questions, profile, abilityLevel);
+        var random = new Random(seed);
+
+        double abilityModifier = SimulationMath.abilityToModifier(abilityLevel);
+        Map<UUID, Double> competencyNoise = SimulationMath.computeCompetencyNoise(questions, seed);
 
         for (var question : questions) {
-            // Determine if answer is "correct" based on profile
-            var isCorrect = switch (profile) {
-                case PERFECT_CANDIDATE -> true;
-                case FAILING_CANDIDATE -> false;
-                case RANDOM_GUESSER -> random.nextDouble() < correctProbability;
-            };
+            var difficulty = question.getDifficultyLevel();
+            UUID competencyId = question.getBehavioralIndicator().getCompetency().getId();
 
-            var simulatedAnswer = isCorrect ? "Correct Option" : "Incorrect Option";
+            double baseP = profile.getBaseProbability(difficulty);
+            double adjustedP = SimulationMath.applyLogitShift(baseP, abilityModifier);
+            double noise = competencyNoise.getOrDefault(competencyId, 0.0);
+            double finalP = SimulationMath.applyLogitShift(adjustedP, noise);
 
-            var summary = QuestionSummaryDto.of(
+            boolean isCorrect = random.nextDouble() < finalP;
+            String simulatedAnswer = isCorrect ? "Correct Option" : "Incorrect Option";
+
+            results.add(QuestionSummaryDto.of(
                 question.getId(),
-                question.getBehavioralIndicator().getCompetency().getId(),
+                competencyId,
                 question.getBehavioralIndicator().getId(),
                 truncateText(question.getQuestionText(), 100),
-                question.getDifficultyLevel().name(),
+                difficulty.name(),
                 question.getQuestionType().name(),
                 question.getTimeLimit(),
                 isCorrect,
-                simulatedAnswer
-            );
-
-            results.add(summary);
+                simulatedAnswer,
+                question.getBehavioralIndicator().getCompetency().getName(),
+                question.getBehavioralIndicator().getTitle()
+            ));
         }
 
         return results;
     }
 
-    /**
-     * Calculate question composition by difficulty.
-     */
     private Map<String, Integer> calculateComposition(List<AssessmentQuestion> questions) {
         return questions.stream()
             .collect(Collectors.groupingBy(
@@ -330,21 +324,14 @@ public class TestSimulatorService {
             ));
     }
 
-    /**
-     * Estimate total test duration in minutes.
-     */
     private Integer calculateEstimatedDuration(List<AssessmentQuestion> questions) {
         var totalSeconds = questions.stream()
             .mapToInt(q -> q.getTimeLimit() != null ? q.getTimeLimit() : DEFAULT_TIME_PER_QUESTION_SECONDS)
             .sum();
-        
+
         return (int) Math.ceil(totalSeconds / 60.0);
     }
 
-    /**
-     * Calculate per-competency simulation scores by grouping question results.
-     * Zero additional DB queries -- data already exists in the simulation run.
-     */
     private Map<UUID, CompetencySimulationScore> calculateCompetencyScores(
             List<QuestionSummaryDto> results) {
 
@@ -374,24 +361,18 @@ public class TestSimulatorService {
             ));
     }
 
-    /**
-     * Calculate simulated score from run results.
-     */
     private Double calculateSimulatedScore(List<QuestionSummaryDto> results) {
         if (results.isEmpty()) {
             return 0.0;
         }
-        
+
         var correct = results.stream()
             .filter(QuestionSummaryDto::simulatedCorrect)
             .count();
-        
-        return (double) correct / results.size() * 100;
+
+        return (double) Math.round((double) correct / results.size() * 100);
     }
 
-    /**
-     * Truncate text for display.
-     */
     private String truncateText(String text, int maxLength) {
         if (text == null) return "";
         if (text.length() <= maxLength) return text;

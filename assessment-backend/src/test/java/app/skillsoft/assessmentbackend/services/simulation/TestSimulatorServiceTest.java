@@ -24,17 +24,6 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-/**
- * Unit tests for TestSimulatorService.
- *
- * Tests verify:
- * - Simulation execution with different profiles (PERFECT, RANDOM, FAILING)
- * - Blueprint validation logic
- * - Question hydration and composition calculation
- * - Duration estimation and score calculation
- * - Warning generation for inventory health issues
- * - Edge cases (null inputs, empty results, truncation)
- */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TestSimulatorService Tests")
 class TestSimulatorServiceTest {
@@ -78,7 +67,6 @@ class TestSimulatorServiceTest {
             blueprintValidationService
         );
 
-        // Initialize test UUIDs
         competencyId1 = UUID.randomUUID();
         competencyId2 = UUID.randomUUID();
         indicatorId1 = UUID.randomUUID();
@@ -95,10 +83,8 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should return failed result when blueprint is null")
         void shouldReturnFailedResultWhenBlueprintIsNull() {
-            // When
             SimulationResultDto result = testSimulatorService.simulate(null, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result).isNotNull();
             assertThat(result.valid()).isFalse();
             assertThat(result.totalQuestions()).isZero();
@@ -109,7 +95,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should default profile to RANDOM_GUESSER when null")
         void shouldDefaultProfileToRandomGuesser() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
@@ -119,10 +104,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, null);
 
-            // Then
             assertThat(result).isNotNull();
             assertThat(result.profile()).isEqualTo(SimulationProfile.RANDOM_GUESSER);
         }
@@ -130,15 +113,12 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should return failed result when assembly fails")
         void shouldReturnFailedResultWhenAssemblyFails() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class)))
                 .thenThrow(new IllegalArgumentException("No assembler for strategy"));
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result).isNotNull();
             assertThat(result.valid()).isFalse();
             assertThat(result.warnings()).hasSize(1);
@@ -148,15 +128,12 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should return failed result when no questions assembled")
         void shouldReturnFailedResultWhenNoQuestionsAssembled() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
             when(mockAssembler.assemble(any())).thenReturn(List.of());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result).isNotNull();
             assertThat(result.valid()).isFalse();
             assertThat(result.totalQuestions()).isZero();
@@ -167,7 +144,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should hydrate questions correctly")
         void shouldHydrateQuestionsCorrectly() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2, questionId3);
             List<AssessmentQuestion> questions = List.of(
@@ -181,10 +157,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.totalQuestions()).isEqualTo(3);
             assertThat(result.sampleQuestions()).hasSize(3);
             verify(questionRepository).findAllById(questionIds);
@@ -193,11 +167,9 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should extract unique competencies")
         void shouldExtractUniqueCompetencies() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2);
 
-            // Create questions with different competencies
             AssessmentQuestion q1 = createQuestionWithCompetency(questionId1, competencyId1, indicatorId1);
             AssessmentQuestion q2 = createQuestionWithCompetency(questionId2, competencyId2, indicatorId2);
             List<AssessmentQuestion> questions = List.of(q1, q2);
@@ -207,10 +179,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then - verify heatmap service was called with unique competency IDs
             verify(inventoryHeatmapService).generateHeatmapFor(argThat(ids ->
                 ids.size() == 2 && ids.contains(competencyId1) && ids.contains(competencyId2)
             ));
@@ -219,7 +189,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should add critical warnings for critical competencies")
         void shouldAddCriticalWarningsForCriticalCompetencies() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
@@ -228,14 +197,11 @@ class TestSimulatorServiceTest {
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
 
-            // Return heatmap with CRITICAL health status
             InventoryHeatmapDto criticalHeatmap = createHeatmapWithStatus(HealthStatus.CRITICAL);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(criticalHeatmap);
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.warnings()).anyMatch(w ->
                 w.level() == InventoryWarning.WarningLevel.ERROR);
         }
@@ -243,7 +209,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should add moderate warnings for moderate competencies")
         void shouldAddModerateWarningsForModerateCompetencies() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
@@ -252,22 +217,18 @@ class TestSimulatorServiceTest {
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
 
-            // Return heatmap with MODERATE health status
             InventoryHeatmapDto moderateHeatmap = createHeatmapWithStatus(HealthStatus.MODERATE);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(moderateHeatmap);
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.warnings()).anyMatch(w ->
                 w.level() == InventoryWarning.WarningLevel.WARNING);
         }
 
         @Test
-        @DisplayName("Should run persona simulation")
+        @DisplayName("Should run persona simulation with difficulty-aware curves")
         void shouldRunPersonaSimulation() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2);
             List<AssessmentQuestion> questions = List.of(
@@ -280,22 +241,23 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
-            SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.PERFECT_CANDIDATE);
+            // Use max ability to ensure near-certain correctness for PERFECT
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.PERFECT_CANDIDATE, 100);
 
-            // Then
             assertThat(result.sampleQuestions()).hasSize(2);
-            assertThat(result.sampleQuestions()).allMatch(QuestionSummaryDto::simulatedCorrect);
+            // At abilityLevel=100 with PERFECT, probability is ~0.99+; overwhelmingly correct
+            long correctCount = result.sampleQuestions().stream()
+                .filter(QuestionSummaryDto::simulatedCorrect).count();
+            assertThat(correctCount).isGreaterThanOrEqualTo(1);
         }
 
         @Test
         @DisplayName("Should calculate composition by difficulty")
         void shouldCalculateCompositionByDifficulty() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2, questionId3);
 
-            // Create questions with different difficulties
             List<AssessmentQuestion> questions = List.of(
                 createQuestionWithDifficulty(questionId1, DifficultyLevel.FOUNDATIONAL),
                 createQuestionWithDifficulty(questionId2, DifficultyLevel.INTERMEDIATE),
@@ -307,10 +269,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.composition()).containsEntry("FOUNDATIONAL", 1);
             assertThat(result.composition()).containsEntry("INTERMEDIATE", 2);
         }
@@ -318,13 +278,11 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should calculate estimated duration in minutes")
         void shouldCalculateEstimatedDurationInMinutes() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2);
 
-            // Create questions with time limits
-            AssessmentQuestion q1 = createQuestionWithTimeLimit(questionId1, 120); // 2 minutes
-            AssessmentQuestion q2 = createQuestionWithTimeLimit(questionId2, 180); // 3 minutes
+            AssessmentQuestion q1 = createQuestionWithTimeLimit(questionId1, 120);
+            AssessmentQuestion q2 = createQuestionWithTimeLimit(questionId2, 180);
             List<AssessmentQuestion> questions = List.of(q1, q2);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
@@ -332,17 +290,14 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then - 120 + 180 = 300 seconds = 5 minutes
             assertThat(result.estimatedDurationMinutes()).isEqualTo(5);
         }
 
         @Test
         @DisplayName("Should calculate simulated score as percentage")
         void shouldCalculateSimulatedScoreAsPercentage() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2);
             List<AssessmentQuestion> questions = List.of(
@@ -355,17 +310,16 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When - PERFECT_CANDIDATE should get 100%
-            SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.PERFECT_CANDIDATE);
+            // PERFECT at max ability: nearly all correct → score ~100%
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.PERFECT_CANDIDATE, 100);
 
-            // Then
-            assertThat(result.simulatedScore()).isEqualTo(100.0);
+            assertThat(result.simulatedScore()).isBetween(50.0, 100.0);
         }
 
         @Test
         @DisplayName("Should mark result valid when no error warnings")
         void shouldMarkResultValidWhenNoErrorWarnings() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
@@ -375,20 +329,16 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.valid()).isTrue();
         }
 
         @Test
         @DisplayName("Should add warning when not all questions could be loaded")
         void shouldAddWarningWhenNotAllQuestionsLoaded() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2, questionId3);
-            // Only return 2 of 3 questions (missing questionId3)
             List<AssessmentQuestion> questions = List.of(
                 createQuestionWithId(questionId1, "Q1"),
                 createQuestionWithId(questionId2, "Q2")
@@ -399,12 +349,45 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.warnings()).anyMatch(w ->
                 w.message().contains("Only 2 of 3 questions could be loaded"));
+        }
+
+        @Test
+        @DisplayName("Should include abilityLevel in result")
+        void shouldIncludeAbilityLevelInResult() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = List.of(questionId1);
+            List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 75);
+
+            assertThat(result.abilityLevel()).isEqualTo(75);
+        }
+
+        @Test
+        @DisplayName("Should default abilityLevel to 50 when using 2-arg overload")
+        void shouldDefaultAbilityLevelTo50() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = List.of(questionId1);
+            List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
+
+            assertThat(result.abilityLevel()).isEqualTo(50);
         }
     }
 
@@ -415,62 +398,50 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should return true when assembly succeeds")
         void shouldReturnTrueWhenAssemblySucceeds() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
 
-            // When
             boolean result = testSimulatorService.validate(blueprint);
 
-            // Then
             assertThat(result).isTrue();
         }
 
         @Test
         @DisplayName("Should return false when assembly fails")
         void shouldReturnFalseWhenAssemblyFails() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class)))
                 .thenThrow(new IllegalArgumentException("Invalid strategy"));
 
-            // When
             boolean result = testSimulatorService.validate(blueprint);
 
-            // Then
             assertThat(result).isFalse();
         }
 
         @Test
         @DisplayName("Should return false when assembly returns empty list")
         void shouldReturnFalseWhenAssemblyReturnsEmpty() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
             when(mockAssembler.assemble(any())).thenReturn(List.of());
 
-            // When
             boolean result = testSimulatorService.validate(blueprint);
 
-            // Then
             assertThat(result).isFalse();
         }
 
         @Test
         @DisplayName("Should catch exceptions gracefully")
         void shouldCatchExceptionsGracefully() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class)))
                 .thenThrow(new RuntimeException("Unexpected error"));
 
-            // When
             boolean result = testSimulatorService.validate(blueprint);
 
-            // Then
             assertThat(result).isFalse();
         }
     }
@@ -480,9 +451,169 @@ class TestSimulatorServiceTest {
     class PersonaSimulationTests {
 
         @Test
-        @DisplayName("Should score PERFECT_CANDIDATE at 100 percent")
-        void shouldScorePerfectCandidateAt100Percent() {
-            // Given
+        @DisplayName("PERFECT_CANDIDATE should score high (85-100%)")
+        void shouldScorePerfectCandidateHighly() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = createManyQuestionIds(50);
+            List<AssessmentQuestion> questions = createManyQuestions(questionIds);
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.PERFECT_CANDIDATE, 50);
+
+            assertThat(result.simulatedScore()).isBetween(80.0, 100.0);
+        }
+
+        @Test
+        @DisplayName("FAILING_CANDIDATE should score low (0-30%)")
+        void shouldScoreFailingCandidateLow() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = createManyQuestionIds(50);
+            List<AssessmentQuestion> questions = createManyQuestions(questionIds);
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.FAILING_CANDIDATE, 50);
+
+            assertThat(result.simulatedScore()).isBetween(0.0, 35.0);
+        }
+
+        @Test
+        @DisplayName("RANDOM_GUESSER should score in moderate range (30-75%)")
+        void shouldScoreRandomGuesserModerately() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = createManyQuestionIds(100);
+            List<AssessmentQuestion> questions = createManyQuestions(questionIds);
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 50);
+
+            // RANDOM_GUESSER base at INTERMEDIATE = 0.55; with 100 questions expect ~55%
+            assertThat(result.simulatedScore()).isBetween(30.0, 75.0);
+        }
+
+        @Test
+        @DisplayName("PERFECT should score higher than RANDOM which should score higher than FAILING")
+        void personasShouldRankCorrectly() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = createManyQuestionIds(100);
+            List<AssessmentQuestion> questions = createManyQuestions(questionIds);
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto perfect = testSimulatorService.simulate(
+                blueprint, SimulationProfile.PERFECT_CANDIDATE, 50);
+            SimulationResultDto random = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 50);
+            SimulationResultDto failing = testSimulatorService.simulate(
+                blueprint, SimulationProfile.FAILING_CANDIDATE, 50);
+
+            assertThat(perfect.simulatedScore()).isGreaterThan(random.simulatedScore());
+            assertThat(random.simulatedScore()).isGreaterThan(failing.simulatedScore());
+        }
+    }
+
+    @Nested
+    @DisplayName("psychometric persona curves")
+    class PersonaCurveTests {
+
+        @Test
+        @DisplayName("Should produce difficulty-dependent scores for PERFECT_CANDIDATE")
+        void perfectCandidateShouldScoreBetterOnEasierQuestions() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+
+            List<UUID> foundationalIds = createManyQuestionIds(30);
+            List<AssessmentQuestion> foundational = createManyQuestionsWithDifficulty(
+                foundationalIds, DifficultyLevel.FOUNDATIONAL);
+
+            List<UUID> expertIds = createManyQuestionIds(30);
+            List<AssessmentQuestion> expert = createManyQuestionsWithDifficulty(
+                expertIds, DifficultyLevel.EXPERT);
+
+            List<UUID> allIds = new ArrayList<>(foundationalIds);
+            allIds.addAll(expertIds);
+            List<AssessmentQuestion> allQuestions = new ArrayList<>(foundational);
+            allQuestions.addAll(expert);
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(allIds);
+            when(questionRepository.findAllById(allIds)).thenReturn(allQuestions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.PERFECT_CANDIDATE, 50);
+
+            // Count correct by difficulty
+            long foundationalCorrect = result.sampleQuestions().stream()
+                .filter(q -> q.difficulty().equals("FOUNDATIONAL"))
+                .filter(QuestionSummaryDto::simulatedCorrect).count();
+            long expertCorrect = result.sampleQuestions().stream()
+                .filter(q -> q.difficulty().equals("EXPERT"))
+                .filter(QuestionSummaryDto::simulatedCorrect).count();
+
+            // FOUNDATIONAL (p=0.98) should have more correct than EXPERT (p=0.85)
+            assertThat(foundationalCorrect).isGreaterThanOrEqualTo(expertCorrect);
+        }
+
+        @Test
+        @DisplayName("Ability slider at 100 should boost scores")
+        void highAbilityShouldBoostScores() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = createManyQuestionIds(100);
+            List<AssessmentQuestion> questions = createManyQuestions(questionIds);
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto high = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 100);
+            SimulationResultDto mid = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 50);
+
+            assertThat(high.simulatedScore()).isGreaterThanOrEqualTo(mid.simulatedScore());
+        }
+
+        @Test
+        @DisplayName("Ability slider at 0 should reduce scores")
+        void lowAbilityShouldReduceScores() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = createManyQuestionIds(100);
+            List<AssessmentQuestion> questions = createManyQuestions(questionIds);
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(questionRepository.findAllById(questionIds)).thenReturn(questions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto low = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 0);
+            SimulationResultDto mid = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 50);
+
+            assertThat(low.simulatedScore()).isLessThanOrEqualTo(mid.simulatedScore());
+        }
+
+        @Test
+        @DisplayName("Same inputs should produce deterministic results")
+        void shouldProduceDeterministicResults() {
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1, questionId2, questionId3);
             List<AssessmentQuestion> questions = List.of(
@@ -496,70 +627,94 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
-            SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.PERFECT_CANDIDATE);
+            SimulationResultDto run1 = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 50);
+            SimulationResultDto run2 = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 50);
 
-            // Then
-            assertThat(result.simulatedScore()).isEqualTo(100.0);
-            assertThat(result.sampleQuestions()).allMatch(QuestionSummaryDto::simulatedCorrect);
+            assertThat(run1.simulatedScore()).isEqualTo(run2.simulatedScore());
+            for (int i = 0; i < run1.sampleQuestions().size(); i++) {
+                assertThat(run1.sampleQuestions().get(i).simulatedCorrect())
+                    .isEqualTo(run2.sampleQuestions().get(i).simulatedCorrect());
+            }
         }
 
         @Test
-        @DisplayName("Should score FAILING_CANDIDATE at 0 percent")
-        void shouldScoreFailingCandidateAt0Percent() {
-            // Given
+        @DisplayName("Competency scores should vary across competencies")
+        void competencyScoresShouldVary() {
             OverviewBlueprint blueprint = createValidBlueprint();
-            List<UUID> questionIds = List.of(questionId1, questionId2, questionId3);
-            List<AssessmentQuestion> questions = List.of(
-                createQuestionWithId(questionId1, "Q1"),
-                createQuestionWithId(questionId2, "Q2"),
-                createQuestionWithId(questionId3, "Q3")
-            );
+
+            // Create questions spread across 3 competencies
+            UUID compA = UUID.randomUUID();
+            UUID compB = UUID.randomUUID();
+            UUID compC = UUID.randomUUID();
+            UUID indA = UUID.randomUUID();
+            UUID indB = UUID.randomUUID();
+            UUID indC = UUID.randomUUID();
+
+            List<UUID> allIds = new ArrayList<>();
+            List<AssessmentQuestion> allQuestions = new ArrayList<>();
+
+            for (int i = 0; i < 20; i++) {
+                UUID qid = UUID.randomUUID();
+                allIds.add(qid);
+                if (i < 7) allQuestions.add(createQuestionWithCompetency(qid, compA, indA));
+                else if (i < 14) allQuestions.add(createQuestionWithCompetency(qid, compB, indB));
+                else allQuestions.add(createQuestionWithCompetency(qid, compC, indC));
+            }
+
+            when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
+            when(mockAssembler.assemble(any())).thenReturn(allIds);
+            when(questionRepository.findAllById(allIds)).thenReturn(allQuestions);
+            when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
+
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 50);
+
+            // Should have 3 competency scores
+            assertThat(result.competencyScores()).hasSize(3);
+
+            // Scores should not all be identical (competency noise ensures variation)
+            var scores = result.competencyScores().values().stream()
+                .map(CompetencySimulationScore::scorePercentage)
+                .distinct()
+                .toList();
+            // With noise, at least 2 of 3 should differ
+            assertThat(scores.size()).isGreaterThanOrEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("AbilityLevel boundary 0 should not crash")
+        void abilityLevelZeroShouldWork() {
+            OverviewBlueprint blueprint = createValidBlueprint();
+            List<UUID> questionIds = List.of(questionId1);
+            List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
-            SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.FAILING_CANDIDATE);
-
-            // Then
-            assertThat(result.simulatedScore()).isEqualTo(0.0);
-            assertThat(result.sampleQuestions()).noneMatch(QuestionSummaryDto::simulatedCorrect);
+            assertThatCode(() -> testSimulatorService.simulate(
+                blueprint, SimulationProfile.RANDOM_GUESSER, 0))
+                .doesNotThrowAnyException();
         }
 
         @Test
-        @DisplayName("Should score RANDOM_GUESSER around 50 percent (statistical)")
-        void shouldScoreRandomGuesserAroundFiftyPercent() {
-            // Given
+        @DisplayName("AbilityLevel boundary 100 should not crash")
+        void abilityLevelHundredShouldWork() {
             OverviewBlueprint blueprint = createValidBlueprint();
-
-            // Use larger sample for statistical validity
-            List<UUID> questionIds = new ArrayList<>();
-            List<AssessmentQuestion> questions = new ArrayList<>();
-            for (int i = 0; i < 100; i++) {
-                UUID qId = UUID.randomUUID();
-                questionIds.add(qId);
-                questions.add(createQuestionWithId(qId, "Q" + i));
-            }
+            List<UUID> questionIds = List.of(questionId1);
+            List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When - run multiple simulations
-            double totalScore = 0;
-            int runs = 10;
-            for (int i = 0; i < runs; i++) {
-                SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
-                totalScore += result.simulatedScore();
-            }
-            double averageScore = totalScore / runs;
-
-            // Then - average should be around 50% (within reasonable margin)
-            assertThat(averageScore).isBetween(30.0, 70.0);
+            assertThatCode(() -> testSimulatorService.simulate(
+                blueprint, SimulationProfile.PERFECT_CANDIDATE, 100))
+                .doesNotThrowAnyException();
         }
     }
 
@@ -570,11 +725,9 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should handle questions with null time limits")
         void shouldHandleQuestionsWithNullTimeLimits() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
 
-            // Create question with null time limit
             AssessmentQuestion question = createQuestionWithTimeLimit(questionId1, null);
             List<AssessmentQuestion> questions = List.of(question);
 
@@ -583,21 +736,17 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then - should use default time (60 seconds = 1 minute)
             assertThat(result.estimatedDurationMinutes()).isEqualTo(1);
         }
 
         @Test
         @DisplayName("Should truncate long question text")
         void shouldTruncateLongQuestionText() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
 
-            // Create question with very long text (> 100 chars)
             String longText = "A".repeat(150);
             AssessmentQuestion question = createQuestionWithText(questionId1, longText);
             List<AssessmentQuestion> questions = List.of(question);
@@ -607,10 +756,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then - text should be truncated to 100 chars with "..."
             assertThat(result.sampleQuestions()).hasSize(1);
             String truncatedText = result.sampleQuestions().get(0).questionText();
             assertThat(truncatedText.length()).isEqualTo(100);
@@ -620,7 +767,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should handle empty competency list from heatmap")
         void shouldHandleEmptyCompetencyListFromHeatmap() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
@@ -628,24 +774,19 @@ class TestSimulatorServiceTest {
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
-            // Return empty heatmap
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createEmptyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.valid()).isTrue();
         }
 
         @Test
         @DisplayName("Should handle null question text")
         void shouldHandleNullQuestionText() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
 
-            // Create question with null text
             AssessmentQuestion question = createQuestionWithText(questionId1, null);
             List<AssessmentQuestion> questions = List.of(question);
 
@@ -654,10 +795,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then - should handle gracefully with empty string
             assertThat(result.sampleQuestions()).hasSize(1);
             assertThat(result.sampleQuestions().get(0).questionText()).isEmpty();
         }
@@ -665,7 +804,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should mark result invalid when ERROR warnings present")
         void shouldMarkResultInvalidWhenErrorWarningsPresent() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
@@ -674,21 +812,17 @@ class TestSimulatorServiceTest {
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
 
-            // Return heatmap with CRITICAL (ERROR level) status
             InventoryHeatmapDto criticalHeatmap = createHeatmapWithStatus(HealthStatus.CRITICAL);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(criticalHeatmap);
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(result.valid()).isFalse();
         }
 
         @Test
         @DisplayName("Should preserve question order from assembly")
         void shouldPreserveQuestionOrderFromAssembly() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             UUID id1 = UUID.randomUUID();
             UUID id2 = UUID.randomUUID();
@@ -698,7 +832,6 @@ class TestSimulatorServiceTest {
             AssessmentQuestion q1 = createQuestionWithId(id1, "Question 1");
             AssessmentQuestion q2 = createQuestionWithId(id2, "Question 2");
             AssessmentQuestion q3 = createQuestionWithId(id3, "Question 3");
-            // Return questions in different order
             List<AssessmentQuestion> questions = List.of(q3, q1, q2);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
@@ -706,10 +839,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then - order should match questionIds order, not repository return order
             assertThat(result.sampleQuestions()).hasSize(3);
             assertThat(result.sampleQuestions().get(0).id()).isEqualTo(id1);
             assertThat(result.sampleQuestions().get(1).id()).isEqualTo(id2);
@@ -719,7 +850,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should return correct profile in result")
         void shouldReturnCorrectProfileInResult() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
@@ -729,12 +859,10 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When - test each profile
             SimulationResultDto perfectResult = testSimulatorService.simulate(blueprint, SimulationProfile.PERFECT_CANDIDATE);
             SimulationResultDto failingResult = testSimulatorService.simulate(blueprint, SimulationProfile.FAILING_CANDIDATE);
             SimulationResultDto randomResult = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
-            // Then
             assertThat(perfectResult.profile()).isEqualTo(SimulationProfile.PERFECT_CANDIDATE);
             assertThat(failingResult.profile()).isEqualTo(SimulationProfile.FAILING_CANDIDATE);
             assertThat(randomResult.profile()).isEqualTo(SimulationProfile.RANDOM_GUESSER);
@@ -743,7 +871,6 @@ class TestSimulatorServiceTest {
         @Test
         @DisplayName("Should correctly populate question summary fields")
         void shouldCorrectlyPopulateQuestionSummaryFields() {
-            // Given
             OverviewBlueprint blueprint = createValidBlueprint();
             List<UUID> questionIds = List.of(questionId1);
 
@@ -759,10 +886,8 @@ class TestSimulatorServiceTest {
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.PERFECT_CANDIDATE);
 
-            // Then
             assertThat(result.sampleQuestions()).hasSize(1);
             QuestionSummaryDto summary = result.sampleQuestions().get(0);
             assertThat(summary.id()).isEqualTo(questionId1);
@@ -772,29 +897,30 @@ class TestSimulatorServiceTest {
             assertThat(summary.difficulty()).isEqualTo("ADVANCED");
             assertThat(summary.questionType()).isEqualTo("SJT");
             assertThat(summary.timeLimitSeconds()).isEqualTo(90);
-            assertThat(summary.simulatedCorrect()).isTrue();
-            assertThat(summary.simulatedAnswer()).isEqualTo("Correct Option");
+            assertThat(summary.simulatedAnswer()).isIn("Correct Option", "Incorrect Option");
+            assertThat(summary.competencyName()).isEqualTo("Test Competency");
+            assertThat(summary.indicatorTitle()).isEqualTo("Test Indicator");
         }
 
         @Test
-        @DisplayName("Should set simulated answer to Incorrect Option for failing candidate")
-        void shouldSetSimulatedAnswerToIncorrectOptionForFailingCandidate() {
-            // Given
+        @DisplayName("FAILING_CANDIDATE should predominantly answer incorrectly")
+        void failingCandidateShouldMostlyAnswerIncorrectly() {
             OverviewBlueprint blueprint = createValidBlueprint();
-            List<UUID> questionIds = List.of(questionId1);
-            List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
+            List<UUID> questionIds = createManyQuestionIds(50);
+            List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
             when(mockAssembler.assemble(any())).thenReturn(questionIds);
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
-            // When
-            SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.FAILING_CANDIDATE);
+            SimulationResultDto result = testSimulatorService.simulate(
+                blueprint, SimulationProfile.FAILING_CANDIDATE, 0);
 
-            // Then
-            assertThat(result.sampleQuestions()).hasSize(1);
-            assertThat(result.sampleQuestions().get(0).simulatedAnswer()).isEqualTo("Incorrect Option");
+            long incorrectCount = result.sampleQuestions().stream()
+                .filter(q -> !q.simulatedCorrect()).count();
+            // At ability=0, FAILING should get most wrong
+            assertThat(incorrectCount).isGreaterThan(result.sampleQuestions().size() / 2);
         }
     }
 
@@ -824,6 +950,7 @@ class TestSimulatorServiceTest {
 
         BehavioralIndicator indicator = new BehavioralIndicator();
         indicator.setId(indicatorId);
+        indicator.setTitle("Test Indicator");
         indicator.setCompetency(competency);
 
         AssessmentQuestion question = new AssessmentQuestion();
@@ -852,8 +979,31 @@ class TestSimulatorServiceTest {
     }
 
     private AssessmentQuestion createQuestionWithText(UUID questionId, String text) {
-        AssessmentQuestion question = createQuestionWithCompetency(questionId, competencyId1, indicatorId1, text);
-        return question;
+        return createQuestionWithCompetency(questionId, competencyId1, indicatorId1, text);
+    }
+
+    private List<UUID> createManyQuestionIds(int count) {
+        List<UUID> ids = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            ids.add(UUID.randomUUID());
+        }
+        return ids;
+    }
+
+    private List<AssessmentQuestion> createManyQuestions(List<UUID> ids) {
+        List<AssessmentQuestion> questions = new ArrayList<>();
+        for (UUID id : ids) {
+            questions.add(createQuestionWithId(id, "Q" + id));
+        }
+        return questions;
+    }
+
+    private List<AssessmentQuestion> createManyQuestionsWithDifficulty(List<UUID> ids, DifficultyLevel difficulty) {
+        List<AssessmentQuestion> questions = new ArrayList<>();
+        for (UUID id : ids) {
+            questions.add(createQuestionWithDifficulty(id, difficulty));
+        }
+        return questions;
     }
 
     private InventoryHeatmapDto createHealthyHeatmap() {

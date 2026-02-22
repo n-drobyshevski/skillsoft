@@ -97,7 +97,7 @@ prompts/
 docs/
 !docs/output/.gitkeep
 infrastructure/database/postgres-data/
-
+scripts/
 
 
 # ====================
