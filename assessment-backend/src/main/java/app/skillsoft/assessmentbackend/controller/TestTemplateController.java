@@ -251,6 +251,28 @@ public class TestTemplateController {
     }
 
     /**
+     * Create a new version of an existing template.
+     * Preserves version chain via parentId linkage.
+     * The new version starts as DRAFT and can be edited freely.
+     *
+     * @param id      Template UUID to create a new version from
+     * @param request Version creation options (whether to archive original)
+     * @return New draft template with 201 status
+     */
+    @PostMapping("/{id}/versions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public ResponseEntity<TestTemplateDto> createNextVersion(
+            @PathVariable UUID id,
+            @RequestBody CreateVersionRequest request) {
+        logger.info("POST /api/v1/tests/templates/{}/versions - Creating new version, archiveOriginal: {}",
+                id, request.archiveOriginal());
+
+        TestTemplateDto newVersion = testTemplateService.createNextVersion(id, request.archiveOriginal());
+        logger.info("Created version {} for template {}", newVersion.version(), id);
+        return ResponseEntity.status(HttpStatus.CREATED).body(newVersion);
+    }
+
+    /**
      * Delete a test template using soft delete.
      * This endpoint uses SOFT_DELETE mode by default, which marks the template
      * as deleted but preserves all data. Use the /safe endpoint for other modes.

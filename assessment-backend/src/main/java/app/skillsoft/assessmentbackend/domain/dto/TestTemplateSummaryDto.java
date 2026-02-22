@@ -28,6 +28,8 @@ public record TestTemplateSummaryDto(
         Integer timeLimitMinutes,
         Double passingScore,
         Boolean isActive,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        /** Lifecycle status: DRAFT, PUBLISHED, or ARCHIVED. */
+        String status
 ) {
 }

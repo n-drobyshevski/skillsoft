@@ -87,7 +87,8 @@ class TestTemplateControllerTest {
 
         // TestTemplateDto: id, name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,
         //                  passingScore, isActive, shuffleQuestions, shuffleOptions, allowSkip,
-        //                  allowBackNavigation, showResultsImmediately, createdAt, updatedAt, hasValidBlueprint
+        //                  allowBackNavigation, showResultsImmediately, createdAt, updatedAt, hasValidBlueprint,
+        //                  version, parentId, status
         testTemplateDto = new TestTemplateDto(
                 templateId,
                 "Leadership Assessment Test",
@@ -106,10 +107,13 @@ class TestTemplateControllerTest {
                 true,        // showResultsImmediately
                 now,         // createdAt
                 now,         // updatedAt
-                true         // hasValidBlueprint
+                true,        // hasValidBlueprint
+                1,           // version
+                null,        // parentId
+                "DRAFT"      // status
         );
 
-        // TestTemplateSummaryDto: id, name, description, goal, competencyCount, timeLimitMinutes, passingScore, isActive, createdAt
+        // TestTemplateSummaryDto: id, name, description, goal, competencyCount, timeLimitMinutes, passingScore, isActive, createdAt, status
         testTemplateSummaryDto = new TestTemplateSummaryDto(
                 templateId,
                 "Leadership Assessment Test",
@@ -119,7 +123,8 @@ class TestTemplateControllerTest {
                 60,          // timeLimitMinutes
                 70.0,        // passingScore
                 true,        // isActive
-                now          // createdAt
+                now,         // createdAt
+                "DRAFT"      // status
         );
 
         // CreateTestTemplateRequest: name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,
@@ -393,7 +398,10 @@ class TestTemplateControllerTest {
                     List.of(competencyId),
                     5, 90, 80.0, true, false, false, true, true, true,
                     now, LocalDateTime.now(),
-                    true  // hasValidBlueprint
+                    true,        // hasValidBlueprint
+                    1,           // version
+                    null,        // parentId
+                    "DRAFT"      // status
             );
             when(testTemplateService.updateTemplate(eq(templateId), any(UpdateTestTemplateRequest.class)))
                     .thenReturn(updatedDto);
@@ -491,7 +499,10 @@ class TestTemplateControllerTest {
                     testTemplateDto.showResultsImmediately(),
                     testTemplateDto.createdAt(),
                     LocalDateTime.now(),
-                    true  // hasValidBlueprint
+                    true,                       // hasValidBlueprint
+                    testTemplateDto.version(),  // version
+                    testTemplateDto.parentId(), // parentId
+                    testTemplateDto.status()    // status
             );
             when(testTemplateService.deactivateTemplate(templateId)).thenReturn(deactivatedDto);
 
@@ -562,6 +573,119 @@ class TestTemplateControllerTest {
                     .andExpect(jsonPath("$.inactiveTemplates").value(3));
 
             verify(testTemplateService).getStatistics();
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /api/v1/tests/templates/{id}/versions Tests")
+    class CreateNextVersionTests {
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        @DisplayName("Should create new version and return 201")
+        void shouldCreateNewVersion() throws Exception {
+            // Given
+            UUID parentId = templateId;
+            TestTemplateDto newVersionDto = new TestTemplateDto(
+                    UUID.randomUUID(),
+                    "Leadership Assessment Test",
+                    "Comprehensive test for leadership competencies",
+                    AssessmentGoal.OVERVIEW,
+                    Map.of("strategy", "balanced"),
+                    List.of(competencyId),
+                    3, 60, 70.0, true, true, true, true, true, true,
+                    now, now,
+                    true,      // hasValidBlueprint
+                    2,         // version
+                    parentId,  // parentId
+                    "DRAFT"    // status
+            );
+            when(testTemplateService.createNextVersion(eq(parentId), eq(false)))
+                    .thenReturn(newVersionDto);
+
+            String requestBody = objectMapper.writeValueAsString(
+                    new app.skillsoft.assessmentbackend.domain.dto.CreateVersionRequest(false));
+
+            // When & Then
+            mockMvc.perform(post("/api/v1/tests/templates/{id}/versions", parentId)
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.version").value(2))
+                    .andExpect(jsonPath("$.parentId").value(parentId.toString()))
+                    .andExpect(jsonPath("$.status").value("DRAFT"));
+
+            verify(testTemplateService).createNextVersion(eq(parentId), eq(false));
+        }
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        @DisplayName("Should create new version with archiveOriginal=true")
+        void shouldCreateNewVersionAndArchiveOriginal() throws Exception {
+            // Given
+            UUID parentId = templateId;
+            TestTemplateDto newVersionDto = new TestTemplateDto(
+                    UUID.randomUUID(),
+                    "Leadership Assessment Test",
+                    "Comprehensive test for leadership competencies",
+                    AssessmentGoal.OVERVIEW,
+                    Map.of("strategy", "balanced"),
+                    List.of(competencyId),
+                    3, 60, 70.0, true, true, true, true, true, true,
+                    now, now,
+                    true,      // hasValidBlueprint
+                    2,         // version
+                    parentId,  // parentId
+                    "DRAFT"    // status
+            );
+            when(testTemplateService.createNextVersion(eq(parentId), eq(true)))
+                    .thenReturn(newVersionDto);
+
+            String requestBody = objectMapper.writeValueAsString(
+                    new app.skillsoft.assessmentbackend.domain.dto.CreateVersionRequest(true));
+
+            // When & Then
+            mockMvc.perform(post("/api/v1/tests/templates/{id}/versions", parentId)
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.version").value(2));
+
+            verify(testTemplateService).createNextVersion(eq(parentId), eq(true));
+        }
+
+        @Test
+        @DisplayName("Should return 401 without authentication")
+        void shouldReturn401WithoutAuthentication() throws Exception {
+            // When & Then
+            mockMvc.perform(post("/api/v1/tests/templates/{id}/versions", templateId)
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"archiveOriginal\":false}"))
+                    .andExpect(status().isUnauthorized());
+
+            verify(testTemplateService, never()).createNextVersion(any(), anyBoolean());
+        }
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        @DisplayName("Should return 404 when source template does not exist")
+        void shouldReturn404WhenSourceTemplateNotFound() throws Exception {
+            // Given
+            UUID nonExistentId = UUID.randomUUID();
+            when(testTemplateService.createNextVersion(eq(nonExistentId), anyBoolean()))
+                    .thenThrow(new ResourceNotFoundException("TestTemplate", nonExistentId));
+
+            // When & Then
+            mockMvc.perform(post("/api/v1/tests/templates/{id}/versions", nonExistentId)
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"archiveOriginal\":false}"))
+                    .andExpect(status().isNotFound());
+
+            verify(testTemplateService).createNextVersion(eq(nonExistentId), eq(false));
         }
     }
 }

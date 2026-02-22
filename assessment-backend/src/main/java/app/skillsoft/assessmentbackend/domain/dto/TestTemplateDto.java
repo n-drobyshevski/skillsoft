@@ -39,6 +39,12 @@ public record TestTemplateDto(
          * Indicates whether the template has a valid typed blueprint for test assembly.
          * Frontend should disable "Start Test" button when this is false.
          */
-        Boolean hasValidBlueprint
+        Boolean hasValidBlueprint,
+        /** Template version counter, incremented on each publish. */
+        Integer version,
+        /** UUID of the parent template this version was branched from, null for originals. */
+        UUID parentId,
+        /** Lifecycle status: DRAFT, PUBLISHED, or ARCHIVED. */
+        String status
 ) {
 }

@@ -91,6 +91,18 @@ public interface TestTemplateService {
     TestTemplateDto cloneTemplate(UUID templateId);
 
     /**
+     * Create a new version of an existing template.
+     * Uses the entity's createNextVersion() to preserve version chain (parentId linkage).
+     *
+     * @param templateId       The ID of the template to version
+     * @param archiveOriginal  Whether to archive the original template
+     * @return The new draft template DTO
+     * @throws app.skillsoft.assessmentbackend.exception.ResourceNotFoundException if template not found
+     * @throws IllegalStateException if template is already in DRAFT status
+     */
+    TestTemplateDto createNextVersion(UUID templateId, boolean archiveOriginal);
+
+    /**
      * Publish a test template, making it available for test sessions.
      *
      * Publishing transitions the template from DRAFT to PUBLISHED status,

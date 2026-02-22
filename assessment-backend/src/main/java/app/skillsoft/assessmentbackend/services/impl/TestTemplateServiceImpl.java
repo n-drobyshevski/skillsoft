@@ -376,6 +376,42 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         return toDto(saved);
     }
 
+    @Override
+    @Transactional
+    @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    public TestTemplateDto createNextVersion(UUID templateId, boolean archiveOriginal) {
+        log.info("Creating next version for template: {}, archiveOriginal: {}", templateId, archiveOriginal);
+
+        // 1. Find the source template
+        TestTemplate source = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", templateId));
+
+        // 2. Only non-DRAFT templates should be versioned (DRAFT can be edited directly)
+        if (source.getStatus() == TemplateStatus.DRAFT) {
+            throw new IllegalStateException("Template is already in DRAFT status. Edit it directly.");
+        }
+
+        // 3. Create next version using the entity method (preserves parentId chain)
+        TestTemplate nextVersion = source.createNextVersion();
+
+        // 4. Ensure blueprint conversion for the new version
+        blueprintConversionService.ensureTypedBlueprint(nextVersion);
+
+        // 5. Persist the new version
+        TestTemplate savedVersion = templateRepository.save(nextVersion);
+        log.info("Created template version {} (id: {}) from parent {} (id: {})",
+                savedVersion.getVersion(), savedVersion.getId(), source.getVersion(), source.getId());
+
+        // 6. Optionally archive the original
+        if (archiveOriginal) {
+            source.archive();
+            templateRepository.save(source);
+            log.info("Archived original template: {}", templateId);
+        }
+
+        return toDto(savedVersion);
+    }
+
     /**
      * Validates that a template has all required configuration to be published.
      *
@@ -422,7 +458,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getShowResultsImmediately(),
                 template.getCreatedAt(),
                 template.getUpdatedAt(),
-                blueprintConversionService.hasValidBlueprint(template)
+                blueprintConversionService.hasValidBlueprint(template),
+                template.getVersion(),
+                template.getParentId(),
+                template.getStatus() != null ? template.getStatus().name() : null
         );
     }
 
@@ -436,7 +475,8 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getTimeLimitMinutes(),
                 template.getPassingScore(),
                 template.getIsActive(),
-                template.getCreatedAt()
+                template.getCreatedAt(),
+                template.getStatus() != null ? template.getStatus().name() : null
         );
     }
 }
