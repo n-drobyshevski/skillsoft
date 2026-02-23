@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
@@ -118,7 +119,9 @@ public class TestSimulatorService {
         List<UUID> questionIds;
         try {
             var assembler = assemblerFactory.getAssembler(blueprint);
-            questionIds = assembler.assemble(blueprint);
+            var assemblyResult = assembler.assemble(blueprint);
+            questionIds = assemblyResult.questionIds();
+            warnings.addAll(assemblyResult.warnings());
         } catch (IllegalArgumentException e) {
             log.error("Failed to get assembler: {}", e.getMessage());
             return SimulationResultDto.failed(List.of(
@@ -200,7 +203,7 @@ public class TestSimulatorService {
     public boolean validate(TestBlueprintDto blueprint) {
         try {
             var assembler = assemblerFactory.getAssembler(blueprint);
-            var questionIds = assembler.assemble(blueprint);
+            var questionIds = assembler.assemble(blueprint).questionIds();
             return !questionIds.isEmpty();
         } catch (Exception e) {
             log.warn("Blueprint validation failed: {}", e.getMessage());

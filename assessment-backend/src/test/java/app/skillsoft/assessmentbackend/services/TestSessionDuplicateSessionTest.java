@@ -16,6 +16,7 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
@@ -214,7 +215,7 @@ class TestSessionDuplicateSessionTest {
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
         TestAssembler mockAssembler = mock(TestAssembler.class);
-        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(question1Id, question2Id)));
         when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion
@@ -257,7 +258,7 @@ class TestSessionDuplicateSessionTest {
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
         TestAssembler mockAssembler = mock(TestAssembler.class);
-        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(question1Id, question2Id)));
         when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion
@@ -299,7 +300,7 @@ class TestSessionDuplicateSessionTest {
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
         TestAssembler mockAssembler = mock(TestAssembler.class);
-        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(question1Id, question2Id)));
         when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion

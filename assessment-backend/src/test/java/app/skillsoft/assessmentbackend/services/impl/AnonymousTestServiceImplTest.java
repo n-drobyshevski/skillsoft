@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.exception.*;
 import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.*;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.sharing.TemplateShareLinkService;
@@ -243,7 +244,7 @@ class AnonymousTestServiceImplTest {
 
             // Mock assembler
             TestAssembler mockAssembler = mock(TestAssembler.class);
-            when(mockAssembler.assemble(any())).thenReturn(List.of(questionId, UUID.randomUUID()));
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(questionId, UUID.randomUUID())));
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
             // Mock session save
@@ -415,7 +416,7 @@ class AnonymousTestServiceImplTest {
 
             // Mock assembler returning empty list
             TestAssembler mockAssembler = mock(TestAssembler.class);
-            when(mockAssembler.assemble(any())).thenReturn(Collections.emptyList());
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.empty());
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
             // When & Then

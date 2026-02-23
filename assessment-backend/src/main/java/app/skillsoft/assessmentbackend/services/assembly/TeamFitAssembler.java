@@ -60,7 +60,7 @@ public class TeamFitAssembler implements TestAssembler {
     }
 
     @Override
-    public List<UUID> assemble(TestBlueprintDto blueprint) {
+    public AssemblyResult assemble(TestBlueprintDto blueprint) {
         if (!(blueprint instanceof TeamFitBlueprint teamFitBlueprint)) {
             throw new IllegalArgumentException(
                 "TeamFitAssembler requires TeamFitBlueprint, got: " +
@@ -71,7 +71,7 @@ public class TeamFitAssembler implements TestAssembler {
         var teamId = teamFitBlueprint.getTeamId();
         if (teamId == null) {
             log.warn("No team ID provided in TeamFitBlueprint");
-            return List.of();
+            return AssemblyResult.empty();
         }
 
         var saturationThreshold = teamFitBlueprint.getSaturationThreshold();
@@ -86,7 +86,7 @@ public class TeamFitAssembler implements TestAssembler {
         var teamProfile = teamService.getTeamProfile(teamId);
         if (teamProfile.isEmpty()) {
             log.warn("No team profile found for team: {}", teamId);
-            return List.of();
+            return AssemblyResult.empty();
         }
 
         // Step 2: Get undersaturated competencies (team gaps)
@@ -116,7 +116,7 @@ public class TeamFitAssembler implements TestAssembler {
         log.info("Assembled {} questions for TEAM_FIT assessment (team: {})",
             selectedQuestions.size(), teamId);
 
-        return selectedQuestions;
+        return AssemblyResult.of(selectedQuestions);
     }
 
     /**

@@ -17,6 +17,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.UUID;
 
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -123,9 +125,9 @@ class OverviewAssemblerTest {
             OverviewBlueprint blueprint = new OverviewBlueprint();
             blueprint.setCompetencyIds(null);
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(questionSelectionService);
         }
 
@@ -135,9 +137,9 @@ class OverviewAssemblerTest {
             OverviewBlueprint blueprint = new OverviewBlueprint();
             blueprint.setCompetencyIds(List.of());
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(questionSelectionService);
         }
     }
@@ -161,10 +163,10 @@ class OverviewAssemblerTest {
                 .thenReturn(expectedQuestions);
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEqualTo(expectedQuestions);
+            assertThat(result.questionIds()).isEqualTo(expectedQuestions);
             verify(questionSelectionService).selectQuestionsForCompetencies(
                 List.of(competencyId1),
                 5,
@@ -257,10 +259,10 @@ class OverviewAssemblerTest {
                 .thenReturn(List.of(questionId1, questionId2, questionId3));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).hasSize(3);
+            assertThat(result.questionIds()).hasSize(3);
             verify(questionSelectionService).selectQuestionsForCompetencies(
                 eq(List.of(competencyId1, competencyId2)),
                 anyInt(),
@@ -285,10 +287,10 @@ class OverviewAssemblerTest {
                 .thenReturn(List.of());
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
         }
 
         @Test
@@ -302,10 +304,10 @@ class OverviewAssemblerTest {
                 .thenReturn(expectedQuestions);
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).containsExactlyElementsOf(expectedQuestions);
+            assertThat(result.questionIds()).containsExactlyElementsOf(expectedQuestions);
         }
     }
 
@@ -329,11 +331,11 @@ class OverviewAssemblerTest {
                 .thenReturn(expectedQuestions);
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then: verify the delegation passes questionsPerIndicator=3
             // which enables graduated difficulty inside QuestionSelectionServiceImpl
-            assertThat(result).hasSize(3);
+            assertThat(result.questionIds()).hasSize(3);
             verify(questionSelectionService).selectQuestionsForCompetencies(
                 eq(List.of(competencyId1, competencyId2)),
                 eq(3),
@@ -359,10 +361,10 @@ class OverviewAssemblerTest {
                 .thenReturn(fiveQuestions);
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).hasSize(5);
+            assertThat(result.questionIds()).hasSize(5);
             verify(questionSelectionService).selectQuestionsForCompetencies(
                 anyList(),
                 eq(5),
@@ -409,10 +411,10 @@ class OverviewAssemblerTest {
                 .thenReturn(List.of(questionId1, questionId2));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then: questionsPerIndicator=2 uses legacy single-difficulty path
-            assertThat(result).hasSize(2);
+            assertThat(result.questionIds()).hasSize(2);
             verify(questionSelectionService).selectQuestionsForCompetencies(
                 anyList(),
                 eq(2),
@@ -442,10 +444,10 @@ class OverviewAssemblerTest {
                 .thenReturn(selectedQuestions);
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then: QuestionSelectionService was called (exposure tracking happens inside it)
-            assertThat(result).hasSize(3);
+            assertThat(result.questionIds()).hasSize(3);
             verify(questionSelectionService, times(1)).selectQuestionsForCompetencies(
                 anyList(), anyInt(), any(), anyBoolean(), eq(true));
         }

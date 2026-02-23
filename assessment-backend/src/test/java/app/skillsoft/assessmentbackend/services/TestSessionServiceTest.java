@@ -13,6 +13,7 @@ import app.skillsoft.assessmentbackend.repository.*;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
 import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
@@ -539,7 +540,7 @@ class TestSessionServiceTest {
 
             // Mock assembler factory to return a mock assembler that returns empty list
             TestAssembler mockAssembler = mock(TestAssembler.class);
-            when(mockAssembler.assemble(any())).thenReturn(Collections.emptyList());
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.empty());
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
             // Mock heatmap service to return CRITICAL status for readiness check
@@ -602,7 +603,7 @@ class TestSessionServiceTest {
 
             // Mock assembler factory to return a mock assembler that returns empty list
             TestAssembler mockAssembler = mock(TestAssembler.class);
-            when(mockAssembler.assemble(any())).thenReturn(Collections.emptyList());
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.empty());
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
             // Mock heatmap service to return CRITICAL status
@@ -664,7 +665,7 @@ class TestSessionServiceTest {
 
             // Mock assembler factory to return a mock assembler that returns questions
             TestAssembler mockAssembler = mock(TestAssembler.class);
-            when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id, question3Id));
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(question1Id, question2Id, question3Id)));
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
             // Mock session save

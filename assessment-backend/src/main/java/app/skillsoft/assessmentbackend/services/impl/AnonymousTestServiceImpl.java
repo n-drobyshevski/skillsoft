@@ -646,7 +646,7 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
                 assembler.getClass().getSimpleName(),
                 enrichedBlueprint.getStrategy());
 
-        List<UUID> questions = assembler.assemble(enrichedBlueprint);
+        List<UUID> questions = assembler.assemble(enrichedBlueprint).questionIds();
 
         log.info("Assembled {} questions for anonymous session on template {}",
                 questions.size(), template.getId());

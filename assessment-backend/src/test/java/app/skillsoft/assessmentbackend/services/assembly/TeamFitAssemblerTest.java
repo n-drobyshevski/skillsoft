@@ -11,6 +11,7 @@ import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.external.TeamService.TeamProfile;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -152,9 +153,9 @@ class TeamFitAssemblerTest {
             TeamFitBlueprint blueprint = new TeamFitBlueprint();
             blueprint.setTeamId(null);
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(teamService);
         }
     }
@@ -171,10 +172,10 @@ class TeamFitAssemblerTest {
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.empty());
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verify(teamService).getTeamProfile(teamId);
         }
 
@@ -199,10 +200,10 @@ class TeamFitAssemblerTest {
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
             verify(teamService).getUndersaturatedCompetencies(teamId, 0.3);
         }
 
@@ -231,10 +232,10 @@ class TeamFitAssemblerTest {
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then - Should still produce questions from all competencies
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
         }
     }
 
@@ -348,10 +349,10 @@ class TeamFitAssemblerTest {
                 .thenReturn(List.of(questionId2));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).contains(questionId1, questionId2);
+            assertThat(result.questionIds()).contains(questionId1, questionId2);
             verify(questionSelectionService, times(2)).selectQuestionsForIndicator(
                 any(), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()
             );
@@ -380,7 +381,7 @@ class TeamFitAssemblerTest {
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then - Only active indicator should be used
             verify(questionSelectionService, times(1)).selectQuestionsForIndicator(
@@ -405,10 +406,10 @@ class TeamFitAssemblerTest {
                 .thenReturn(List.of());  // No indicators
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(questionSelectionService);
         }
     }

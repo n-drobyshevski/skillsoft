@@ -81,4 +81,20 @@ public record InventoryWarning(
             message
         );
     }
+
+    /**
+     * Create an assembly-level warning with a severity level.
+     * Used for diagnostics like fuzzy matches, lookup fallbacks, etc.
+     */
+    public static InventoryWarning assemblyWarning(WarningLevel level, String message) {
+        return new InventoryWarning(
+            level,
+            null,
+            null,
+            null,
+            0,
+            0,
+            message
+        );
+    }
 }

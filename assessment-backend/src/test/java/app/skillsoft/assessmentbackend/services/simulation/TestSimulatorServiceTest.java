@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.dto.simulation.*;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
@@ -100,7 +101,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -130,7 +131,7 @@ class TestSimulatorServiceTest {
         void shouldReturnFailedResultWhenNoQuestionsAssembled() {
             OverviewBlueprint blueprint = createValidBlueprint();
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(List.of());
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.empty());
 
             SimulationResultDto result = testSimulatorService.simulate(blueprint, SimulationProfile.RANDOM_GUESSER);
 
@@ -153,7 +154,7 @@ class TestSimulatorServiceTest {
             );
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -175,7 +176,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(q1, q2);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -194,7 +195,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
 
             InventoryHeatmapDto criticalHeatmap = createHeatmapWithStatus(HealthStatus.CRITICAL);
@@ -214,7 +215,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
 
             InventoryHeatmapDto moderateHeatmap = createHeatmapWithStatus(HealthStatus.MODERATE);
@@ -237,7 +238,7 @@ class TestSimulatorServiceTest {
             );
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -265,7 +266,7 @@ class TestSimulatorServiceTest {
             );
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -286,7 +287,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(q1, q2);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -306,7 +307,7 @@ class TestSimulatorServiceTest {
             );
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -325,7 +326,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -345,7 +346,7 @@ class TestSimulatorServiceTest {
             );
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -363,7 +364,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -381,7 +382,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -402,7 +403,7 @@ class TestSimulatorServiceTest {
             List<UUID> questionIds = List.of(questionId1, questionId2);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
 
             boolean result = testSimulatorService.validate(blueprint);
 
@@ -426,7 +427,7 @@ class TestSimulatorServiceTest {
         void shouldReturnFalseWhenAssemblyReturnsEmpty() {
             OverviewBlueprint blueprint = createValidBlueprint();
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(List.of());
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.empty());
 
             boolean result = testSimulatorService.validate(blueprint);
 
@@ -458,7 +459,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -476,7 +477,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -494,7 +495,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -513,7 +514,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -552,7 +553,7 @@ class TestSimulatorServiceTest {
             allQuestions.addAll(expert);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(allIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(allIds));
             when(questionRepository.findAllById(allIds)).thenReturn(allQuestions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -579,7 +580,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -599,7 +600,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -623,7 +624,7 @@ class TestSimulatorServiceTest {
             );
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -664,7 +665,7 @@ class TestSimulatorServiceTest {
             }
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(allIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(allIds));
             when(questionRepository.findAllById(allIds)).thenReturn(allQuestions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -691,7 +692,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -708,7 +709,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -732,7 +733,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(question);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -752,7 +753,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(question);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -772,7 +773,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createEmptyHeatmap());
 
@@ -791,7 +792,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(question);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -809,7 +810,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
 
             InventoryHeatmapDto criticalHeatmap = createHeatmapWithStatus(HealthStatus.CRITICAL);
@@ -835,7 +836,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(q3, q1, q2);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -855,7 +856,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(createQuestionWithId(questionId1, "Q1"));
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -882,7 +883,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = List.of(question);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 
@@ -910,7 +911,7 @@ class TestSimulatorServiceTest {
             List<AssessmentQuestion> questions = createManyQuestions(questionIds);
 
             when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
-            when(mockAssembler.assemble(any())).thenReturn(questionIds);
+            when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(questionIds));
             when(questionRepository.findAllById(questionIds)).thenReturn(questions);
             when(inventoryHeatmapService.generateHeatmapFor(any())).thenReturn(createHealthyHeatmap());
 

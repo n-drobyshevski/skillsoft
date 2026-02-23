@@ -51,7 +51,7 @@ public class OverviewAssembler implements TestAssembler {
     }
 
     @Override
-    public List<UUID> assemble(TestBlueprintDto blueprint) {
+    public AssemblyResult assemble(TestBlueprintDto blueprint) {
         // Set operation context for assembly logging
         LoggingContext.setOperation("overview-assembly");
 
@@ -67,7 +67,7 @@ public class OverviewAssembler implements TestAssembler {
         var competencyIds = overviewBlueprint.getCompetencyIds();
         if (competencyIds == null || competencyIds.isEmpty()) {
             log.warn("No competency IDs provided in OverviewBlueprint");
-            return List.of();
+            return AssemblyResult.empty();
         }
 
         log.info("Assembling OVERVIEW test: competencies={} count={}",
@@ -104,6 +104,6 @@ public class OverviewAssembler implements TestAssembler {
         log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {})",
                 selectedQuestions.size(), competencyIds.size(), questionsPerIndicator);
 
-        return selectedQuestions;
+        return AssemblyResult.of(selectedQuestions);
     }
 }

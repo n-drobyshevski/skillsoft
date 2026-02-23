@@ -3,9 +3,6 @@ package app.skillsoft.assessmentbackend.services.assembly;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 
-import java.util.List;
-import java.util.UUID;
-
 /**
  * Strategy interface for test question assembly.
  * 
@@ -27,9 +24,9 @@ public interface TestAssembler {
      * 4. Return the final list of question IDs for the test
      * 
      * @param blueprint The polymorphic blueprint configuration
-     * @return List of question UUIDs in presentation order
+     * @return AssemblyResult containing question UUIDs and any diagnostic warnings
      */
-    List<UUID> assemble(TestBlueprintDto blueprint);
+    AssemblyResult assemble(TestBlueprintDto blueprint);
 
     /**
      * Get the AssessmentGoal this assembler supports.

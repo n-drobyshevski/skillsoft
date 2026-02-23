@@ -694,7 +694,7 @@ public class TestSessionServiceImpl implements TestSessionService {
                     "Starting question selection"
             );
 
-            List<UUID> questions = assembler.assemble(enrichedBlueprint);
+            List<UUID> questions = assembler.assemble(enrichedBlueprint).questionIds();
 
             // Update progress to VALIDATING phase
             assemblyProgressTracker.updatePhase(

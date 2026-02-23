@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -69,7 +71,7 @@ public class JobFitAssembler implements TestAssembler {
     }
 
     @Override
-    public List<UUID> assemble(TestBlueprintDto blueprint) {
+    public AssemblyResult assemble(TestBlueprintDto blueprint) {
         if (!(blueprint instanceof JobFitBlueprint jobFitBlueprint)) {
             throw new IllegalArgumentException(
                 "JobFitAssembler requires JobFitBlueprint, got: " +
@@ -77,10 +79,15 @@ public class JobFitAssembler implements TestAssembler {
             );
         }
 
+        var warnings = new ArrayList<InventoryWarning>();
+
         var socCode = jobFitBlueprint.getOnetSocCode();
         if (socCode == null || socCode.isBlank()) {
             log.warn("No O*NET SOC code provided in JobFitBlueprint");
-            return List.of();
+            return new AssemblyResult(List.of(), List.of(
+                InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.ERROR,
+                    "No O*NET SOC code provided in blueprint configuration.")
+            ));
         }
 
         var candidateClerkUserId = jobFitBlueprint.getCandidateClerkUserId();
@@ -91,7 +98,10 @@ public class JobFitAssembler implements TestAssembler {
         var onetProfile = onetService.getProfile(socCode);
         if (onetProfile.isEmpty()) {
             log.warn("No O*NET profile found for SOC code: {}", socCode);
-            return List.of();
+            return new AssemblyResult(List.of(), List.of(
+                InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.ERROR,
+                    "No O*NET profile found for SOC code: " + socCode)
+            ));
         }
 
         var benchmarks = onetProfile.get().benchmarks();
@@ -102,15 +112,15 @@ public class JobFitAssembler implements TestAssembler {
             candidateClerkUserId, jobFitBlueprint.getPassportMaxAgeDays());
 
         // Step 3: Calculate gaps using passport data (or default to score=0 if no passport)
-        var gapAnalysis = analyzeGaps(benchmarks, passport, jobFitBlueprint.getStrictnessLevel());
+        var gapAnalysis = analyzeGaps(benchmarks, passport, jobFitBlueprint.getStrictnessLevel(), warnings);
 
         // Step 4: Select questions based on gap analysis using QuestionSelectionService
-        var selectedQuestions = selectQuestionsForGaps(gapAnalysis, jobFitBlueprint.getStrictnessLevel());
+        var selectedQuestions = selectQuestionsForGaps(gapAnalysis, jobFitBlueprint.getStrictnessLevel(), warnings);
 
         log.info("Assembled {} questions for JOB_FIT assessment (SOC: {}, deltaMode: {})",
             selectedQuestions.size(), socCode, passport.isPresent());
 
-        return selectedQuestions;
+        return new AssemblyResult(selectedQuestions, warnings);
     }
 
     /**
@@ -171,7 +181,8 @@ public class JobFitAssembler implements TestAssembler {
     private Map<String, GapInfo> analyzeGaps(
             Map<String, Double> benchmarks,
             Optional<PassportService.CompetencyPassport> passport,
-            int strictnessLevel) {
+            int strictnessLevel,
+            List<InventoryWarning> warnings) {
 
         var gaps = new HashMap<String, GapInfo>();
 
@@ -204,6 +215,10 @@ public class JobFitAssembler implements TestAssembler {
                     log.warn("Fuzzy match used for passport lookup: benchmark competency '{}' matched to passport key '{}'. " +
                              "Consider aligning competency names for exact matching.",
                         competencyName, fuzzyMatch.get());
+                    warnings.add(InventoryWarning.assemblyWarning(
+                        InventoryWarning.WarningLevel.WARNING,
+                        "Fuzzy match for passport lookup: benchmark '" + competencyName +
+                        "' matched to '" + fuzzyMatch.get() + "'. Consider aligning competency names."));
                     candidateScoreOrNull = passportScoresByName.get(fuzzyMatch.get());
                 }
             }
@@ -303,7 +318,7 @@ public class JobFitAssembler implements TestAssembler {
      * This handles cross-language scenarios where O*NET benchmark names (English)
      * differ from internal competency names (e.g., Russian).
      */
-    private List<UUID> selectQuestionsForGaps(Map<String, GapInfo> gapAnalysis, int strictnessLevel) {
+    private List<UUID> selectQuestionsForGaps(Map<String, GapInfo> gapAnalysis, int strictnessLevel, List<InventoryWarning> warnings) {
         Set<String> benchmarkNames = gapAnalysis.keySet().stream()
             .map(String::toLowerCase)
             .collect(Collectors.toSet());
@@ -316,6 +331,10 @@ public class JobFitAssembler implements TestAssembler {
             log.warn("Name-based competency lookup matched only {}/{} benchmarks. " +
                      "Falling back to full active competency scan for cross-reference matching.",
                 allCompetencies.size(), benchmarkNames.size());
+            warnings.add(InventoryWarning.assemblyWarning(
+                InventoryWarning.WarningLevel.WARNING,
+                "Name-based competency lookup matched only " + allCompetencies.size() + "/" +
+                benchmarkNames.size() + " benchmarks. Falling back to full active competency scan."));
             allCompetencies = competencyRepository.findByIsActiveTrue();
         }
 
@@ -347,7 +366,7 @@ public class JobFitAssembler implements TestAssembler {
 
             // Find competency and its indicators by name using preloaded data
             var indicatorsForGap = findIndicatorsForCompetencyNameCached(
-                gapInfo.competencyName(), competencyByName, indicatorsByCompetencyId);
+                gapInfo.competencyName(), competencyByName, indicatorsByCompetencyId, warnings);
 
             for (var indicator : indicatorsForGap) {
                 // Weight = gap magnitude (0.0 - 1.0), minimum 0.1 to ensure at least some questions
@@ -363,6 +382,9 @@ public class JobFitAssembler implements TestAssembler {
                      "Available lookup keys: {}",
                 gapAnalysis.keySet(),
                 competencyByName.keySet());
+            warnings.add(InventoryWarning.assemblyWarning(
+                InventoryWarning.WarningLevel.ERROR,
+                "No indicators found for any gap competencies. Benchmark names could not be resolved to internal competencies."));
             return List.of();
         }
 
@@ -467,7 +489,8 @@ public class JobFitAssembler implements TestAssembler {
     private List<BehavioralIndicator> findIndicatorsForCompetencyNameCached(
             String competencyName,
             Map<String, List<Competency>> competencyByName,
-            Map<UUID, List<BehavioralIndicator>> indicatorsByCompetencyId) {
+            Map<UUID, List<BehavioralIndicator>> indicatorsByCompetencyId,
+            List<InventoryWarning> warnings) {
 
         List<Competency> matchingCompetencies = competencyByName.getOrDefault(
             competencyName.toLowerCase(), List.of());
@@ -481,6 +504,10 @@ public class JobFitAssembler implements TestAssembler {
                 log.warn("Fuzzy match used: O*NET competency '{}' matched to internal competency key '{}'. " +
                          "Consider aligning competency names for exact matching.",
                     competencyName, fuzzyMatch.get());
+                warnings.add(InventoryWarning.assemblyWarning(
+                    InventoryWarning.WarningLevel.WARNING,
+                    "Fuzzy match: O*NET competency '" + competencyName +
+                    "' matched to '" + fuzzyMatch.get() + "'. Consider aligning names."));
                 matchingCompetencies = competencyByName.getOrDefault(fuzzyMatch.get(), List.of());
             }
         }

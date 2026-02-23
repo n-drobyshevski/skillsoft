@@ -10,6 +10,7 @@ import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.OnetService.OnetProfile;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
 import app.skillsoft.assessmentbackend.services.external.PassportService.CompetencyPassport;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -160,9 +161,9 @@ class JobFitAssemblerTest {
             JobFitBlueprint blueprint = new JobFitBlueprint();
             blueprint.setOnetSocCode(null);
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(onetService);
         }
 
@@ -172,9 +173,9 @@ class JobFitAssemblerTest {
             JobFitBlueprint blueprint = new JobFitBlueprint();
             blueprint.setOnetSocCode("   ");
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(onetService);
         }
     }
@@ -191,10 +192,10 @@ class JobFitAssemblerTest {
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.empty());
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verify(onetService).getProfile(VALID_SOC_CODE);
         }
 
@@ -216,10 +217,10 @@ class JobFitAssemblerTest {
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
             verify(onetService).getProfile(VALID_SOC_CODE);
         }
     }
@@ -247,10 +248,10 @@ class JobFitAssemblerTest {
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
             verifyNoInteractions(passportService);
         }
 
@@ -309,10 +310,10 @@ class JobFitAssemblerTest {
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
         }
     }
 
@@ -338,10 +339,10 @@ class JobFitAssemblerTest {
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).contains(questionId1);
+            assertThat(result.questionIds()).contains(questionId1);
             verify(questionSelectionService).selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), any(DifficultyLevel.class), anySet()
             );
@@ -361,10 +362,10 @@ class JobFitAssemblerTest {
             when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
         }
     }
 
