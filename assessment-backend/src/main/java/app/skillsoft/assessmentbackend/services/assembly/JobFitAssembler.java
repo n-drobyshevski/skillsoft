@@ -11,6 +11,7 @@ import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.selection.SelectionWarningCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -415,24 +416,29 @@ public class JobFitAssembler implements TestAssembler {
             .map(Map.Entry::getKey)
             .toList();
 
-        for (UUID indicatorId : sortedIndicators) {
-            if (selectedQuestions.size() >= totalQuestions) break;
+        SelectionWarningCollector.begin();
+        try {
+            for (UUID indicatorId : sortedIndicators) {
+                if (selectedQuestions.size() >= totalQuestions) break;
 
-            DifficultyLevel difficulty = indicatorDifficulties.get(indicatorId);
+                DifficultyLevel difficulty = indicatorDifficulties.get(indicatorId);
 
-            // Use pre-computed per-indicator allocation instead of flat DEFAULT
-            int questionsForIndicator = indicatorAllocations.getOrDefault(indicatorId, MIN_QUESTIONS_PER_GAP);
-            questionsForIndicator = Math.min(questionsForIndicator, totalQuestions - selectedQuestions.size());
+                // Use pre-computed per-indicator allocation instead of flat DEFAULT
+                int questionsForIndicator = indicatorAllocations.getOrDefault(indicatorId, MIN_QUESTIONS_PER_GAP);
+                questionsForIndicator = Math.min(questionsForIndicator, totalQuestions - selectedQuestions.size());
 
-            List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
-                indicatorId,
-                questionsForIndicator,
-                difficulty,
-                usedQuestions
-            );
+                List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
+                    indicatorId,
+                    questionsForIndicator,
+                    difficulty,
+                    usedQuestions
+                );
 
-            selectedQuestions.addAll(questions);
-            usedQuestions.addAll(questions);
+                selectedQuestions.addAll(questions);
+                usedQuestions.addAll(questions);
+            }
+        } finally {
+            warnings.addAll(SelectionWarningCollector.drain());
         }
 
         log.debug("Selected {} questions for {} gaps using weighted distribution",

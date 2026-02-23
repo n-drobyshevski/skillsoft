@@ -7,7 +7,9 @@ import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.selection.SelectionWarningCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -108,15 +110,24 @@ public class TeamFitAssembler implements TestAssembler {
 
         // Step 3: Select questions for undersaturated competencies using QuestionSelectionService
         var saturationLevels = teamProfile.get().competencySaturation();
-        var selectedQuestions = selectQuestionsForUndersaturatedCompetencies(
-            undersaturatedCompetencies,
-            saturationLevels
-        );
+        List<InventoryWarning> warnings = new ArrayList<>();
 
-        log.info("Assembled {} questions for TEAM_FIT assessment (team: {})",
-            selectedQuestions.size(), teamId);
+        SelectionWarningCollector.begin();
+        try {
+            var selectedQuestions = selectQuestionsForUndersaturatedCompetencies(
+                undersaturatedCompetencies,
+                saturationLevels
+            );
 
-        return AssemblyResult.of(selectedQuestions);
+            log.info("Assembled {} questions for TEAM_FIT assessment (team: {})",
+                selectedQuestions.size(), teamId);
+
+            warnings.addAll(SelectionWarningCollector.drain());
+            return new AssemblyResult(selectedQuestions, warnings);
+        } catch (Exception e) {
+            SelectionWarningCollector.clear();
+            throw e;
+        }
     }
 
     /**

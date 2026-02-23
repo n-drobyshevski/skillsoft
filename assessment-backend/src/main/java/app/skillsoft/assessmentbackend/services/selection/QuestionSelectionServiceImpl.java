@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.domain.entities.ItemValidityStatus;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.ItemStatisticsRepository;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning.WarningLevel;
 import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,6 +130,8 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
 
         if (candidates.isEmpty()) {
             log.warn("No active questions found for indicator {}", indicatorId);
+            SelectionWarningCollector.addWarning(WarningLevel.WARNING,
+                    "No active questions found for indicator " + indicatorId);
             return List.of();
         }
 
@@ -218,6 +221,9 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                 log.warn("Fallback Tier 3: Indicator {} exhausted, selecting {} questions " +
                          "from sibling indicators of competency {} (flagged for psychometric review)",
                         indicatorId, remaining, competencyId);
+                SelectionWarningCollector.addWarning(WarningLevel.WARNING,
+                        String.format("Indicator %s exhausted: borrowing %d questions from sibling indicators of competency %s (flagged for psychometric review)",
+                                indicatorId, remaining, competencyId));
 
                 List<BehavioralIndicator> siblings = indicatorRepository.findByCompetencyId(competencyId)
                         .stream()
@@ -702,6 +708,8 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
 
         if (indicators.isEmpty()) {
             log.warn("No active behavioral indicators found for competency {}", competencyId);
+            SelectionWarningCollector.addWarning(WarningLevel.WARNING,
+                    "No active behavioral indicators found for competency " + competencyId);
             return List.of();
         }
 
@@ -754,6 +762,8 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
 
         if (allIndicators.isEmpty()) {
             log.warn("No active behavioral indicators found for competencies: {}", competencyIds);
+            SelectionWarningCollector.addWarning(WarningLevel.WARNING,
+                    "No active behavioral indicators found for competencies: " + competencyIds);
             return List.of();
         }
 

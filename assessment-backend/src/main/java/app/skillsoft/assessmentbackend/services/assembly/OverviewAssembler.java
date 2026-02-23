@@ -4,12 +4,15 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.selection.SelectionWarningCollector;
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -93,17 +96,26 @@ public class OverviewAssembler implements TestAssembler {
         // - WATERFALL distribution across indicators
         // - Difficulty preference with fallback
         // - Optional shuffling
-        List<UUID> selectedQuestions = questionSelectionService.selectQuestionsForCompetencies(
-                competencyIds,
-                questionsPerIndicator,
-                preferredDifficulty,
-                shuffle,
-                true // contextNeutralOnly: OVERVIEW assessments require context-neutral items
-        );
+        List<InventoryWarning> warnings = new ArrayList<>();
 
-        log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {})",
-                selectedQuestions.size(), competencyIds.size(), questionsPerIndicator);
+        SelectionWarningCollector.begin();
+        try {
+            List<UUID> selectedQuestions = questionSelectionService.selectQuestionsForCompetencies(
+                    competencyIds,
+                    questionsPerIndicator,
+                    preferredDifficulty,
+                    shuffle,
+                    true // contextNeutralOnly: OVERVIEW assessments require context-neutral items
+            );
 
-        return AssemblyResult.of(selectedQuestions);
+            log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {})",
+                    selectedQuestions.size(), competencyIds.size(), questionsPerIndicator);
+
+            warnings.addAll(SelectionWarningCollector.drain());
+            return new AssemblyResult(selectedQuestions, warnings);
+        } catch (Exception e) {
+            SelectionWarningCollector.clear();
+            throw e;
+        }
     }
 }
