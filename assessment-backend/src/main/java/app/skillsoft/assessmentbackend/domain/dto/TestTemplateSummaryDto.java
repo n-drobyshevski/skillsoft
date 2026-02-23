@@ -30,6 +30,8 @@ public record TestTemplateSummaryDto(
         Boolean isActive,
         LocalDateTime createdAt,
         /** Lifecycle status: DRAFT, PUBLISHED, or ARCHIVED. */
-        String status
+        String status,
+        /** Template version number, starting from 1. */
+        Integer version
 ) {
 }

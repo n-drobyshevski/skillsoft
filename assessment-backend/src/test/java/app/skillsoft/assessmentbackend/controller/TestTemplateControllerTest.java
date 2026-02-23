@@ -124,7 +124,8 @@ class TestTemplateControllerTest {
                 70.0,        // passingScore
                 true,        // isActive
                 now,         // createdAt
-                "DRAFT"      // status
+                "DRAFT",     // status
+                1            // version
         );
 
         // CreateTestTemplateRequest: name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,

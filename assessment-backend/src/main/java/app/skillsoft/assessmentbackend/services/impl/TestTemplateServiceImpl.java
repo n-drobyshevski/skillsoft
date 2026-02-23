@@ -476,7 +476,8 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getPassingScore(),
                 template.getIsActive(),
                 template.getCreatedAt(),
-                template.getStatus() != null ? template.getStatus().name() : null
+                template.getStatus() != null ? template.getStatus().name() : null,
+                template.getVersion()
         );
     }
 }
