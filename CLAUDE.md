@@ -44,6 +44,8 @@ Mobile-First & Touch: ALWAYS design for 320px viewports first using unprefixed u
 
 Styling: Utilize Tailwind v4 CSS-first configuration (@theme in globals.css). Favor shadcn data-slot attributes over legacy forwardRef.
 
+Design Language: ALWAYS consult DESIGN.md before building new UI. The /profile page is the canonical reference implementation.
+
 4. ☕ Backend Rules (Spring Boot 3.5)
 
 Architecture: Maintain strict separation: Controllers -> Services -> Repositories -> Entities.
@@ -78,6 +80,12 @@ Feature Area
 Implementation Context
 
 Deep Dive Documentation
+
+Design System
+
+globals.css, /profile page
+
+DESIGN.md
 
 Domain Entities
 
