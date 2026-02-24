@@ -257,7 +257,9 @@ public class ActivityTrackingServiceImpl implements ActivityTrackingService {
     private TestActivityDto mapToActivityDto(TestSession session, User user, TestResult result) {
         String userName = user != null ? user.getFullName() : "Unknown User";
         String userImageUrl = user != null ? user.getImageUrl() : null;
-        Double score = result != null ? result.getOverallPercentage() : null;
+        Double score = result != null && result.getOverallPercentage() != null
+                ? Math.round(result.getOverallPercentage() * 100.0) / 100.0
+                : null;
         Boolean passed = result != null ? result.getPassed() : null;
         Integer timeSpentSeconds = calculateTimeSpent(session);
 
