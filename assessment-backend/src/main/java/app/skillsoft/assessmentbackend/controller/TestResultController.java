@@ -238,6 +238,28 @@ public class TestResultController {
     }
 
     /**
+     * Get all results for a user with full detail (including competency scores).
+     * Used by profile page for competency aggregation.
+     *
+     * @param clerkUserId User's Clerk ID
+     * @param pageable Pagination parameters
+     * @return Page of full result DTOs with competency scores
+     */
+    @GetMapping("/user/{clerkUserId}/detailed")
+    @PreAuthorize("@sessionSecurity.canAccessUserData(#clerkUserId)")
+    public ResponseEntity<Page<TestResultDto>> getUserResultsDetailed(
+            @PathVariable String clerkUserId,
+            @PageableDefault(size = 100, sort = "completedAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+        logger.info("GET /api/v1/tests/results/user/{}/detailed", clerkUserId);
+
+        Page<TestResultDto> results = testResultService.findByUserDetailed(clerkUserId, pageable);
+        logger.info("Found {} detailed results for user {}", results.getTotalElements(), clerkUserId);
+
+        return ResponseEntity.ok(results);
+    }
+
+    /**
      * Get all results for a user ordered by date with pagination.
      *
      * @param clerkUserId User's Clerk ID

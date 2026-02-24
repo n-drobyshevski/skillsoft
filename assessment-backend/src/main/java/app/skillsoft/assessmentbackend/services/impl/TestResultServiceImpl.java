@@ -56,6 +56,13 @@ public class TestResultServiceImpl implements TestResultService {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<TestResultDto> findByUserDetailed(String clerkUserId, Pageable pageable) {
+        return resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable)
+                .map(this::toDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Page<TestResultSummaryDto> findByUserOrderByDate(String clerkUserId, Pageable pageable) {
         // Use JOIN FETCH to avoid N+1 when accessing session and template
         return resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable)

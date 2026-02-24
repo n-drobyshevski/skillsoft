@@ -32,6 +32,12 @@ public interface TestResultService {
     Page<TestResultSummaryDto> findByUser(String clerkUserId, Pageable pageable);
 
     /**
+     * Get all results for a user with full detail (including competency scores).
+     * Used by profile page for competency aggregation.
+     */
+    Page<TestResultDto> findByUserDetailed(String clerkUserId, Pageable pageable);
+
+    /**
      * Get all results for a user (ordered by completion date) with pagination.
      */
     Page<TestResultSummaryDto> findByUserOrderByDate(String clerkUserId, Pageable pageable);
