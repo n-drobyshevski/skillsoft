@@ -1,7 +1,12 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
 import app.skillsoft.assessmentbackend.config.CacheConfig;
+import app.skillsoft.assessmentbackend.domain.dto.IndicatorInventoryDto;
+import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
+import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.CompetencyService;
 import org.slf4j.Logger;
@@ -12,7 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,9 +29,16 @@ public class CompetencyServiceImpl implements CompetencyService {
     private static final Logger logger = LoggerFactory.getLogger(CompetencyServiceImpl.class);
 
     private final CompetencyRepository competencyRepository;
+    private final BehavioralIndicatorRepository behavioralIndicatorRepository;
+    private final AssessmentQuestionRepository assessmentQuestionRepository;
 
-    public CompetencyServiceImpl(CompetencyRepository competencyRepository) {
+    public CompetencyServiceImpl(
+            CompetencyRepository competencyRepository,
+            BehavioralIndicatorRepository behavioralIndicatorRepository,
+            AssessmentQuestionRepository assessmentQuestionRepository) {
         this.competencyRepository = competencyRepository;
+        this.behavioralIndicatorRepository = behavioralIndicatorRepository;
+        this.assessmentQuestionRepository = assessmentQuestionRepository;
     }
 
     @Override
@@ -117,5 +131,49 @@ public class CompetencyServiceImpl implements CompetencyService {
             return true;
         }
         return false;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public IndicatorInventoryDto getIndicatorInventory(UUID competencyId) {
+        List<BehavioralIndicator> indicators = behavioralIndicatorRepository
+            .findByCompetencyId(competencyId);
+
+        List<Object[]> counts = assessmentQuestionRepository
+            .countActiveQuestionsByIndicatorAndDifficulty(competencyId);
+
+        Map<UUID, Map<DifficultyLevel, Integer>> countMap = new java.util.HashMap<>();
+        for (Object[] row : counts) {
+            UUID indicatorId = (UUID) row[0];
+            DifficultyLevel difficulty = (DifficultyLevel) row[1];
+            int count = ((Number) row[2]).intValue();
+            countMap.computeIfAbsent(indicatorId, k -> new EnumMap<>(DifficultyLevel.class))
+                    .put(difficulty, count);
+        }
+
+        List<IndicatorInventoryDto.IndicatorQuestionStats> stats = indicators.stream()
+            .map(ind -> {
+                Map<DifficultyLevel, Integer> difficultyCounts =
+                    countMap.getOrDefault(ind.getId(), Map.of());
+
+                Map<DifficultyLevel, Integer> fullCounts = new EnumMap<>(DifficultyLevel.class);
+                for (DifficultyLevel dl : DifficultyLevel.values()) {
+                    fullCounts.put(dl, difficultyCounts.getOrDefault(dl, 0));
+                }
+
+                int total = fullCounts.values().stream().mapToInt(Integer::intValue).sum();
+
+                return new IndicatorInventoryDto.IndicatorQuestionStats(
+                    ind.getId(),
+                    ind.getTitle(),
+                    ind.getWeight(),
+                    ind.isActive(),
+                    total,
+                    fullCounts
+                );
+            })
+            .toList();
+
+        return new IndicatorInventoryDto(competencyId, stats);
     }
 }

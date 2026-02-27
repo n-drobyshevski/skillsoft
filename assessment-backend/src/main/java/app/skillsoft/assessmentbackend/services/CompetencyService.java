@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services;
 
+import app.skillsoft.assessmentbackend.domain.dto.IndicatorInventoryDto;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 
 import java.util.List;
@@ -16,4 +17,6 @@ public interface CompetencyService {
     Competency updateCompetency(UUID id, Competency competency);
 
     boolean deleteCompetency(UUID id);
+
+    IndicatorInventoryDto getIndicatorInventory(UUID competencyId);
 }
