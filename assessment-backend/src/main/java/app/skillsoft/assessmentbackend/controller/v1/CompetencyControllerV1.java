@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.controller.v1;
 
 import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.dto.IndicatorInventoryDto;
 import app.skillsoft.assessmentbackend.domain.dto.request.CreateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.dto.request.UpdateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
@@ -128,6 +129,23 @@ public class CompetencyControllerV1 {
             logger.error("Error updating competency with id {}: {}", id, e.getMessage());
             throw e;
         }
+    }
+
+    @GetMapping("/{competencyId}/indicator-inventory")
+    public ResponseEntity<IndicatorInventoryDto> getIndicatorInventory(
+            @PathVariable UUID competencyId) {
+        logger.info("GET /api/v1/competencies/{}/indicator-inventory", competencyId);
+        return competencyService.findCompetencyById(competencyId)
+                .map(comp -> {
+                    IndicatorInventoryDto inventory = competencyService.getIndicatorInventory(competencyId);
+                    return ResponseEntity.ok()
+                            .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePublic())
+                            .body(inventory);
+                })
+                .orElseGet(() -> {
+                    logger.warn("Competency {} not found for indicator-inventory", competencyId);
+                    return ResponseEntity.notFound().build();
+                });
     }
 
     @DeleteMapping("/{id}")
