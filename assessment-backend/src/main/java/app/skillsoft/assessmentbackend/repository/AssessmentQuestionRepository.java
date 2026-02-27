@@ -226,4 +226,18 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
 
     @Query("SELECT COALESCE(AVG(q.timeLimit), 0) FROM AssessmentQuestion q WHERE q.isActive = true AND q.timeLimit IS NOT NULL")
     double averageTimeLimit();
+
+    /**
+     * Count active questions per behavioral indicator, grouped by difficulty.
+     * Used by the blueprint builder's competency library expansion panel.
+     * Returns [indicatorId (UUID), difficultyLevel (DifficultyLevel), count (Long)].
+     */
+    @Query("SELECT q.behavioralIndicator.id, q.difficultyLevel, COUNT(q) " +
+           "FROM AssessmentQuestion q " +
+           "WHERE q.behavioralIndicator.competency.id = :competencyId " +
+           "AND q.isActive = true " +
+           "GROUP BY q.behavioralIndicator.id, q.difficultyLevel")
+    List<Object[]> countActiveQuestionsByIndicatorAndDifficulty(
+        @Param("competencyId") UUID competencyId
+    );
 }
