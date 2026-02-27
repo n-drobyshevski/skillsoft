@@ -8,5 +8,6 @@ import java.util.UUID;
  */
 public record SkillGapDto(
         UUID competencyId,
+        String competencyName,
         Double currentSaturation
 ) {}

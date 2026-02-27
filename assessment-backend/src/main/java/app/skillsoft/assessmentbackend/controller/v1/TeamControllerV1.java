@@ -1,9 +1,11 @@
 package app.skillsoft.assessmentbackend.controller.v1;
 
 import app.skillsoft.assessmentbackend.domain.dto.team.*;
+import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.TeamStatus;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.security.SessionSecurityService;
+import app.skillsoft.assessmentbackend.services.assembly.CachedCompetencyLookupService;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.external.TeamService.TeamProfile;
 import app.skillsoft.assessmentbackend.services.team.TeamMapper;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * V1 REST Controller for Team management operations.
@@ -52,6 +55,7 @@ public class TeamControllerV1 {
     private final TeamMapper teamMapper;
     private final UserRepository userRepository;
     private final SessionSecurityService sessionSecurity;
+    private final CachedCompetencyLookupService competencyLookup;
 
     public TeamControllerV1(
             TeamQueryService queryService,
@@ -59,13 +63,15 @@ public class TeamControllerV1 {
             TeamService teamService,
             TeamMapper teamMapper,
             UserRepository userRepository,
-            SessionSecurityService sessionSecurity) {
+            SessionSecurityService sessionSecurity,
+            CachedCompetencyLookupService competencyLookup) {
         this.queryService = queryService;
         this.orchestrationService = orchestrationService;
         this.teamService = teamService;
         this.teamMapper = teamMapper;
         this.userRepository = userRepository;
         this.sessionSecurity = sessionSecurity;
+        this.competencyLookup = competencyLookup;
     }
 
     // ==================== Team CRUD ====================
@@ -356,6 +362,10 @@ public class TeamControllerV1 {
     }
 
     private TeamProfileDto mapTeamProfile(TeamProfile profile) {
+        // Build competency name lookup from cached service
+        Map<UUID, String> nameMap = competencyLookup.findAllCompetencies().stream()
+                .collect(Collectors.toMap(Competency::getId, Competency::getName, (a, b) -> a));
+
         List<TeamMemberSummaryDto> members = profile.members().stream()
                 .map(m -> new TeamMemberSummaryDto(
                         m.userId(),
@@ -365,13 +375,21 @@ public class TeamControllerV1 {
                 .toList();
 
         List<CompetencySaturationDto> saturations = profile.competencySaturation().entrySet().stream()
-                .map(e -> new CompetencySaturationDto(e.getKey(), e.getValue()))
+                .map(e -> new CompetencySaturationDto(
+                        e.getKey(),
+                        nameMap.getOrDefault(e.getKey(), e.getKey().toString().substring(0, 8)),
+                        e.getValue()
+                ))
                 .toList();
 
         List<SkillGapDto> gaps = profile.skillGaps().stream()
                 .map(gapId -> {
                     Double saturation = profile.competencySaturation().getOrDefault(gapId, 0.0);
-                    return new SkillGapDto(gapId, saturation);
+                    return new SkillGapDto(
+                            gapId,
+                            nameMap.getOrDefault(gapId, gapId.toString().substring(0, 8)),
+                            saturation
+                    );
                 })
                 .toList();
 

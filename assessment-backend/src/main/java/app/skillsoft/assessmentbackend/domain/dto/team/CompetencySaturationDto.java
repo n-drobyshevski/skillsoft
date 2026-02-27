@@ -8,5 +8,6 @@ import java.util.UUID;
  */
 public record CompetencySaturationDto(
         UUID competencyId,
+        String competencyName,
         Double saturation
 ) {}
