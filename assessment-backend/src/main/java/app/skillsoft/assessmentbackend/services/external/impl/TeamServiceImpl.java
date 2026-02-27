@@ -49,7 +49,7 @@ public class TeamServiceImpl implements TeamService {
     @Cacheable(
         value = CacheConfig.TEAM_PROFILES_CACHE,
         key = "#teamId",
-        unless = "#result == null || !#result.isPresent()"
+        unless = "#result == null"
     )
     public Optional<TeamProfile> getTeamProfile(UUID teamId) {
         log.debug("Computing team profile for team: {} (cache miss)", teamId);

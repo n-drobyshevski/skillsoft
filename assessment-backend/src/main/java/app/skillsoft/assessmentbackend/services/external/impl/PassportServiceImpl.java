@@ -56,7 +56,7 @@ public class PassportServiceImpl implements PassportService {
     @Cacheable(
         value = CacheConfig.PASSPORT_SCORES_CACHE,
         key = "#candidateId",
-        unless = "#result == null || !#result.isPresent()"
+        unless = "#result == null"
     )
     public Optional<CompetencyPassport> getPassport(UUID candidateId) {
         log.debug("Fetching passport for candidate: {} (cache miss)", candidateId);
@@ -110,7 +110,7 @@ public class PassportServiceImpl implements PassportService {
     @Cacheable(
         value = CacheConfig.PASSPORT_SCORES_CACHE,
         key = "'clerk:' + #clerkUserId",
-        unless = "#result == null || !#result.isPresent()"
+        unless = "#result == null"
     )
     public Optional<CompetencyPassport> getPassportByClerkUserId(String clerkUserId) {
         if (clerkUserId == null || clerkUserId.isBlank()) {
