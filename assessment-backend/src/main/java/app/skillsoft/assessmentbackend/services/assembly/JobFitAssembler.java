@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.WarningCode;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -87,6 +88,7 @@ public class JobFitAssembler implements TestAssembler {
             log.warn("No O*NET SOC code provided in JobFitBlueprint");
             return new AssemblyResult(List.of(), List.of(
                 InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.ERROR,
+                    WarningCode.NO_ONET_SOC_CODE,
                     "No O*NET SOC code provided in blueprint configuration.")
             ));
         }
@@ -101,7 +103,9 @@ public class JobFitAssembler implements TestAssembler {
             log.warn("No O*NET profile found for SOC code: {}", socCode);
             return new AssemblyResult(List.of(), List.of(
                 InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.ERROR,
-                    "No O*NET profile found for SOC code: " + socCode)
+                    WarningCode.NO_ONET_PROFILE,
+                    "No O*NET profile found for SOC code: " + socCode,
+                    Map.of("socCode", socCode))
             ));
         }
 
@@ -213,13 +217,15 @@ public class JobFitAssembler implements TestAssembler {
                 Optional<String> fuzzyMatch = CompetencyNameMatcher.findBestMatch(
                     competencyName, passportScoresByName.keySet());
                 if (fuzzyMatch.isPresent()) {
-                    log.warn("Fuzzy match used for passport lookup: benchmark competency '{}' matched to passport key '{}'. " +
+                    log.info("Fuzzy match used for passport lookup: benchmark competency '{}' matched to passport key '{}'. " +
                              "Consider aligning competency names for exact matching.",
                         competencyName, fuzzyMatch.get());
                     warnings.add(InventoryWarning.assemblyWarning(
-                        InventoryWarning.WarningLevel.WARNING,
+                        InventoryWarning.WarningLevel.INFO,
+                        WarningCode.FUZZY_MATCH_PASSPORT,
                         "Fuzzy match for passport lookup: benchmark '" + competencyName +
-                        "' matched to '" + fuzzyMatch.get() + "'. Consider aligning competency names."));
+                        "' matched to '" + fuzzyMatch.get() + "'. Consider aligning competency names.",
+                        Map.of("benchmark", competencyName, "match", fuzzyMatch.get())));
                     candidateScoreOrNull = passportScoresByName.get(fuzzyMatch.get());
                 }
             }
@@ -329,13 +335,16 @@ public class JobFitAssembler implements TestAssembler {
 
         // Phase 2: if name match found fewer competencies than benchmarks, broaden search
         if (allCompetencies.size() < benchmarkNames.size()) {
-            log.warn("Name-based competency lookup matched only {}/{} benchmarks. " +
+            log.info("Name-based competency lookup matched only {}/{} benchmarks. " +
                      "Falling back to full active competency scan for cross-reference matching.",
                 allCompetencies.size(), benchmarkNames.size());
             warnings.add(InventoryWarning.assemblyWarning(
-                InventoryWarning.WarningLevel.WARNING,
+                InventoryWarning.WarningLevel.INFO,
+                WarningCode.BENCHMARK_LOOKUP_FALLBACK,
                 "Name-based competency lookup matched only " + allCompetencies.size() + "/" +
-                benchmarkNames.size() + " benchmarks. Falling back to full active competency scan."));
+                benchmarkNames.size() + " benchmarks. Falling back to full active competency scan.",
+                Map.of("matched", String.valueOf(allCompetencies.size()),
+                       "total", String.valueOf(benchmarkNames.size()))));
             allCompetencies = competencyRepository.findByIsActiveTrue();
         }
 
@@ -385,6 +394,7 @@ public class JobFitAssembler implements TestAssembler {
                 competencyByName.keySet());
             warnings.add(InventoryWarning.assemblyWarning(
                 InventoryWarning.WarningLevel.ERROR,
+                WarningCode.NO_INDICATORS_FOR_GAPS,
                 "No indicators found for any gap competencies. Benchmark names could not be resolved to internal competencies."));
             return List.of();
         }
@@ -507,13 +517,15 @@ public class JobFitAssembler implements TestAssembler {
                 competencyName, competencyByName.keySet());
 
             if (fuzzyMatch.isPresent()) {
-                log.warn("Fuzzy match used: O*NET competency '{}' matched to internal competency key '{}'. " +
+                log.info("Fuzzy match used: O*NET competency '{}' matched to internal competency key '{}'. " +
                          "Consider aligning competency names for exact matching.",
                     competencyName, fuzzyMatch.get());
                 warnings.add(InventoryWarning.assemblyWarning(
-                    InventoryWarning.WarningLevel.WARNING,
+                    InventoryWarning.WarningLevel.INFO,
+                    WarningCode.FUZZY_MATCH_ONET,
                     "Fuzzy match: O*NET competency '" + competencyName +
-                    "' matched to '" + fuzzyMatch.get() + "'. Consider aligning names."));
+                    "' matched to '" + fuzzyMatch.get() + "'. Consider aligning names.",
+                    Map.of("onetName", competencyName, "match", fuzzyMatch.get())));
                 matchingCompetencies = competencyByName.getOrDefault(fuzzyMatch.get(), List.of());
             }
         }

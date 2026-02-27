@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -98,18 +99,35 @@ public class OverviewAssembler implements TestAssembler {
         // - Optional shuffling
         List<InventoryWarning> warnings = new ArrayList<>();
 
+        Map<UUID, Double> competencyWeights = overviewBlueprint.getCompetencyWeights();
+        boolean useWeighted = competencyWeights != null && !competencyWeights.isEmpty();
+
         SelectionWarningCollector.begin();
         try {
-            List<UUID> selectedQuestions = questionSelectionService.selectQuestionsForCompetencies(
-                    competencyIds,
-                    questionsPerIndicator,
-                    preferredDifficulty,
-                    shuffle,
-                    true // contextNeutralOnly: OVERVIEW assessments require context-neutral items
-            );
+            List<UUID> selectedQuestions;
 
-            log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {})",
-                    selectedQuestions.size(), competencyIds.size(), questionsPerIndicator);
+            if (useWeighted) {
+                log.info("Using weighted selection for OVERVIEW: weights={}", competencyWeights);
+                selectedQuestions = questionSelectionService.selectQuestionsForCompetenciesWeighted(
+                        competencyIds,
+                        competencyWeights,
+                        questionsPerIndicator,
+                        preferredDifficulty,
+                        shuffle,
+                        true // contextNeutralOnly
+                );
+            } else {
+                selectedQuestions = questionSelectionService.selectQuestionsForCompetencies(
+                        competencyIds,
+                        questionsPerIndicator,
+                        preferredDifficulty,
+                        shuffle,
+                        true // contextNeutralOnly
+                );
+            }
+
+            log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {}, weighted: {})",
+                    selectedQuestions.size(), competencyIds.size(), questionsPerIndicator, useWeighted);
 
             warnings.addAll(SelectionWarningCollector.drain());
             return new AssemblyResult(selectedQuestions, warnings);

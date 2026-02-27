@@ -177,6 +177,30 @@ public interface QuestionSelectionService {
             boolean contextNeutralOnly
     );
 
+    /**
+     * Select questions for multiple competencies with weighted distribution.
+     *
+     * Translates competency-level weights to indicator-level weights by multiplying
+     * each indicator's intrinsic weight by its parent competency's weight.
+     * Then delegates to {@link #selectQuestionsWeighted} for proportional allocation.
+     *
+     * @param competencyIds          List of competency UUIDs
+     * @param competencyWeights      Map of competency UUID to weight multiplier (0.5-2.0)
+     * @param questionsPerIndicator  Base questions per indicator (used for total calculation)
+     * @param preferredDifficulty    Preferred difficulty (null for any)
+     * @param shuffle                Whether to shuffle the final selection
+     * @param contextNeutralOnly     If true, apply context neutrality filter
+     * @return List of selected question UUIDs
+     */
+    List<UUID> selectQuestionsForCompetenciesWeighted(
+            List<UUID> competencyIds,
+            Map<UUID, Double> competencyWeights,
+            int questionsPerIndicator,
+            DifficultyLevel preferredDifficulty,
+            boolean shuffle,
+            boolean contextNeutralOnly
+    );
+
     // ========== FILTERING UTILITIES ==========
 
     /**

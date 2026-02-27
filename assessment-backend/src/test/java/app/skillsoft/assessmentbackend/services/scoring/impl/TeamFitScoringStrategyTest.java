@@ -1217,7 +1217,8 @@ class TeamFitScoringStrategyTest {
                 List.of(), // members
                 Map.of(competencyId1, 0.9, competencyId2, 0.6, competencyId3, 0.1), // saturation
                 Map.of(), // personality
-                List.of(competencyId3) // gaps
+                List.of(competencyId3), // gaps
+                Map.of() // competencyNames
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1301,7 +1302,8 @@ class TeamFitScoringStrategyTest {
                 List.of(),
                 Map.of(competencyId1, 0.1, competencyId2, 0.9), // comp1 is deep gap, comp2 is saturated
                 Map.of(),
-                List.of(competencyId1)
+                List.of(competencyId1),
+                Map.of() // competencyNames
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1349,7 +1351,8 @@ class TeamFitScoringStrategyTest {
             TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
                 teamId, "Small Team", members,
                 Map.of(competencyId1, 0.3), // diversity range
-                Map.of(), List.of()
+                Map.of(), List.of(),
+                Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1386,7 +1389,8 @@ class TeamFitScoringStrategyTest {
             TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
                 teamId, "Tiny Team", members,
                 Map.of(competencyId1, 0.05, competencyId2, 0.05, competencyId3, 0.05),
-                Map.of(), List.of(competencyId1, competencyId2, competencyId3)
+                Map.of(), List.of(competencyId1, competencyId2, competencyId3),
+                Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1571,7 +1575,8 @@ class TeamFitScoringStrategyTest {
                             Map.of(), Map.of("OPENNESS", 70.0, "CONSCIENTIOUSNESS", 60.0))),
                     Map.of(openId, 0.5, consId, 0.5, extraId, 0.5), // diversity range
                     teamPersonality,
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1614,7 +1619,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(competencyId3, 0.5),
                     teamPersonality,
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1643,7 +1649,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(competencyId1, 0.5),
                     Map.of(), // empty personality
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1688,7 +1695,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(openId, 0.5, consId, 0.5), // diversity range
                     teamPersonality,
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1744,7 +1752,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(openId, 0.5, consId, 0.5), // diversity range
                     teamPersonality,
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1779,7 +1788,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(openId, 0.5, consId, 0.5),
                     Map.of(), // empty personality
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(noPersonalityProfile));
 
@@ -1829,7 +1839,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(openId, 0.5, consId, 0.5), // diversity range
                     teamPersonality,
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1886,7 +1897,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(openId, 0.5, consId, 0.5),
                     teamPersonality,
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -1941,7 +1953,8 @@ class TeamFitScoringStrategyTest {
                     List.of(),
                     Map.of(openId, 0.5, consId, 0.5), // diversity range
                     teamPersonality,
-                    List.of()
+                    List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -2440,7 +2453,8 @@ class TeamFitScoringStrategyTest {
             TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
                     teamId, "Small Team", members,
                     Map.of(competencyId3, 0.4), // diversity range for team
-                    Map.of(), List.of()
+                    Map.of(), List.of(),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 
@@ -2520,7 +2534,8 @@ class TeamFitScoringStrategyTest {
             TeamService.TeamProfile teamProfile = new TeamService.TeamProfile(
                     teamId, "Tiny Team", members,
                     Map.of(competencyId3, 0.05),
-                    Map.of(), List.of(competencyId3)
+                    Map.of(), List.of(competencyId3),
+                    Map.of()
             );
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(teamProfile));
 

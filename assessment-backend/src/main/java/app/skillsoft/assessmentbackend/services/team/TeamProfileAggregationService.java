@@ -1,11 +1,13 @@
 package app.skillsoft.assessmentbackend.services.team;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
+import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.Team;
 import app.skillsoft.assessmentbackend.domain.entities.TeamMember;
 import app.skillsoft.assessmentbackend.domain.entities.TeamStatus;
 import app.skillsoft.assessmentbackend.domain.entities.TestResult;
 import app.skillsoft.assessmentbackend.domain.entities.User;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.repository.TeamMemberRepository;
 import app.skillsoft.assessmentbackend.repository.TeamRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
@@ -33,14 +35,17 @@ public class TeamProfileAggregationService {
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final TestResultRepository testResultRepository;
+    private final CompetencyRepository competencyRepository;
 
     public TeamProfileAggregationService(
             TeamRepository teamRepository,
             TeamMemberRepository teamMemberRepository,
-            TestResultRepository testResultRepository) {
+            TestResultRepository testResultRepository,
+            CompetencyRepository competencyRepository) {
         this.teamRepository = teamRepository;
         this.teamMemberRepository = teamMemberRepository;
         this.testResultRepository = testResultRepository;
+        this.competencyRepository = competencyRepository;
     }
 
     /**
@@ -68,7 +73,7 @@ public class TeamProfileAggregationService {
             log.warn("Team {} has no active members", teamId);
             return Optional.of(new TeamProfile(
                     teamId, team.getName(), List.of(),
-                    Map.of(), Map.of(), List.of()
+                    Map.of(), Map.of(), List.of(), Map.of()
             ));
         }
 
@@ -89,13 +94,22 @@ public class TeamProfileAggregationService {
                 .map(Map.Entry::getKey)
                 .toList();
 
+        // Collect competency names from all member test results
+        Map<UUID, String> competencyNames = new HashMap<>();
+        for (TeamMember member : activeMembers) {
+            var results = testResultRepository.findByClerkUserIdOrderByCompletedAtDesc(
+                    member.getUser().getClerkId());
+            competencyNames.putAll(collectCompetencyNames(results));
+        }
+
         return Optional.of(new TeamProfile(
                 teamId,
                 team.getName(),
                 memberProfiles,
                 competencySaturation,
                 averagePersonality,
-                skillGaps
+                skillGaps,
+                competencyNames
         ));
     }
 
@@ -165,15 +179,88 @@ public class TeamProfileAggregationService {
                 ));
     }
 
+    /**
+     * Collect competency names from test result scores.
+     * Uses the first non-null name found for each competency ID.
+     */
+    private Map<UUID, String> collectCompetencyNames(List<TestResult> results) {
+        Map<UUID, String> names = new HashMap<>();
+        for (TestResult result : results) {
+            List<CompetencyScoreDto> scores = result.getCompetencyScores();
+            if (scores != null) {
+                for (CompetencyScoreDto score : scores) {
+                    if (score.getCompetencyId() != null && score.getCompetencyName() != null) {
+                        names.putIfAbsent(score.getCompetencyId(), score.getCompetencyName());
+                    }
+                }
+            }
+        }
+        return names;
+    }
+
     private Map<String, Double> extractPersonalityTraits(List<TestResult> results) {
-        // Find first result with Big Five profile
+        // Try pre-computed Big Five profile first (from TEAM_FIT assessments)
         for (TestResult result : results) {
             Map<String, Double> profile = result.getBigFiveProfile();
             if (profile != null && !profile.isEmpty()) {
                 return profile;
             }
         }
-        return Map.of();
+
+        // Fallback: derive Big Five from competency scores using each competency's
+        // Big Five mapping (via standardCodes JSONB on the Competency entity).
+        // This works for ALL assessment types (OVERVIEW, JOB_FIT, etc.).
+        Map<String, List<Double>> traitScores = new HashMap<>();
+
+        // Collect all competency IDs from test results
+        Set<UUID> competencyIds = new HashSet<>();
+        for (TestResult result : results) {
+            List<CompetencyScoreDto> scores = result.getCompetencyScores();
+            if (scores != null) {
+                for (CompetencyScoreDto score : scores) {
+                    if (score.getCompetencyId() != null) {
+                        competencyIds.add(score.getCompetencyId());
+                    }
+                }
+            }
+        }
+
+        if (competencyIds.isEmpty()) {
+            return Map.of();
+        }
+
+        // Batch load competencies and build ID → Big Five category map
+        Map<UUID, String> bigFiveMap = new HashMap<>();
+        List<Competency> competencies = competencyRepository.findAllById(competencyIds);
+        for (Competency comp : competencies) {
+            String category = comp.getBigFiveCategory();
+            if (category != null) {
+                bigFiveMap.put(comp.getId(), category);
+            }
+        }
+
+        if (bigFiveMap.isEmpty()) {
+            return Map.of();
+        }
+
+        // Aggregate scores by Big Five trait
+        for (TestResult result : results) {
+            List<CompetencyScoreDto> scores = result.getCompetencyScores();
+            if (scores == null) continue;
+            for (CompetencyScoreDto score : scores) {
+                String category = bigFiveMap.get(score.getCompetencyId());
+                Double percentage = score.getPercentage();
+                if (category != null && percentage != null) {
+                    traitScores.computeIfAbsent(category, k -> new ArrayList<>()).add(percentage);
+                }
+            }
+        }
+
+        return traitScores.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> e.getValue().stream().mapToDouble(Double::doubleValue).average().orElse(0)
+                ));
     }
 
     private Map<UUID, Double> calculateCompetencySaturation(

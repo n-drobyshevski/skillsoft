@@ -652,7 +652,8 @@ class TeamFitAssemblerTest {
             List.of(),  // members
             saturation,
             Map.of(),   // averagePersonality
-            List.of()   // skillGaps
+            List.of(),  // skillGaps
+            Map.of()    // competencyNames
         );
     }
 }

@@ -1,11 +1,9 @@
 package app.skillsoft.assessmentbackend.controller.v1;
 
 import app.skillsoft.assessmentbackend.domain.dto.team.*;
-import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.TeamStatus;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.security.SessionSecurityService;
-import app.skillsoft.assessmentbackend.services.assembly.CachedCompetencyLookupService;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.external.TeamService.TeamProfile;
 import app.skillsoft.assessmentbackend.services.team.TeamMapper;
@@ -28,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * V1 REST Controller for Team management operations.
@@ -55,7 +52,6 @@ public class TeamControllerV1 {
     private final TeamMapper teamMapper;
     private final UserRepository userRepository;
     private final SessionSecurityService sessionSecurity;
-    private final CachedCompetencyLookupService competencyLookup;
 
     public TeamControllerV1(
             TeamQueryService queryService,
@@ -63,15 +59,13 @@ public class TeamControllerV1 {
             TeamService teamService,
             TeamMapper teamMapper,
             UserRepository userRepository,
-            SessionSecurityService sessionSecurity,
-            CachedCompetencyLookupService competencyLookup) {
+            SessionSecurityService sessionSecurity) {
         this.queryService = queryService;
         this.orchestrationService = orchestrationService;
         this.teamService = teamService;
         this.teamMapper = teamMapper;
         this.userRepository = userRepository;
         this.sessionSecurity = sessionSecurity;
-        this.competencyLookup = competencyLookup;
     }
 
     // ==================== Team CRUD ====================
@@ -362,9 +356,8 @@ public class TeamControllerV1 {
     }
 
     private TeamProfileDto mapTeamProfile(TeamProfile profile) {
-        // Build competency name lookup from cached service
-        Map<UUID, String> nameMap = competencyLookup.findAllCompetencies().stream()
-                .collect(Collectors.toMap(Competency::getId, Competency::getName, (a, b) -> a));
+        // Use competency names collected during aggregation from test result data
+        Map<UUID, String> nameMap = profile.competencyNames();
 
         List<TeamMemberSummaryDto> members = profile.members().stream()
                 .map(m -> new TeamMemberSummaryDto(

@@ -2,13 +2,16 @@ package app.skillsoft.assessmentbackend.services.selection;
 
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentQuestion;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
+import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.domain.entities.ItemStatistics;
 import app.skillsoft.assessmentbackend.domain.entities.ItemValidityStatus;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.repository.ItemStatisticsRepository;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning.WarningLevel;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.WarningCode;
 import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +57,7 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
 
     private final AssessmentQuestionRepository questionRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
+    private final CompetencyRepository competencyRepository;
     private final PsychometricBlueprintValidator psychometricValidator;
     private final ItemStatisticsRepository itemStatisticsRepository;
     private final ExposureTrackingService exposureTrackingService;
@@ -72,11 +76,13 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
     public QuestionSelectionServiceImpl(
             AssessmentQuestionRepository questionRepository,
             BehavioralIndicatorRepository indicatorRepository,
+            CompetencyRepository competencyRepository,
             PsychometricBlueprintValidator psychometricValidator,
             ItemStatisticsRepository itemStatisticsRepository,
             ExposureTrackingService exposureTrackingService) {
         this.questionRepository = questionRepository;
         this.indicatorRepository = indicatorRepository;
+        this.competencyRepository = competencyRepository;
         this.psychometricValidator = psychometricValidator;
         this.itemStatisticsRepository = itemStatisticsRepository;
         this.exposureTrackingService = exposureTrackingService;
@@ -131,7 +137,9 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
         if (candidates.isEmpty()) {
             log.warn("No active questions found for indicator {}", indicatorId);
             SelectionWarningCollector.addWarning(WarningLevel.WARNING,
-                    "No active questions found for indicator " + indicatorId);
+                    WarningCode.NO_ACTIVE_QUESTIONS_INDICATOR,
+                    "No active questions found for indicator " + indicatorId,
+                    Map.of("indicatorId", indicatorId.toString()));
             return List.of();
         }
 
@@ -218,12 +226,13 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
             BehavioralIndicator indicator = indicatorRepository.findById(indicatorId).orElse(null);
             if (indicator != null && indicator.getCompetency() != null) {
                 UUID competencyId = indicator.getCompetency().getId();
+                String compName = indicator.getCompetency().getName() != null
+                        ? indicator.getCompetency().getName() : competencyId.toString();
                 log.warn("Fallback Tier 3: Indicator {} exhausted, selecting {} questions " +
-                         "from sibling indicators of competency {} (flagged for psychometric review)",
-                        indicatorId, remaining, competencyId);
-                SelectionWarningCollector.addWarning(WarningLevel.WARNING,
-                        String.format("Indicator %s exhausted: borrowing %d questions from sibling indicators of competency %s (flagged for psychometric review)",
-                                indicatorId, remaining, competencyId));
+                         "from sibling indicators of competency {} ({}) (flagged for psychometric review)",
+                        indicatorId, remaining, compName, competencyId);
+
+                int sizeBeforeBorrowing = result.size();
 
                 List<BehavioralIndicator> siblings = indicatorRepository.findByCompetencyId(competencyId)
                         .stream()
@@ -247,6 +256,17 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                         allExcluded.add(q.getId());
                         remaining--;
                     }
+                }
+
+                int actualBorrowed = result.size() - sizeBeforeBorrowing;
+                if (actualBorrowed > 0) {
+                    SelectionWarningCollector.addWarning(WarningLevel.WARNING,
+                            WarningCode.INDICATOR_EXHAUSTED_BORROWING,
+                            String.format("Borrowing %d questions from sibling indicators of %s (flagged for psychometric review)",
+                                    actualBorrowed, compName),
+                            Map.of("indicatorId", indicatorId.toString(),
+                                   "count", String.valueOf(actualBorrowed),
+                                   "competencyName", compName));
                 }
             }
         }
@@ -707,9 +727,13 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                 .toList();
 
         if (indicators.isEmpty()) {
-            log.warn("No active behavioral indicators found for competency {}", competencyId);
+            String compName = competencyRepository.findById(competencyId)
+                    .map(Competency::getName).orElse(competencyId.toString());
+            log.warn("No active behavioral indicators found for competency {} ({})", compName, competencyId);
             SelectionWarningCollector.addWarning(WarningLevel.WARNING,
-                    "No active behavioral indicators found for competency " + competencyId);
+                    WarningCode.NO_ACTIVE_INDICATORS_COMPETENCY,
+                    "No active behavioral indicators found for competency " + compName,
+                    Map.of("competencyName", compName));
             return List.of();
         }
 
@@ -761,9 +785,16 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
                 .toList();
 
         if (allIndicators.isEmpty()) {
-            log.warn("No active behavioral indicators found for competencies: {}", competencyIds);
+            List<String> compNames = competencyRepository.findAllById(competencyIds).stream()
+                    .map(Competency::getName).toList();
+            String namesJoined = compNames.isEmpty()
+                    ? competencyIds.size() + " competencies" : String.join(", ", compNames);
+            log.warn("No active behavioral indicators found for competencies: {}", namesJoined);
             SelectionWarningCollector.addWarning(WarningLevel.WARNING,
-                    "No active behavioral indicators found for competencies: " + competencyIds);
+                    WarningCode.NO_ACTIVE_INDICATORS_COMPETENCIES,
+                    "No active behavioral indicators found for: " + namesJoined,
+                    Map.of("count", String.valueOf(competencyIds.size()),
+                           "competencyNames", namesJoined));
             return List.of();
         }
 
@@ -799,6 +830,74 @@ public class QuestionSelectionServiceImpl implements QuestionSelectionService {
             List<UUID> shuffled = new ArrayList<>(selectedQuestions);
             Collections.shuffle(shuffled, getRandomInstance());
             log.debug("Shuffled {} selected questions", shuffled.size());
+            return shuffled;
+        }
+
+        return selectedQuestions;
+    }
+
+    @Override
+    public List<UUID> selectQuestionsForCompetenciesWeighted(
+            List<UUID> competencyIds,
+            Map<UUID, Double> competencyWeights,
+            int questionsPerIndicator,
+            DifficultyLevel preferredDifficulty,
+            boolean shuffle,
+            boolean contextNeutralOnly) {
+
+        if (competencyIds == null || competencyIds.isEmpty()) {
+            log.warn("No competency IDs provided for weighted selection");
+            return List.of();
+        }
+
+        log.info("Selecting weighted questions for {} competencies ({} per indicator, weights: {})",
+                competencyIds.size(), questionsPerIndicator, competencyWeights);
+
+        // Batch-load all indicators for all competencies
+        List<BehavioralIndicator> allIndicators = indicatorRepository
+                .findByCompetencyIdIn(new HashSet<>(competencyIds))
+                .stream()
+                .filter(BehavioralIndicator::isActive)
+                .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
+                .toList();
+
+        if (allIndicators.isEmpty()) {
+            List<String> compNames = competencyRepository.findAllById(competencyIds).stream()
+                    .map(Competency::getName).toList();
+            String namesJoined = compNames.isEmpty()
+                    ? competencyIds.size() + " competencies" : String.join(", ", compNames);
+            log.warn("No active behavioral indicators found for weighted competencies: {}", namesJoined);
+            SelectionWarningCollector.addWarning(WarningLevel.WARNING,
+                    WarningCode.NO_ACTIVE_INDICATORS_COMPETENCIES,
+                    "No active behavioral indicators found for: " + namesJoined,
+                    Map.of("count", String.valueOf(competencyIds.size()),
+                           "competencyNames", namesJoined));
+            return List.of();
+        }
+
+        // Build indicator-level weights: indicator.weight * competencyWeight[competencyId]
+        Map<UUID, Double> indicatorWeights = new LinkedHashMap<>();
+        for (BehavioralIndicator bi : allIndicators) {
+            UUID compId = bi.getCompetency().getId();
+            double compWeight = competencyWeights.getOrDefault(compId, 1.0);
+            indicatorWeights.put(bi.getId(), bi.getWeight() * compWeight);
+        }
+
+        int totalQuestions = allIndicators.size() * questionsPerIndicator;
+
+        List<UUID> selectedQuestions = selectQuestionsWeighted(
+                indicatorWeights, totalQuestions, preferredDifficulty);
+
+        // Auto-track exposure
+        if (!selectedQuestions.isEmpty()) {
+            exposureTrackingService.trackExposure(selectedQuestions);
+        }
+
+        // Shuffle if requested
+        if (shuffle && !selectedQuestions.isEmpty()) {
+            List<UUID> shuffled = new ArrayList<>(selectedQuestions);
+            Collections.shuffle(shuffled, getRandomInstance());
+            log.debug("Shuffled {} weighted-selected questions", shuffled.size());
             return shuffled;
         }
 

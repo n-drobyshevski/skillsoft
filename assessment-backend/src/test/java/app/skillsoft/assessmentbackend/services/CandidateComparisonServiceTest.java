@@ -122,7 +122,8 @@ class CandidateComparisonServiceTest {
             teamId, "Alpha Team", List.of(member, member, member),
             saturation,
             Map.of("OPENNESS", 65.0, "CONSCIENTIOUSNESS", 72.0),
-            List.of()
+            List.of(),
+            Map.of()
         );
     }
 

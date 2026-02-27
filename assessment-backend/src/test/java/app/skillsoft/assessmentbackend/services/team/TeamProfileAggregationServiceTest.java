@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.services.team;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.repository.TeamMemberRepository;
 import app.skillsoft.assessmentbackend.repository.TeamRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
@@ -47,6 +48,9 @@ class TeamProfileAggregationServiceTest extends BaseUnitTest {
 
     @Mock
     private TestResultRepository testResultRepository;
+
+    @Mock
+    private CompetencyRepository competencyRepository;
 
     @InjectMocks
     private TeamProfileAggregationService aggregationService;

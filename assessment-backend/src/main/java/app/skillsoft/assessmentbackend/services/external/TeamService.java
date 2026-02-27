@@ -54,7 +54,12 @@ public interface TeamService {
         /**
          * Identified skill gaps (competencies with low saturation).
          */
-        List<UUID> skillGaps
+        List<UUID> skillGaps,
+        /**
+         * Map of competency ID to human-readable name.
+         * Collected from test result CompetencyScoreDtos during aggregation.
+         */
+        Map<UUID, String> competencyNames
     ) {}
 
     /**
