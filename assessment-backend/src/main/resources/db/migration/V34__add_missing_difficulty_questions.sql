@@ -51,7 +51,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.7, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 1.2: Выявляет причинно-следственные связи
@@ -69,7 +70,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.7, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 1.3: Использует данные для обоснования выводов
@@ -87,7 +89,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.7, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 1.4: Оценивает альтернативные решения по критериям
@@ -105,7 +108,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'FOUNDATIONAL',
  '{"tags": ["GENERAL", "JUNIOR"], "complexity_score": 0.3, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 1.5: Прогнозирует последствия принимаемых решений
@@ -132,7 +136,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.7, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 6);
+ true, 6)
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ================================================================
@@ -155,7 +160,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'FOUNDATIONAL',
  '{"tags": ["GENERAL", "JUNIOR"], "complexity_score": 0.3, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 2.2: Генерирует несколько вариантов решения
@@ -173,7 +179,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.7, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 2.3: Применяет структурированный подход к решению
@@ -191,7 +198,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'FOUNDATIONAL',
  '{"tags": ["GENERAL", "JUNIOR"], "complexity_score": 0.3, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 2.4: Тестирует решения перед полным внедрением
@@ -209,7 +217,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.7, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 2.5: Извлекает уроки из неудачных решений
@@ -236,7 +245,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.8, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 6);
+ true, 6)
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ================================================================
@@ -268,7 +278,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'ADVANCED',
  '{"tags": ["GENERAL", "SENIOR"], "complexity_score": 0.8, "scenario_type": "WORKPLACE"}'::jsonb,
- true, 6);
+ true, 6)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 22.2: Выявляет логические ошибки в рассуждениях
@@ -286,7 +297,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'FOUNDATIONAL',
  '{"tags": ["GENERAL", "JUNIOR"], "complexity_score": 0.3, "scenario_type": "TECHNICAL"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 22.3: Делает обоснованные выводы из данных
@@ -304,7 +316,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'FOUNDATIONAL',
  '{"tags": ["GENERAL", "JUNIOR"], "complexity_score": 0.3, "scenario_type": "TECHNICAL"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 22.4: Различает корреляцию и причинность
@@ -322,7 +335,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'FOUNDATIONAL',
  '{"tags": ["GENERAL", "JUNIOR"], "complexity_score": 0.3, "scenario_type": "TECHNICAL"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 -- ----------------------------------------------------------------
 -- Indicator 22.5: Проверяет гипотезы систематически
@@ -340,7 +354,8 @@ VALUES
  '[{"label": "Совершенно не согласен", "score": 1}, {"label": "Не согласен", "score": 2}, {"label": "Нейтрально", "score": 3}, {"label": "Согласен", "score": 4}, {"label": "Совершенно согласен", "score": 5}]'::jsonb,
  'DIRECT_SCALE', 30, 'FOUNDATIONAL',
  '{"tags": ["GENERAL", "JUNIOR"], "complexity_score": 0.3, "scenario_type": "TECHNICAL"}'::jsonb,
- true, 5);
+ true, 5)
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ================================================================
@@ -378,7 +393,7 @@ BEGIN
     );
 
     IF v_count <> 18 THEN
-        RAISE EXCEPTION 'Expected 18 new questions, found %', v_count;
+        RAISE EXCEPTION 'Expected 18 questions (inserted or pre-existing), found %', v_count;
     END IF;
 
     -- Per-competency verification
