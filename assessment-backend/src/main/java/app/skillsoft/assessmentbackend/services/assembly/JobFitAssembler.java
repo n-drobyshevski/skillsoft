@@ -338,8 +338,15 @@ public class JobFitAssembler implements TestAssembler {
         if (competencyIds != null && !competencyIds.isEmpty()) {
             // Direct ID-based loading: use the competencies selected by the user
             allCompetencies = competencyRepository.findAllById(competencyIds);
-            log.info("Using {} blueprint-specified competencies for JOB_FIT assembly",
-                allCompetencies.size());
+            log.info("Blueprint sent {} competencyIds, DB found {} competencies",
+                competencyIds.size(), allCompetencies.size());
+            if (allCompetencies.size() < competencyIds.size()) {
+                Set<UUID> foundIds = allCompetencies.stream()
+                    .map(Competency::getId).collect(Collectors.toSet());
+                List<UUID> missingIds = competencyIds.stream()
+                    .filter(id -> !foundIds.contains(id)).toList();
+                log.warn("Missing competency IDs (not found in DB): {}", missingIds);
+            }
         } else {
             // Legacy fallback: resolve competencies from O*NET benchmark names
             Set<String> benchmarkNames = gapAnalysis.keySet().stream()
