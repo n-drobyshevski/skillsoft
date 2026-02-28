@@ -335,49 +335,35 @@ public class JobFitAssembler implements TestAssembler {
 
         List<Competency> allCompetencies;
 
-        // Resolve competencies from O*NET benchmark names (two-phase strategy)
-        Set<String> benchmarkNames = gapAnalysis.keySet().stream()
-            .map(String::toLowerCase)
-            .collect(Collectors.toSet());
-
-        // Phase 1: try direct name match
-        List<Competency> onetResolved = competencyRepository.findByNameInIgnoreCase(benchmarkNames);
-
-        // Phase 2: if name match found fewer competencies than benchmarks, broaden search
-        if (onetResolved.size() < benchmarkNames.size()) {
-            log.info("Name-based competency lookup matched only {}/{} benchmarks. " +
-                     "Falling back to full active competency scan for cross-reference matching.",
-                onetResolved.size(), benchmarkNames.size());
-            warnings.add(InventoryWarning.assemblyWarning(
-                InventoryWarning.WarningLevel.INFO,
-                WarningCode.BENCHMARK_LOOKUP_FALLBACK,
-                "Name-based competency lookup matched only " + onetResolved.size() + "/" +
-                benchmarkNames.size() + " benchmarks. Falling back to full active competency scan.",
-                Map.of("matched", String.valueOf(onetResolved.size()),
-                       "total", String.valueOf(benchmarkNames.size()))));
-            onetResolved = competencyRepository.findByIsActiveTrue();
-        }
-
         if (competencyIds != null && !competencyIds.isEmpty()) {
-            // Merge user-selected competencies with O*NET-resolved competencies
-            List<Competency> userSelected = competencyRepository.findAllById(competencyIds);
-            log.info("Blueprint sent {} competencyIds, DB found {} user-selected competencies",
-                competencyIds.size(), userSelected.size());
-
-            // Deduplicate: start with user-selected, add O*NET-resolved that aren't already included
-            Set<UUID> mergedIds = userSelected.stream()
-                .map(Competency::getId).collect(Collectors.toCollection(LinkedHashSet::new));
-            List<Competency> merged = new ArrayList<>(userSelected);
-            for (Competency c : onetResolved) {
-                if (mergedIds.add(c.getId())) {
-                    merged.add(c);
-                }
-            }
-            log.info("Merged competency set: {} user-selected + {} O*NET-resolved = {} total (after dedup)",
-                userSelected.size(), onetResolved.size(), merged.size());
-            allCompetencies = merged;
+            // Frontend builder already includes O*NET competencies on the canvas,
+            // so we simply load whatever IDs were sent — no backend merge needed.
+            allCompetencies = competencyRepository.findAllById(competencyIds);
+            log.info("Blueprint sent {} competencyIds, DB found {} competencies",
+                competencyIds.size(), allCompetencies.size());
         } else {
-            allCompetencies = onetResolved;
+            // Legacy path: no competencyIds provided — resolve via O*NET benchmark names
+            Set<String> benchmarkNames = gapAnalysis.keySet().stream()
+                .map(String::toLowerCase)
+                .collect(Collectors.toSet());
+
+            // Phase 1: try direct name match
+            allCompetencies = competencyRepository.findByNameInIgnoreCase(benchmarkNames);
+
+            // Phase 2: if name match found fewer competencies than benchmarks, broaden search
+            if (allCompetencies.size() < benchmarkNames.size()) {
+                log.info("Name-based competency lookup matched only {}/{} benchmarks. " +
+                         "Falling back to full active competency scan for cross-reference matching.",
+                    allCompetencies.size(), benchmarkNames.size());
+                warnings.add(InventoryWarning.assemblyWarning(
+                    InventoryWarning.WarningLevel.INFO,
+                    WarningCode.BENCHMARK_LOOKUP_FALLBACK,
+                    "Name-based competency lookup matched only " + allCompetencies.size() + "/" +
+                    benchmarkNames.size() + " benchmarks. Falling back to full active competency scan.",
+                    Map.of("matched", String.valueOf(allCompetencies.size()),
+                           "total", String.valueOf(benchmarkNames.size()))));
+                allCompetencies = competencyRepository.findByIsActiveTrue();
+            }
         }
 
         Map<String, List<Competency>> competencyByName = onetCompetencyResolver.buildCompetencyLookupMaps(allCompetencies);
@@ -422,21 +408,18 @@ public class JobFitAssembler implements TestAssembler {
             }
         }
 
-        // When user explicitly selected competencies, ensure ALL of them get questions
-        // even if they don't match any O*NET benchmark name.
-        // These use INTERMEDIATE difficulty and a baseline weight.
-        if (competencyIds != null && !competencyIds.isEmpty()) {
-            for (var competency : allCompetencies) {
-                if (!coveredCompetencyIds.contains(competency.getId())) {
-                    var indicators = indicatorsByCompetencyId.getOrDefault(competency.getId(), List.of());
-                    if (!indicators.isEmpty()) {
-                        log.info("Competency '{}' not matched to any O*NET benchmark; " +
-                                 "including with default INTERMEDIATE difficulty",
-                            competency.getName());
-                        for (var indicator : indicators) {
-                            indicatorWeights.put(indicator.getId(), 0.5);
-                            indicatorDifficulties.put(indicator.getId(), DifficultyLevel.INTERMEDIATE);
-                        }
+        // Ensure ALL competencies get questions even if they don't match an O*NET
+        // benchmark name. These use INTERMEDIATE difficulty and a baseline weight.
+        for (var competency : allCompetencies) {
+            if (!coveredCompetencyIds.contains(competency.getId())) {
+                var indicators = indicatorsByCompetencyId.getOrDefault(competency.getId(), List.of());
+                if (!indicators.isEmpty()) {
+                    log.info("Competency '{}' not matched to any O*NET benchmark; " +
+                             "including with default INTERMEDIATE difficulty",
+                        competency.getName());
+                    for (var indicator : indicators) {
+                        indicatorWeights.put(indicator.getId(), 0.5);
+                        indicatorDifficulties.put(indicator.getId(), DifficultyLevel.INTERMEDIATE);
                     }
                 }
             }
