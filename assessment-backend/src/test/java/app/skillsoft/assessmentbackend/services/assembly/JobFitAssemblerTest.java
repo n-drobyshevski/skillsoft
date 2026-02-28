@@ -389,9 +389,9 @@ class JobFitAssemblerTest {
     class AssembleCompetencyIdsTests {
 
         @Test
-        @DisplayName("should merge user-selected and O*NET-resolved competencies when competencyIds provided")
-        void shouldMergeUserSelectedAndOnetResolvedCompetencies() {
-            // Given: blueprint with explicit competencyIds
+        @DisplayName("should use only competencyIds when provided (no O*NET name resolution)")
+        void shouldUseOnlyCompetencyIdsWhenProvided() {
+            // Given: blueprint with explicit competencyIds (frontend already resolved O*NET)
             JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
             blueprint.setCompetencyIds(List.of(competencyId1, competencyId2));
 
@@ -400,9 +400,7 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            // O*NET name resolution finds competency1 via name match
-            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
-            // User-selected path loads both
+            // Only findAllById should be called — no name resolution
             when(competencyRepository.findAllById(List.of(competencyId1, competencyId2)))
                 .thenReturn(List.of(competency1, competency2));
             when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
@@ -413,8 +411,8 @@ class JobFitAssemblerTest {
             // When
             AssemblyResult result = assembler.assemble(blueprint);
 
-            // Then: both O*NET resolution and user-selected loading should happen
-            verify(competencyRepository).findByNameInIgnoreCase(any());
+            // Then: findByNameInIgnoreCase should NOT be called when competencyIds provided
+            verify(competencyRepository, never()).findByNameInIgnoreCase(any());
             verify(competencyRepository).findAllById(List.of(competencyId1, competencyId2));
             verify(competencyRepository, never()).findByIsActiveTrue();
             assertThat(result.questionIds()).isNotEmpty();
@@ -462,9 +460,7 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            // O*NET name resolution finds competency1
-            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
-            // User-selected path loads both
+            // Only findAllById — no name resolution when competencyIds provided
             when(competencyRepository.findAllById(List.of(competencyId1, competencyId2)))
                 .thenReturn(List.of(competency1, competency2));
             when(indicatorRepository.findByCompetencyIdIn(anySet()))
@@ -477,6 +473,7 @@ class JobFitAssemblerTest {
             AssemblyResult result = assembler.assemble(blueprint);
 
             // Then: should select questions for BOTH indicators (matched + uncovered)
+            verify(competencyRepository, never()).findByNameInIgnoreCase(any());
             verify(questionSelectionService, atLeast(2)).selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet());
         }
