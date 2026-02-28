@@ -8,6 +8,7 @@ import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.external.OnetCompetencyResolver;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
@@ -46,6 +47,7 @@ public class JobFitAssembler implements TestAssembler {
     private final CompetencyRepository competencyRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
     private final QuestionSelectionService questionSelectionService;
+    private final OnetCompetencyResolver onetCompetencyResolver;
 
     /**
      * Gap threshold for selecting ADVANCED questions.
@@ -348,7 +350,7 @@ public class JobFitAssembler implements TestAssembler {
             allCompetencies = competencyRepository.findByIsActiveTrue();
         }
 
-        Map<String, List<Competency>> competencyByName = buildCompetencyLookupMaps(allCompetencies);
+        Map<String, List<Competency>> competencyByName = onetCompetencyResolver.buildCompetencyLookupMaps(allCompetencies);
 
         // Batch load indicators for all competencies at once
         Set<UUID> allCompetencyIds = allCompetencies.stream()
@@ -455,43 +457,6 @@ public class JobFitAssembler implements TestAssembler {
             selectedQuestions.size(), gapAnalysis.size());
 
         return selectedQuestions;
-    }
-
-    /**
-     * Build lookup maps from competency name/O*NET code/title/ESCO title to competency list.
-     * Indexes each competency by ALL known identifiers so cross-language/cross-taxonomy
-     * matching works (e.g., English O*NET names → Russian internal names via ESCO titles).
-     * Called once per assembly to avoid repeated findAll() calls.
-     */
-    private Map<String, List<Competency>> buildCompetencyLookupMaps(List<Competency> competencies) {
-        Map<String, List<Competency>> lookup = new HashMap<>();
-        for (var c : competencies) {
-            // Index by name (case-insensitive)
-            lookup.computeIfAbsent(c.getName().toLowerCase(), k -> new ArrayList<>()).add(c);
-
-            var standardCodes = c.getStandardCodes();
-            if (standardCodes == null) continue;
-
-            // Index by O*NET code and title
-            if (standardCodes.hasOnetMapping()) {
-                var onetRef = standardCodes.onetRef();
-                if (onetRef.code() != null && !onetRef.code().isBlank()) {
-                    lookup.computeIfAbsent(onetRef.code().toLowerCase(), k -> new ArrayList<>()).add(c);
-                }
-                if (onetRef.title() != null && !onetRef.title().isBlank()) {
-                    lookup.computeIfAbsent(onetRef.title().toLowerCase(), k -> new ArrayList<>()).add(c);
-                }
-            }
-
-            // Index by ESCO title (English, often close to O*NET skill names)
-            if (standardCodes.hasEscoMapping()) {
-                var escoRef = standardCodes.escoRef();
-                if (escoRef.title() != null && !escoRef.title().isBlank()) {
-                    lookup.computeIfAbsent(escoRef.title().toLowerCase(), k -> new ArrayList<>()).add(c);
-                }
-            }
-        }
-        return lookup;
     }
 
     /**

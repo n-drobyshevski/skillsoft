@@ -1,6 +1,8 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.OnetOccupationDto;
+import app.skillsoft.assessmentbackend.domain.dto.ResolvedOnetCompetencyDto;
+import app.skillsoft.assessmentbackend.services.external.OnetCompetencyResolver;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.OnetService.OnetProfile;
 import org.slf4j.Logger;
@@ -26,9 +28,11 @@ public class OnetController {
     private static final Logger logger = LoggerFactory.getLogger(OnetController.class);
 
     private final OnetService onetService;
+    private final OnetCompetencyResolver onetCompetencyResolver;
 
-    public OnetController(OnetService onetService) {
+    public OnetController(OnetService onetService, OnetCompetencyResolver onetCompetencyResolver) {
         this.onetService = onetService;
+        this.onetCompetencyResolver = onetCompetencyResolver;
     }
 
     /**
@@ -95,5 +99,25 @@ public class OnetController {
         logger.info("SOC code {} is {}", socCode, valid ? "valid" : "invalid");
 
         return ResponseEntity.ok(valid);
+    }
+
+    /**
+     * Get internal competencies that match an O*NET profile's benchmarks.
+     * Used by the builder library panel to restrict available competencies
+     * when the TARGETED_FIT (JOB_FIT) strategy is active.
+     *
+     * @param socCode Standard Occupational Classification code (e.g., "15-1255.00")
+     * @return List of resolved competencies with benchmark scores
+     */
+    @GetMapping("/{socCode}/competencies")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
+    public ResponseEntity<List<ResolvedOnetCompetencyDto>> getMatchingCompetencies(
+            @PathVariable String socCode) {
+        logger.info("GET /api/v1/onet/{}/competencies", socCode);
+
+        List<ResolvedOnetCompetencyDto> resolved = onetCompetencyResolver.resolveCompetencies(socCode);
+        logger.info("Resolved {} competencies for SOC code {}", resolved.size(), socCode);
+
+        return ResponseEntity.ok(resolved);
     }
 }

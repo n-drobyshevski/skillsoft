@@ -6,6 +6,7 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.external.OnetCompetencyResolver;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.OnetService.OnetProfile;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
@@ -61,6 +62,9 @@ class JobFitAssemblerTest {
     @Mock
     private QuestionSelectionService questionSelectionService;
 
+    @Mock
+    private OnetCompetencyResolver onetCompetencyResolver;
+
     @InjectMocks
     private JobFitAssembler assembler;
 
@@ -88,6 +92,17 @@ class JobFitAssemblerTest {
         competency1 = createCompetency(competencyId1, "Problem Solving");
         competency2 = createCompetency(competencyId2, "Communication");
         indicator1 = createIndicator(indicatorId1, "Critical Thinking", 1.0f, true, competencyId1);
+
+        // Default: resolver delegates to name-based lookup maps
+        lenient().when(onetCompetencyResolver.buildCompetencyLookupMaps(anyList()))
+            .thenAnswer(invocation -> {
+                List<Competency> competencies = invocation.getArgument(0);
+                Map<String, List<Competency>> lookup = new HashMap<>();
+                for (var c : competencies) {
+                    lookup.computeIfAbsent(c.getName().toLowerCase(), k -> new ArrayList<>()).add(c);
+                }
+                return lookup;
+            });
     }
 
     @Nested
