@@ -400,8 +400,8 @@ public class JobFitAssembler implements TestAssembler {
                 gapInfo.competencyName(), competencyByName, indicatorsByCompetencyId, warnings);
 
             for (var indicator : indicatorsForGap) {
-                // Weight = gap magnitude (0.0 - 1.0), minimum 0.1 to ensure at least some questions
-                double weight = Math.max(0.1, gapInfo.gap());
+                // Weight = normalized gap magnitude (0.0 - 1.0), minimum 0.1 to ensure at least some questions
+                double weight = Math.max(0.1, Math.min(gapInfo.gap() / 5.0, 1.0));
                 indicatorWeights.put(indicator.getId(), weight);
                 indicatorDifficulties.put(indicator.getId(), targetDifficulty);
                 coveredCompetencyIds.add(indicator.getCompetency().getId());
@@ -438,60 +438,96 @@ public class JobFitAssembler implements TestAssembler {
             return List.of();
         }
 
-        // Pre-compute per-indicator allocation based on gap magnitude
-        // questionsForGap = MIN + (gap * (MAX - MIN)), clamped to [MIN, MAX]
-        Map<UUID, Integer> indicatorAllocations = new LinkedHashMap<>();
-        for (var entry : indicatorWeights.entrySet()) {
-            double gap = entry.getValue();
-            int allocation = (int) Math.round(MIN_QUESTIONS_PER_GAP + gap * (MAX_QUESTIONS_PER_GAP - MIN_QUESTIONS_PER_GAP));
-            allocation = Math.max(MIN_QUESTIONS_PER_GAP, Math.min(MAX_QUESTIONS_PER_GAP, allocation));
-            indicatorAllocations.put(entry.getKey(), allocation);
+        // Group indicators by competency to ensure fair cross-competency distribution
+        Map<UUID, List<UUID>> indicatorsByCompetency = new LinkedHashMap<>();
+        for (UUID indicatorId : indicatorWeights.keySet()) {
+            // Find which competency owns this indicator
+            UUID ownerCompetencyId = indicatorsByCompetencyId.entrySet().stream()
+                .filter(e -> e.getValue().stream().anyMatch(bi -> bi.getId().equals(indicatorId)))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
+            if (ownerCompetencyId != null) {
+                indicatorsByCompetency.computeIfAbsent(ownerCompetencyId, k -> new ArrayList<>()).add(indicatorId);
+            }
         }
 
-        // Total questions = sum of per-indicator allocations, capped at MAX_TOTAL_QUESTIONS
-        int totalQuestions = Math.min(
-            indicatorAllocations.values().stream().mapToInt(Integer::intValue).sum(),
+        int numCompetencies = Math.max(indicatorsByCompetency.size(), 1);
+
+        // Distribute budget fairly: each competency gets at least MIN_QUESTIONS_PER_GAP
+        // then remaining budget is distributed proportionally by weight
+        int baseBudget = MIN_QUESTIONS_PER_GAP * numCompetencies;
+        int totalBudget = Math.min(
+            Math.max(baseBudget, numCompetencies * 4), // at least 4 per competency
             MAX_TOTAL_QUESTIONS
         );
+        int remainingBudget = totalBudget - baseBudget;
 
-        // Select questions with weighted distribution
-        // Questions for higher-gap competencies get priority
+        // Compute per-competency allocation: base + weighted share of remaining
+        double totalWeight = indicatorsByCompetency.entrySet().stream()
+            .mapToDouble(e -> e.getValue().stream()
+                .mapToDouble(id -> indicatorWeights.getOrDefault(id, 0.5))
+                .max().orElse(0.5))
+            .sum();
+
+        Map<UUID, Integer> competencyAllocations = new LinkedHashMap<>();
+        for (var entry : indicatorsByCompetency.entrySet()) {
+            double maxWeight = entry.getValue().stream()
+                .mapToDouble(id -> indicatorWeights.getOrDefault(id, 0.5))
+                .max().orElse(0.5);
+            int extra = totalWeight > 0
+                ? (int) Math.round(remainingBudget * (maxWeight / totalWeight))
+                : 0;
+            competencyAllocations.put(entry.getKey(), MIN_QUESTIONS_PER_GAP + extra);
+        }
+
+        log.info("Question budget: {} total across {} competencies (base={}/comp, remaining={})",
+            totalBudget, numCompetencies, MIN_QUESTIONS_PER_GAP, remainingBudget);
+
+        // Select questions per competency, spreading across its indicators
         List<UUID> selectedQuestions = new ArrayList<>();
         Set<UUID> usedQuestions = new HashSet<>();
 
-        // Sort indicators by weight (highest gaps first)
-        List<UUID> sortedIndicators = indicatorWeights.entrySet().stream()
-            .sorted(Map.Entry.<UUID, Double>comparingByValue().reversed())
-            .map(Map.Entry::getKey)
-            .toList();
-
         SelectionWarningCollector.begin();
         try {
-            for (UUID indicatorId : sortedIndicators) {
-                if (selectedQuestions.size() >= totalQuestions) break;
+            for (var compEntry : indicatorsByCompetency.entrySet()) {
+                if (selectedQuestions.size() >= totalBudget) break;
 
-                DifficultyLevel difficulty = indicatorDifficulties.get(indicatorId);
+                UUID compId = compEntry.getKey();
+                List<UUID> compIndicators = compEntry.getValue();
+                int compAllocation = competencyAllocations.getOrDefault(compId, MIN_QUESTIONS_PER_GAP);
+                compAllocation = Math.min(compAllocation, totalBudget - selectedQuestions.size());
 
-                // Use pre-computed per-indicator allocation instead of flat DEFAULT
-                int questionsForIndicator = indicatorAllocations.getOrDefault(indicatorId, MIN_QUESTIONS_PER_GAP);
-                questionsForIndicator = Math.min(questionsForIndicator, totalQuestions - selectedQuestions.size());
+                // Spread allocation across indicators, sorted by weight (highest first)
+                compIndicators.sort(Comparator.comparing(
+                    (UUID id) -> indicatorWeights.getOrDefault(id, 0.0)).reversed());
 
-                List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
-                    indicatorId,
-                    questionsForIndicator,
-                    difficulty,
-                    usedQuestions
-                );
+                int perIndicator = Math.max(1, compAllocation / Math.max(compIndicators.size(), 1));
+                int compSelected = 0;
 
-                selectedQuestions.addAll(questions);
-                usedQuestions.addAll(questions);
+                for (UUID indicatorId : compIndicators) {
+                    if (compSelected >= compAllocation) break;
+
+                    DifficultyLevel difficulty = indicatorDifficulties.get(indicatorId);
+                    int ask = Math.min(perIndicator, compAllocation - compSelected);
+
+                    List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
+                        indicatorId, ask, difficulty, usedQuestions);
+
+                    selectedQuestions.addAll(questions);
+                    usedQuestions.addAll(questions);
+                    compSelected += questions.size();
+                }
+
+                log.debug("Competency {} allocated {}, selected {} questions from {} indicators",
+                    compId, compAllocation, compSelected, compIndicators.size());
             }
         } finally {
             warnings.addAll(SelectionWarningCollector.drain());
         }
 
-        log.debug("Selected {} questions for {} gaps using weighted distribution",
-            selectedQuestions.size(), gapAnalysis.size());
+        log.debug("Selected {} questions for {} competencies using fair distribution",
+            selectedQuestions.size(), indicatorsByCompetency.size());
 
         return selectedQuestions;
     }
@@ -547,26 +583,32 @@ public class JobFitAssembler implements TestAssembler {
      * Map gap magnitude to a DifficultyLevel using graduated thresholds.
      *
      * Higher gaps warrant more discriminating (harder) questions:
-     * - gap >= 0.8: EXPERT (massive gap, need most discriminating items)
-     * - gap >= 0.5: ADVANCED
-     * - gap >= 0.2: INTERMEDIATE
-     * - gap < 0.2: FOUNDATIONAL (small/nearly-met gap, basic verification)
+     * - normalizedGap >= 0.8: EXPERT (massive gap, need most discriminating items)
+     * - normalizedGap >= 0.5: ADVANCED
+     * - normalizedGap >= 0.2: INTERMEDIATE
+     * - normalizedGap < 0.2: FOUNDATIONAL (small/nearly-met gap, basic verification)
+     *
+     * O*NET benchmarks use a 1-5 importance scale, so raw gaps are normalized
+     * to a 0-1 range before threshold comparison.
      *
      * Higher strictnessLevel shifts all thresholds down, making selection harder.
      * At strictnessLevel=0, thresholds are nominal. At strictnessLevel=100,
-     * thresholds are halved (e.g., gap >= 0.4 triggers EXPERT instead of 0.8).
+     * thresholds are halved (e.g., normalizedGap >= 0.4 triggers EXPERT instead of 0.8).
      *
-     * @param gap The gap magnitude (0.0 - 1.0+)
+     * @param gap The raw gap magnitude (may exceed 1.0 for O*NET 1-5 scale)
      * @param strictnessLevel Strictness level (0-100)
      * @return The target DifficultyLevel for question selection
      */
     private DifficultyLevel mapGapToDifficulty(double gap, int strictnessLevel) {
+        // Normalize gap from O*NET 1-5 scale to 0-1 range
+        double normalizedGap = Math.min(gap / 5.0, 1.0);
+
         // Strictness factor: 1.0 at strictness=0, 0.5 at strictness=100
         double strictnessFactor = 1.0 - (strictnessLevel / 200.0);
 
-        if (gap >= 0.8 * strictnessFactor) return DifficultyLevel.EXPERT;
-        if (gap >= 0.5 * strictnessFactor) return DifficultyLevel.ADVANCED;
-        if (gap >= 0.2 * strictnessFactor) return DifficultyLevel.INTERMEDIATE;
+        if (normalizedGap >= 0.8 * strictnessFactor) return DifficultyLevel.EXPERT;
+        if (normalizedGap >= 0.5 * strictnessFactor) return DifficultyLevel.ADVANCED;
+        if (normalizedGap >= 0.2 * strictnessFactor) return DifficultyLevel.INTERMEDIATE;
         return DifficultyLevel.FOUNDATIONAL;
     }
 
