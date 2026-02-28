@@ -335,41 +335,49 @@ public class JobFitAssembler implements TestAssembler {
 
         List<Competency> allCompetencies;
 
+        // Resolve competencies from O*NET benchmark names (two-phase strategy)
+        Set<String> benchmarkNames = gapAnalysis.keySet().stream()
+            .map(String::toLowerCase)
+            .collect(Collectors.toSet());
+
+        // Phase 1: try direct name match
+        List<Competency> onetResolved = competencyRepository.findByNameInIgnoreCase(benchmarkNames);
+
+        // Phase 2: if name match found fewer competencies than benchmarks, broaden search
+        if (onetResolved.size() < benchmarkNames.size()) {
+            log.info("Name-based competency lookup matched only {}/{} benchmarks. " +
+                     "Falling back to full active competency scan for cross-reference matching.",
+                onetResolved.size(), benchmarkNames.size());
+            warnings.add(InventoryWarning.assemblyWarning(
+                InventoryWarning.WarningLevel.INFO,
+                WarningCode.BENCHMARK_LOOKUP_FALLBACK,
+                "Name-based competency lookup matched only " + onetResolved.size() + "/" +
+                benchmarkNames.size() + " benchmarks. Falling back to full active competency scan.",
+                Map.of("matched", String.valueOf(onetResolved.size()),
+                       "total", String.valueOf(benchmarkNames.size()))));
+            onetResolved = competencyRepository.findByIsActiveTrue();
+        }
+
         if (competencyIds != null && !competencyIds.isEmpty()) {
-            // Direct ID-based loading: use the competencies selected by the user
-            allCompetencies = competencyRepository.findAllById(competencyIds);
-            log.info("Blueprint sent {} competencyIds, DB found {} competencies",
-                competencyIds.size(), allCompetencies.size());
-            if (allCompetencies.size() < competencyIds.size()) {
-                Set<UUID> foundIds = allCompetencies.stream()
-                    .map(Competency::getId).collect(Collectors.toSet());
-                List<UUID> missingIds = competencyIds.stream()
-                    .filter(id -> !foundIds.contains(id)).toList();
-                log.warn("Missing competency IDs (not found in DB): {}", missingIds);
+            // Merge user-selected competencies with O*NET-resolved competencies
+            List<Competency> userSelected = competencyRepository.findAllById(competencyIds);
+            log.info("Blueprint sent {} competencyIds, DB found {} user-selected competencies",
+                competencyIds.size(), userSelected.size());
+
+            // Deduplicate: start with user-selected, add O*NET-resolved that aren't already included
+            Set<UUID> mergedIds = userSelected.stream()
+                .map(Competency::getId).collect(Collectors.toCollection(LinkedHashSet::new));
+            List<Competency> merged = new ArrayList<>(userSelected);
+            for (Competency c : onetResolved) {
+                if (mergedIds.add(c.getId())) {
+                    merged.add(c);
+                }
             }
+            log.info("Merged competency set: {} user-selected + {} O*NET-resolved = {} total (after dedup)",
+                userSelected.size(), onetResolved.size(), merged.size());
+            allCompetencies = merged;
         } else {
-            // Legacy fallback: resolve competencies from O*NET benchmark names
-            Set<String> benchmarkNames = gapAnalysis.keySet().stream()
-                .map(String::toLowerCase)
-                .collect(Collectors.toSet());
-
-            // Phase 1: try direct name match
-            allCompetencies = competencyRepository.findByNameInIgnoreCase(benchmarkNames);
-
-            // Phase 2: if name match found fewer competencies than benchmarks, broaden search
-            if (allCompetencies.size() < benchmarkNames.size()) {
-                log.info("Name-based competency lookup matched only {}/{} benchmarks. " +
-                         "Falling back to full active competency scan for cross-reference matching.",
-                    allCompetencies.size(), benchmarkNames.size());
-                warnings.add(InventoryWarning.assemblyWarning(
-                    InventoryWarning.WarningLevel.INFO,
-                    WarningCode.BENCHMARK_LOOKUP_FALLBACK,
-                    "Name-based competency lookup matched only " + allCompetencies.size() + "/" +
-                    benchmarkNames.size() + " benchmarks. Falling back to full active competency scan.",
-                    Map.of("matched", String.valueOf(allCompetencies.size()),
-                           "total", String.valueOf(benchmarkNames.size()))));
-                allCompetencies = competencyRepository.findByIsActiveTrue();
-            }
+            allCompetencies = onetResolved;
         }
 
         Map<String, List<Competency>> competencyByName = onetCompetencyResolver.buildCompetencyLookupMaps(allCompetencies);
