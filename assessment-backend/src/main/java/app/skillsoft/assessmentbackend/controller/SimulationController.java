@@ -64,6 +64,17 @@ public class SimulationController {
         log.info("POST /api/v1/tests/templates/simulate - Profile: {}, AbilityLevel: {}, TemplateId: {}",
             request.profile(), request.abilityLevel(), request.templateId());
 
+        // Diagnostic: log deserialized blueprint type and key fields
+        if (request.blueprint() != null) {
+            log.info("Blueprint type: {}, strategy: {}",
+                request.blueprint().getClass().getSimpleName(),
+                request.blueprint().getStrategy());
+            if (request.blueprint() instanceof app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint jfb) {
+                log.info("JobFitBlueprint.competencyIds: {} (count: {})",
+                    jfb.getCompetencyIds(), jfb.getCompetencyIds() != null ? jfb.getCompetencyIds().size() : 0);
+            }
+        }
+
         if (request.blueprint() == null) {
             log.warn("Simulation request missing blueprint");
             return ResponseEntity.badRequest().body(

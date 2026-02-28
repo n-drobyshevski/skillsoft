@@ -384,6 +384,98 @@ class JobFitAssemblerTest {
         }
     }
 
+    @Nested
+    @DisplayName("assemble - CompetencyIds Blueprint Path Tests")
+    class AssembleCompetencyIdsTests {
+
+        @Test
+        @DisplayName("should use findAllById when competencyIds are provided in blueprint")
+        void shouldUseFindAllByIdWhenCompetencyIdsProvided() {
+            // Given: blueprint with explicit competencyIds
+            JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
+            blueprint.setCompetencyIds(List.of(competencyId1, competencyId2));
+
+            Map<String, Double> benchmarks = new HashMap<>();
+            benchmarks.put("Problem Solving", 0.8);
+
+            OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
+            when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
+            when(competencyRepository.findAllById(List.of(competencyId1, competencyId2)))
+                .thenReturn(List.of(competency1, competency2));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            AssemblyResult result = assembler.assemble(blueprint);
+
+            // Then: should use findAllById, NOT findByNameInIgnoreCase or findByIsActiveTrue
+            verify(competencyRepository).findAllById(List.of(competencyId1, competencyId2));
+            verify(competencyRepository, never()).findByNameInIgnoreCase(any());
+            verify(competencyRepository, never()).findByIsActiveTrue();
+            assertThat(result.questionIds()).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("should fall back to name-based matching when competencyIds is empty")
+        void shouldFallBackToNameMatchingWhenCompetencyIdsEmpty() {
+            // Given: blueprint with empty competencyIds (legacy path)
+            JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
+            // competencyIds is empty by default
+
+            Map<String, Double> benchmarks = new HashMap<>();
+            benchmarks.put("Problem Solving", 0.8);
+
+            OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
+            when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then: should use name-based matching, NOT findAllById
+            verify(competencyRepository, never()).findAllById(anyList());
+            verify(competencyRepository).findByNameInIgnoreCase(any());
+        }
+
+        @Test
+        @DisplayName("should include uncovered competencies with default difficulty when competencyIds specified")
+        void shouldIncludeUncoveredCompetenciesWhenIdsSpecified() {
+            // Given: 2 competencies selected, but only 1 matches O*NET benchmark
+            UUID indicatorId2 = UUID.randomUUID();
+            BehavioralIndicator indicator2 = createIndicator(indicatorId2, "Active Listening", 1.0f, true, competencyId2);
+
+            JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
+            blueprint.setCompetencyIds(List.of(competencyId1, competencyId2));
+
+            Map<String, Double> benchmarks = new HashMap<>();
+            benchmarks.put("Problem Solving", 0.8);
+            // Note: no benchmark for "Communication" (competency2)
+
+            OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
+            when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
+            when(competencyRepository.findAllById(List.of(competencyId1, competencyId2)))
+                .thenReturn(List.of(competency1, competency2));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1, indicator2));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            AssemblyResult result = assembler.assemble(blueprint);
+
+            // Then: should select questions for BOTH indicators (matched + uncovered)
+            verify(questionSelectionService, atLeast(2)).selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet());
+        }
+    }
+
     // Helper methods
 
     private JobFitBlueprint createBlueprint(String socCode, int strictnessLevel) {

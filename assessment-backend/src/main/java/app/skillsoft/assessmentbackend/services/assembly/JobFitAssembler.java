@@ -387,6 +387,9 @@ public class JobFitAssembler implements TestAssembler {
             .sorted(Comparator.comparing(GapInfo::gap).reversed())
             .toList();
 
+        // Track which competencies get matched via O*NET benchmarks
+        Set<UUID> coveredCompetencyIds = new HashSet<>();
+
         for (var gapInfo : sortedGaps) {
             // Determine target difficulty using graduated mapping based on gap magnitude
             var targetDifficulty = mapGapToDifficulty(gapInfo.gap(), strictnessLevel);
@@ -400,6 +403,27 @@ public class JobFitAssembler implements TestAssembler {
                 double weight = Math.max(0.1, gapInfo.gap());
                 indicatorWeights.put(indicator.getId(), weight);
                 indicatorDifficulties.put(indicator.getId(), targetDifficulty);
+                coveredCompetencyIds.add(indicator.getCompetency().getId());
+            }
+        }
+
+        // When user explicitly selected competencies, ensure ALL of them get questions
+        // even if they don't match any O*NET benchmark name.
+        // These use INTERMEDIATE difficulty and a baseline weight.
+        if (competencyIds != null && !competencyIds.isEmpty()) {
+            for (var competency : allCompetencies) {
+                if (!coveredCompetencyIds.contains(competency.getId())) {
+                    var indicators = indicatorsByCompetencyId.getOrDefault(competency.getId(), List.of());
+                    if (!indicators.isEmpty()) {
+                        log.info("Competency '{}' not matched to any O*NET benchmark; " +
+                                 "including with default INTERMEDIATE difficulty",
+                            competency.getName());
+                        for (var indicator : indicators) {
+                            indicatorWeights.put(indicator.getId(), 0.5);
+                            indicatorDifficulties.put(indicator.getId(), DifficultyLevel.INTERMEDIATE);
+                        }
+                    }
+                }
             }
         }
 
