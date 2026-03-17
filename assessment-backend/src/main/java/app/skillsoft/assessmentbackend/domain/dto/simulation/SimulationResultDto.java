@@ -18,7 +18,8 @@ public record SimulationResultDto(
     int totalQuestions,
     SimulationProfile profile,
     Map<UUID, CompetencySimulationScore> competencyScores,
-    Integer abilityLevel
+    Integer abilityLevel,
+    String teamName
 ) {
 
     public static Builder builder() {
@@ -36,6 +37,7 @@ public record SimulationResultDto(
         private SimulationProfile profile;
         private Map<UUID, CompetencySimulationScore> competencyScores;
         private Integer abilityLevel;
+        private String teamName;
 
         public Builder valid(boolean valid) {
             this.valid = valid;
@@ -87,11 +89,16 @@ public record SimulationResultDto(
             return this;
         }
 
+        public Builder teamName(String teamName) {
+            this.teamName = teamName;
+            return this;
+        }
+
         public SimulationResultDto build() {
             return new SimulationResultDto(
                 valid, composition, sampleQuestions, warnings,
                 simulatedScore, estimatedDurationMinutes, totalQuestions, profile,
-                competencyScores, abilityLevel
+                competencyScores, abilityLevel, teamName
             );
         }
     }
@@ -99,7 +106,7 @@ public record SimulationResultDto(
     public static SimulationResultDto failed(List<InventoryWarning> warnings) {
         return new SimulationResultDto(
             false, Map.of(), List.of(), warnings,
-            null, null, 0, null, null, null
+            null, null, 0, null, null, null, null
         );
     }
 }

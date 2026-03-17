@@ -35,6 +35,7 @@ public class SimulationController {
     private final TestSimulatorService simulatorService;
     private final InventoryHeatmapService heatmapService;
     private final TestTemplateService templateService;
+    private final app.skillsoft.assessmentbackend.services.external.TeamService teamService;
 
     // ==================== SIMULATION ENDPOINTS ====================
 
@@ -100,6 +101,26 @@ public class SimulationController {
 
         int resolvedAbility = request.abilityLevel() != null ? request.abilityLevel() : 50;
         var result = simulatorService.simulate(request.blueprint(), request.profile(), resolvedAbility);
+
+        // Enrich with team name for TEAM_FIT simulations
+        if (request.blueprint() instanceof app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint tfb
+                && tfb.getTeamId() != null && result.teamName() == null) {
+            var enriched = SimulationResultDto.builder()
+                .valid(result.valid())
+                .composition(result.composition())
+                .sampleQuestions(result.sampleQuestions())
+                .warnings(result.warnings())
+                .simulatedScore(result.simulatedScore())
+                .estimatedDurationMinutes(result.estimatedDurationMinutes())
+                .totalQuestions(result.totalQuestions())
+                .profile(result.profile())
+                .competencyScores(result.competencyScores())
+                .abilityLevel(result.abilityLevel())
+                .teamName(teamService.getTeamProfile(tfb.getTeamId())
+                    .map(p -> p.teamName()).orElse(null))
+                .build();
+            result = enriched;
+        }
 
         log.info("Simulation complete: valid={}, questions={}, warnings={}",
             result.valid(),
