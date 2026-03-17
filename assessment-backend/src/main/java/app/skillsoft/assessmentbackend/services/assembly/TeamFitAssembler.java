@@ -81,35 +81,55 @@ public class TeamFitAssembler implements TestAssembler {
             saturationThreshold = DEFAULT_SATURATION_THRESHOLD;
         }
 
-        log.info("Assembling TEAM_FIT test for team: {} (threshold: {})",
-            teamId, saturationThreshold);
+        var canvasCompetencyIds = teamFitBlueprint.getCompetencyIds();
+
+        log.info("Assembling TEAM_FIT test for team: {} (threshold: {}, canvas competencies: {})",
+            teamId, saturationThreshold, canvasCompetencyIds != null ? canvasCompetencyIds.size() : 0);
 
         // Step 1: Fetch team profile
         var teamProfile = teamService.getTeamProfile(teamId);
-        if (teamProfile.isEmpty()) {
-            log.warn("No team profile found for team: {}", teamId);
-            return AssemblyResult.empty();
-        }
 
         // Step 2: Get undersaturated competencies (team gaps)
-        var undersaturatedCompetencies = teamService.getUndersaturatedCompetencies(
-            teamId,
-            saturationThreshold
-        );
+        List<UUID> undersaturatedCompetencies;
+        Map<UUID, Double> saturationLevels;
 
-        if (undersaturatedCompetencies.isEmpty()) {
-            log.info("No undersaturated competencies found for team: {}", teamId);
-            // Fall back to all competencies from the team profile
-            undersaturatedCompetencies = new ArrayList<>(
-                teamProfile.get().competencySaturation().keySet()
+        if (teamProfile.isPresent() && !teamProfile.get().competencySaturation().isEmpty()) {
+            saturationLevels = teamProfile.get().competencySaturation();
+
+            undersaturatedCompetencies = teamService.getUndersaturatedCompetencies(
+                teamId,
+                saturationThreshold
             );
+
+            if (undersaturatedCompetencies.isEmpty()) {
+                log.info("No undersaturated competencies found for team: {}", teamId);
+                // Fall back to all competencies from the team profile
+                undersaturatedCompetencies = new ArrayList<>(saturationLevels.keySet());
+            }
+        } else {
+            // Team profile has no saturation data — fall back to canvas competencies
+            log.info("Team {} has no saturation data, falling back to {} canvas competencies",
+                teamId, canvasCompetencyIds != null ? canvasCompetencyIds.size() : 0);
+
+            if (canvasCompetencyIds == null || canvasCompetencyIds.isEmpty()) {
+                log.warn("No canvas competencies and no team profile data for team: {}", teamId);
+                return AssemblyResult.withWarnings(List.of(
+                    InventoryWarning.info("No competency data available - add competencies to the canvas or ensure team members have completed assessments")
+                ));
+            }
+
+            undersaturatedCompetencies = new ArrayList<>(canvasCompetencyIds);
+            // Assign uniform low saturation so the assembler treats all as gaps
+            saturationLevels = new HashMap<>();
+            for (UUID compId : canvasCompetencyIds) {
+                saturationLevels.put(compId, 0.2);
+            }
         }
 
         log.debug("Found {} undersaturated competencies for team: {}",
             undersaturatedCompetencies.size(), teamId);
 
         // Step 3: Select questions for undersaturated competencies using QuestionSelectionService
-        var saturationLevels = teamProfile.get().competencySaturation();
         List<InventoryWarning> warnings = new ArrayList<>();
 
         SelectionWarningCollector.begin();

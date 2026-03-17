@@ -21,4 +21,9 @@ public record AssemblyResult(
     public static AssemblyResult empty() {
         return new AssemblyResult(List.of(), List.of());
     }
+
+    /** Convenience factory for empty results with diagnostic warnings. */
+    public static AssemblyResult withWarnings(List<InventoryWarning> warnings) {
+        return new AssemblyResult(List.of(), warnings);
+    }
 }

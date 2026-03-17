@@ -3,7 +3,9 @@ package app.skillsoft.assessmentbackend.domain.dto.blueprint;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -45,6 +47,13 @@ public class TeamFitBlueprint extends TestBlueprintDto {
      * Examples: "Backend Developer", "Project Manager", "UX Designer"
      */
     private String targetRole;
+
+    /**
+     * Canvas competency IDs selected in the blueprint builder.
+     * Used as fallback when team profile has insufficient data to determine
+     * which competencies to assess.
+     */
+    private List<UUID> competencyIds = new ArrayList<>();
 
     /**
      * Role-specific competency weights (competency UUID -> weight multiplier).
@@ -108,6 +117,14 @@ public class TeamFitBlueprint extends TestBlueprintDto {
         this.targetRole = targetRole;
     }
 
+    public List<UUID> getCompetencyIds() {
+        return competencyIds;
+    }
+
+    public void setCompetencyIds(List<UUID> competencyIds) {
+        this.competencyIds = competencyIds != null ? new ArrayList<>(competencyIds) : new ArrayList<>();
+    }
+
     public Map<UUID, Double> getRoleCompetencyWeights() {
         return roleCompetencyWeights;
     }
@@ -123,6 +140,7 @@ public class TeamFitBlueprint extends TestBlueprintDto {
         copy.setTeamId(this.teamId);
         copy.setSaturationThreshold(this.saturationThreshold);
         copy.setTargetRole(this.targetRole);
+        copy.setCompetencyIds(new ArrayList<>(this.competencyIds));
         if (this.roleCompetencyWeights != null) {
             copy.setRoleCompetencyWeights(new HashMap<>(this.roleCompetencyWeights));
         }
@@ -140,13 +158,14 @@ public class TeamFitBlueprint extends TestBlueprintDto {
         TeamFitBlueprint that = (TeamFitBlueprint) o;
         return Double.compare(that.saturationThreshold, saturationThreshold) == 0 &&
                Objects.equals(teamId, that.teamId) &&
+               Objects.equals(competencyIds, that.competencyIds) &&
                Objects.equals(targetRole, that.targetRole) &&
                Objects.equals(roleCompetencyWeights, that.roleCompetencyWeights);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), teamId, saturationThreshold, targetRole, roleCompetencyWeights);
+        return Objects.hash(super.hashCode(), teamId, saturationThreshold, competencyIds, targetRole, roleCompetencyWeights);
     }
 
     @Override
@@ -155,6 +174,7 @@ public class TeamFitBlueprint extends TestBlueprintDto {
                 "strategy=" + getStrategy() +
                 ", teamId=" + teamId +
                 ", saturationThreshold=" + saturationThreshold +
+                ", competencyIds=" + competencyIds +
                 ", targetRole='" + targetRole + '\'' +
                 ", roleCompetencyWeights=" + roleCompetencyWeights +
                 ", adaptivity=" + getAdaptivity() +

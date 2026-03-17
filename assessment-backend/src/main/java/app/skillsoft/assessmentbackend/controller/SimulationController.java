@@ -73,6 +73,12 @@ public class SimulationController {
                 log.info("JobFitBlueprint.competencyIds: {} (count: {})",
                     jfb.getCompetencyIds(), jfb.getCompetencyIds() != null ? jfb.getCompetencyIds().size() : 0);
             }
+            if (request.blueprint() instanceof app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint tfb) {
+                log.info("TeamFitBlueprint.teamId: {}, competencyIds count: {}, saturationThreshold: {}",
+                    tfb.getTeamId(),
+                    tfb.getCompetencyIds() != null ? tfb.getCompetencyIds().size() : 0,
+                    tfb.getSaturationThreshold());
+            }
         }
 
         if (request.blueprint() == null) {
