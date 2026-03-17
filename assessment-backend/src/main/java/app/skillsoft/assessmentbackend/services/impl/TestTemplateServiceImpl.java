@@ -12,6 +12,7 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.validation.BlueprintValidationResult;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
+import app.skillsoft.assessmentbackend.exception.TemplateNotEditableException;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
@@ -134,11 +135,9 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         TestTemplate template = templateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
 
-        // Guard: Only DRAFT templates can be modified
-        if (!template.isEditable()) {
-            throw new IllegalStateException(
-                    String.format("Cannot modify template in %s status. Only DRAFT templates can be edited.",
-                            template.getStatus()));
+        // Guard: Only DRAFT templates can be modified (unless force-overwrite is requested)
+        if (!template.isEditable() && !Boolean.TRUE.equals(request.forceOverwrite())) {
+            throw new TemplateNotEditableException(template.getStatus());
         }
 
         // Update only provided fields

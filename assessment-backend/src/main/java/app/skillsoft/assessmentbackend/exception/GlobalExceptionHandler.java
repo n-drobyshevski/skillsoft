@@ -493,6 +493,32 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Handle TemplateNotEditableException when a non-DRAFT template is modified.
+     * Returns HTTP 409 Conflict with TEMPLATE_NOT_EDITABLE error code.
+     */
+    @ExceptionHandler(TemplateNotEditableException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleTemplateNotEditableException(
+            TemplateNotEditableException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Template not editable [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.CONFLICT,
+            ex.getMessage(),
+            "Only templates in DRAFT status can be modified. Create a new version to make changes.",
+            request
+        );
+
+        errorResponse.setCode("TEMPLATE_NOT_EDITABLE");
+        errorResponse.addContext("currentStatus", ex.getCurrentStatus().name());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
+
+    /**
      * Handle illegal state exceptions (business rule violations).
      * Returns HTTP 400 Bad Request when the operation cannot be performed
      * due to invalid state (e.g., session already completed, back navigation not allowed).
