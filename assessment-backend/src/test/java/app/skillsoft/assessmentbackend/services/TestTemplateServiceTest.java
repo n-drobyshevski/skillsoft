@@ -123,7 +123,8 @@ class TestTemplateServiceTest {
                 null,  // shuffleOptions - not changed
                 null,  // allowSkip - not changed
                 true,  // allowBackNavigation
-                null   // showResultsImmediately - not changed
+                null,  // showResultsImmediately - not changed
+                null   // forceOverwrite
         );
     }
 
@@ -346,7 +347,8 @@ class TestTemplateServiceTest {
                     null,  // shuffleOptions - keep original
                     null,  // allowSkip - keep original
                     null,  // allowBackNavigation - keep original
-                    null   // showResultsImmediately - keep original
+                    null,  // showResultsImmediately - keep original
+                    null   // forceOverwrite
             );
             when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
             when(templateRepository.save(any(TestTemplate.class))).thenReturn(mockTemplate);

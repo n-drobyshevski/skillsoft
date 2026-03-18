@@ -147,7 +147,7 @@ class TestTemplateControllerTest {
         );
 
         // UpdateTestTemplateRequest: name, description, goal, blueprint, competencyIds, questionsPerIndicator, timeLimitMinutes,
-        //                            passingScore, isActive, shuffleQuestions, shuffleOptions, allowSkip, allowBackNavigation, showResultsImmediately
+        //                            passingScore, isActive, shuffleQuestions, shuffleOptions, allowSkip, allowBackNavigation, showResultsImmediately, forceOverwrite
         updateRequest = new UpdateTestTemplateRequest(
                 "Updated Template",
                 "Updated Description",
@@ -162,7 +162,8 @@ class TestTemplateControllerTest {
                 false,       // shuffleOptions
                 true,        // allowSkip
                 true,        // allowBackNavigation
-                true         // showResultsImmediately
+                true,        // showResultsImmediately
+                null         // forceOverwrite
         );
     }
 
