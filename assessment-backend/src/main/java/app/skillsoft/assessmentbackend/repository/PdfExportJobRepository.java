@@ -15,7 +15,7 @@ import java.util.UUID;
 @Repository
 public interface PdfExportJobRepository extends JpaRepository<PdfExportJob, UUID> {
 
-    Optional<PdfExportJob> findByContentHashAndStatus(String contentHash, ExportStatus status);
+    Optional<PdfExportJob> findFirstByContentHashAndStatusOrderByCreatedAtDesc(String contentHash, ExportStatus status);
 
     @Query("SELECT j FROM PdfExportJob j WHERE j.clerkUserId = :userId AND j.status IN :statuses")
     List<PdfExportJob> findByClerkUserIdAndStatusIn(

@@ -63,7 +63,7 @@ class PdfExportServiceTest {
             mockResult.setStatus(ResultStatus.COMPLETED);
 
             when(resultRepository.findById(resultId)).thenReturn(Optional.of(mockResult));
-            when(jobRepository.findByContentHashAndStatus(anyString(), eq(ExportStatus.COMPLETED)))
+            when(jobRepository.findFirstByContentHashAndStatusOrderByCreatedAtDesc(anyString(), eq(ExportStatus.COMPLETED)))
                     .thenReturn(Optional.empty());
             when(jobRepository.findByClerkUserIdAndStatusIn(eq("user_123"), anyList()))
                     .thenReturn(List.of());
@@ -120,7 +120,7 @@ class PdfExportServiceTest {
             mockResult.setStatus(ResultStatus.COMPLETED);
 
             when(resultRepository.findById(resultId)).thenReturn(Optional.of(mockResult));
-            when(jobRepository.findByContentHashAndStatus(anyString(), eq(ExportStatus.COMPLETED)))
+            when(jobRepository.findFirstByContentHashAndStatusOrderByCreatedAtDesc(anyString(), eq(ExportStatus.COMPLETED)))
                     .thenReturn(Optional.empty());
             List<PdfExportJob> activeJobs = List.of(
                     new PdfExportJob(), new PdfExportJob(), new PdfExportJob(),
@@ -154,7 +154,7 @@ class PdfExportServiceTest {
             cachedJob.setFilePath(tmpFile.toString());
 
             when(resultRepository.findById(resultId)).thenReturn(Optional.of(mockResult));
-            when(jobRepository.findByContentHashAndStatus(anyString(), eq(ExportStatus.COMPLETED)))
+            when(jobRepository.findFirstByContentHashAndStatusOrderByCreatedAtDesc(anyString(), eq(ExportStatus.COMPLETED)))
                     .thenReturn(Optional.of(cachedJob));
 
             PdfExportCreatedResponse response = exportService.requestExport(request, "user_123");

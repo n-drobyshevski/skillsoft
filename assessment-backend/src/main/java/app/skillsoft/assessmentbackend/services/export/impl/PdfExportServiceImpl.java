@@ -59,7 +59,7 @@ public class PdfExportServiceImpl implements PdfExportService {
 
         String contentHash = computeContentHash(request, result);
 
-        Optional<PdfExportJob> cached = jobRepository.findByContentHashAndStatus(
+        Optional<PdfExportJob> cached = jobRepository.findFirstByContentHashAndStatusOrderByCreatedAtDesc(
                 contentHash, ExportStatus.COMPLETED);
         if (cached.isPresent()) {
             PdfExportJob cachedJob = cached.get();
