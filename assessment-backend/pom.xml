@@ -90,6 +90,17 @@
             <artifactId>commons-csv</artifactId>
             <version>1.12.0</version>
         </dependency>
+        <!-- PDF generation -->
+        <dependency>
+            <groupId>org.xhtmlrenderer</groupId>
+            <artifactId>flying-saucer-pdf-openpdf</artifactId>
+            <version>9.4.0</version>
+        </dependency>
+        <!-- Thymeleaf for HTML templates -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
         <!-- Svix for Clerk webhook signature verification -->
         <dependency>
             <groupId>com.svix</groupId>

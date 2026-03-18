@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title th:text="${candidateName} + ' - Manager Summary'">Manager Summary</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm 15mm 20mm 15mm;
+        }
+        body {
+            font-family: 'Inter', 'Helvetica', sans-serif;
+            font-size: 10pt;
+            color: #1f2937;
+            line-height: 1.5;
+        }
+        h1 { font-size: 18pt; margin: 0 0 4mm 0; color: #111827; }
+        h2 { font-size: 12pt; margin: 6mm 0 2mm 0; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 2mm; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
+        .header-table td { vertical-align: top; padding: 2mm; }
+        .score-cell { text-align: center; width: 35%; }
+        .info-cell { width: 65%; }
+        .meta-label { color: #6b7280; font-size: 9pt; }
+        .meta-value { font-weight: 600; }
+        .badge { display: inline-block; padding: 1mm 3mm; font-size: 8pt; font-weight: 600; }
+        .badge-pass { background-color: #dcfce7; color: #166534; }
+        .badge-fail { background-color: #fee2e2; color: #991b1b; }
+        .section-list { margin: 0; padding-left: 5mm; }
+        .section-list li { margin-bottom: 1.5mm; }
+        .strength { color: #166534; }
+        .development { color: #92400e; }
+        .recommendation-box { background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 3mm; margin-top: 3mm; }
+        .footer { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid #e5e7eb; font-size: 8pt; color: #9ca3af; }
+    </style>
+</head>
+<body>
+    <h1 th:text="${title}">Manager Summary</h1>
+
+    <table class="header-table">
+        <tr>
+            <td class="info-cell">
+                <div>
+                    <span class="meta-label">Candidate: </span>
+                    <span class="meta-value" th:text="${candidateName}">John Doe</span>
+                </div>
+                <div>
+                    <span class="meta-label">Assessment: </span>
+                    <span class="meta-value" th:text="${templateName}">Software Developer</span>
+                </div>
+                <div>
+                    <span class="meta-label">Completed: </span>
+                    <span class="meta-value" th:text="${completedAt}">2026-03-18</span>
+                </div>
+                <div>
+                    <span class="meta-label">Result: </span>
+                    <span th:if="${passed}" class="badge badge-pass">Passed</span>
+                    <span th:unless="${passed}" class="badge badge-fail">Not Passed</span>
+                </div>
+            </td>
+            <td class="score-cell" th:utext="${scoreCircleSvg}">
+                <!-- ScoreCircleSvg injected here -->
+            </td>
+        </tr>
+    </table>
+
+    <h2>Top Strengths</h2>
+    <ul class="section-list" th:if="${!#lists.isEmpty(strengths)}">
+        <li th:each="s : ${strengths}" class="strength" th:text="${s}">Strength item</li>
+    </ul>
+    <p th:if="${#lists.isEmpty(strengths)}" style="color: #9ca3af; font-style: italic;">No strengths identified</p>
+
+    <h2>Development Areas</h2>
+    <ul class="section-list" th:if="${!#lists.isEmpty(developmentAreas)}">
+        <li th:each="d : ${developmentAreas}" class="development" th:text="${d}">Development item</li>
+    </ul>
+    <p th:if="${#lists.isEmpty(developmentAreas)}" style="color: #9ca3af; font-style: italic;">No development areas identified</p>
+
+    <div th:if="${recommendation != null and !recommendation.isEmpty()}" class="recommendation-box">
+        <strong>Recommendation: </strong>
+        <span th:text="${recommendation}">Consider for next round</span>
+    </div>
+
+    <div class="footer">
+        <span>CONFIDENTIAL</span> |
+        <span th:text="'Generated ' + ${generatedAt}">Generated 2026-03-18</span> |
+        <span>SkillSoft Assessment Platform</span>
+    </div>
+</body>
+</html>
