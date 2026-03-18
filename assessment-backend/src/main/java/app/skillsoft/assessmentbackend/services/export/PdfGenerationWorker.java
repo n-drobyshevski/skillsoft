@@ -104,8 +104,8 @@ public class PdfGenerationWorker {
 
         vars.put("title", "Manager Summary");
         vars.put("candidateName", formatCandidateId(result.getClerkUserId()));
-        vars.put("templateName", templateName);
-        vars.put("goal", goal != null ? goal.name() : "");
+        vars.put("templateName", templateName.replaceAll("^\\s*:\\s*", "").trim());
+        vars.put("goal", humanizeGoal(goal));
         vars.put("completedAt", result.getCompletedAt() != null
                 ? result.getCompletedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) : "N/A");
 
@@ -114,9 +114,8 @@ public class PdfGenerationWorker {
         vars.put("passed", passed);
         vars.put("overallPercentage", Math.round(overallPct));
 
-        // Score circle SVG
-        String svgCircle = ScoreCircleSvg.render(overallPct, 100.0, 120);
-        vars.put("scoreCircleSvg", svgCircle);
+        // Score display — Flying Saucer has limited SVG support, use HTML-based score
+        vars.put("scoreCircleSvg", buildScoreHtml(overallPct, passed));
 
         // Stats
         int answered = result.getQuestionsAnswered() != null ? result.getQuestionsAnswered() : 0;
@@ -129,6 +128,11 @@ public class PdfGenerationWorker {
         // Top 3 strengths and bottom 3 development areas (sorted by percentage)
         List<CompetencyScoreDto> scores = result.getCompetencyScores() != null
                 ? result.getCompetencyScores() : List.of();
+
+        // Debug: log competency data to identify missing names
+        logger.info("PDF export - {} competency scores loaded for result {}", scores.size(), result.getId());
+        scores.forEach(cs -> logger.info("  Competency: id={}, name='{}', pct={}",
+                cs.getCompetencyId(), cs.getCompetencyName(), cs.getPercentage()));
 
         List<CompetencyScoreDto> sorted = new ArrayList<>(scores);
         sorted.sort(Comparator.comparingDouble((CompetencyScoreDto cs) ->
@@ -180,6 +184,28 @@ public class PdfGenerationWorker {
         int seconds = totalSeconds % 60;
         if (minutes == 0) return seconds + "s";
         return minutes + "m " + seconds + "s";
+    }
+
+    private String humanizeGoal(AssessmentGoal goal) {
+        if (goal == null) return "";
+        return switch (goal) {
+            case JOB_FIT -> "Job Fit Assessment";
+            case TEAM_FIT -> "Team Fit Assessment";
+            case OVERVIEW -> "Competency Overview";
+        };
+    }
+
+    private String buildScoreHtml(double percentage, boolean passed) {
+        String color = passed ? "#166534" : "#92400e";
+        String bgColor = passed ? "#dcfce7" : "#fef3c7";
+        return String.format(
+            "<div style=\"text-align: center; padding: 6mm 0;\">" +
+            "<div style=\"display: inline-block; width: 28mm; height: 28mm; border: 3px solid %s; " +
+            "border-radius: 50%%; background-color: %s; text-align: center; line-height: 28mm;\">" +
+            "<span style=\"font-size: 22pt; font-weight: 700; color: %s;\">%d%%</span>" +
+            "</div></div>",
+            color, bgColor, color, Math.round(percentage)
+        );
     }
 
     private String buildRecommendation(AssessmentGoal goal, boolean passed, double overallPct) {
