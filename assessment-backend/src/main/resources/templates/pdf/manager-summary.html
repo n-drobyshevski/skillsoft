@@ -11,7 +11,7 @@
             margin: 18mm 15mm 18mm 15mm;
         }
         body {
-            font-family: 'Inter', 'Helvetica', sans-serif;
+            font-family: 'Noto Sans', sans-serif;
             font-size: 10pt;
             color: #1f2937;
             line-height: 1.5;
@@ -79,6 +79,19 @@
         .strength { color: #166534; }
         .development { color: #92400e; }
         .empty-note { color: #94a3b8; font-style: italic; font-size: 9pt; }
+
+        /* Competency table */
+        .comp-table { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+        .comp-table th { text-align: left; font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.3pt; padding: 1.5mm 2mm; border-bottom: 2px solid #e2e8f0; }
+        .comp-table td { padding: 2mm; font-size: 10pt; border-bottom: 1px solid #f1f5f9; }
+        .comp-table .pct { text-align: right; font-weight: 700; width: 15%; }
+        .comp-table .bar-cell { width: 30%; }
+        .pct-bar { height: 3mm; background-color: #e2e8f0; }
+        .pct-fill { height: 100%; }
+        .fill-green { background-color: #22c55e; }
+        .fill-amber { background-color: #f59e0b; }
+        .fill-red { background-color: #ef4444; }
+        .prof-label { font-size: 8pt; color: #64748b; }
 
         /* Recommendation */
         .recommendation-box {
@@ -158,19 +171,30 @@
         <span th:text="'Overall score: ' + ${overallPercentage} + '%'">Overall score: 85%</span>
     </div>
 
-    <!-- Top Strengths -->
-    <h2>Top Strengths</h2>
-    <ul class="section-list" th:if="${!#lists.isEmpty(strengths)}">
-        <li th:each="s : ${strengths}" class="strength" th:text="${s}">Problem Solving — 92%</li>
-    </ul>
-    <p th:if="${#lists.isEmpty(strengths)}" class="empty-note">No competency data available</p>
-
-    <!-- Development Areas -->
-    <h2>Development Areas</h2>
-    <ul class="section-list" th:if="${!#lists.isEmpty(developmentAreas)}">
-        <li th:each="d : ${developmentAreas}" class="development" th:text="${d}">Time Management — 45%</li>
-    </ul>
-    <p th:if="${#lists.isEmpty(developmentAreas)}" class="empty-note">No development areas identified</p>
+    <!-- Competency Breakdown -->
+    <h2>Competency Breakdown</h2>
+    <table class="comp-table" th:if="${hasCompetencies}">
+        <tr>
+            <th style="width: 55%;">Competency</th>
+            <th class="bar-cell">Score</th>
+            <th class="pct">%</th>
+        </tr>
+        <tr th:each="c : ${competencyRows}">
+            <td>
+                <span th:text="${c.name}">Competency Name</span>
+                <span th:if="${c.proficiency != ''}" class="prof-label" th:text="' · ' + ${c.proficiency}"> · Advanced</span>
+            </td>
+            <td class="bar-cell">
+                <div class="pct-bar">
+                    <div th:classappend="${c.percentage >= 70 ? 'fill-green' : (c.percentage >= 50 ? 'fill-amber' : 'fill-red')}"
+                         class="pct-fill"
+                         th:style="'width: ' + ${c.percentage} + '%'">&#160;</div>
+                </div>
+            </td>
+            <td class="pct" th:classappend="${c.isStrength ? 'strength' : 'development'}" th:text="${c.percentage} + '%'">85%</td>
+        </tr>
+    </table>
+    <p th:unless="${hasCompetencies}" class="empty-note">No competency data available</p>
 
     <!-- Recommendation -->
     <div th:if="${recommendation != null and !recommendation.isEmpty()}" class="recommendation-box">

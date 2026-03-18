@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
@@ -51,8 +52,9 @@ public class PdfExportController {
     public ResponseEntity<byte[]> download(@PathVariable UUID exportId) {
         logger.info("GET /api/v1/exports/{}/download", exportId);
         byte[] pdfBytes = exportService.download(exportId);
+        String filename = "SkillSoft_Report_" + LocalDate.now() + ".pdf";
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"export-" + exportId + ".pdf\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
             .contentType(MediaType.APPLICATION_PDF)
             .contentLength(pdfBytes.length)
             .body(pdfBytes);

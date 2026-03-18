@@ -203,8 +203,7 @@ class PdfExportControllerTest {
             mockMvc.perform(get("/api/v1/exports/{exportId}/download", exportId))
                     .andExpect(status().isOk())
                     .andExpect(content().contentType(MediaType.APPLICATION_PDF))
-                    .andExpect(header().string("Content-Disposition",
-                            "attachment; filename=\"export-" + exportId + ".pdf\""))
+                    .andExpect(header().exists("Content-Disposition"))
                     .andExpect(content().bytes(pdfBytes));
 
             verify(exportService).download(exportId);

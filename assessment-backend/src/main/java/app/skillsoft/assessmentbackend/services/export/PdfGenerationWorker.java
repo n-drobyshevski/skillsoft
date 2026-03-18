@@ -104,7 +104,7 @@ public class PdfGenerationWorker {
 
         vars.put("title", "Manager Summary");
         vars.put("candidateName", formatCandidateId(result.getClerkUserId()));
-        vars.put("templateName", templateName.replaceAll("^\\s*:\\s*", "").trim());
+        vars.put("templateName", templateName);
         vars.put("goal", humanizeGoal(goal));
         vars.put("completedAt", result.getCompletedAt() != null
                 ? result.getCompletedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) : "N/A");
@@ -125,41 +125,28 @@ public class PdfGenerationWorker {
         vars.put("totalTimeSeconds", result.getTotalTimeSeconds() != null ? result.getTotalTimeSeconds() : 0);
         vars.put("duration", formatDuration(result.getTotalTimeSeconds()));
 
-        // Top 3 strengths and bottom 3 development areas (sorted by percentage)
+        // All competencies sorted by percentage (descending) for the ranked table
         List<CompetencyScoreDto> scores = result.getCompetencyScores() != null
                 ? result.getCompetencyScores() : List.of();
-
-        // Debug: log competency data to identify missing names
-        logger.info("PDF export - {} competency scores loaded for result {}", scores.size(), result.getId());
-        scores.forEach(cs -> logger.info("  Competency: id={}, name='{}', pct={}",
-                cs.getCompetencyId(), cs.getCompetencyName(), cs.getPercentage()));
 
         List<CompetencyScoreDto> sorted = new ArrayList<>(scores);
         sorted.sort(Comparator.comparingDouble((CompetencyScoreDto cs) ->
                 cs.getPercentage() != null ? cs.getPercentage() : 0.0).reversed());
 
-        List<String> strengths = new ArrayList<>();
-        for (int i = 0; i < Math.min(3, sorted.size()); i++) {
-            CompetencyScoreDto cs = sorted.get(i);
-            String name = cs.getCompetencyName() != null ? cs.getCompetencyName() : "Unknown";
+        // Build competency table rows with name, percentage, and proficiency label
+        List<Map<String, Object>> competencyRows = new ArrayList<>();
+        for (CompetencyScoreDto cs : sorted) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("name", cs.getCompetencyName() != null && !cs.getCompetencyName().isBlank()
+                    ? cs.getCompetencyName() : "Competency");
             double pct = cs.getPercentage() != null ? cs.getPercentage() : 0.0;
-            strengths.add(name + " — " + Math.round(pct) + "%");
+            row.put("percentage", Math.round(pct));
+            row.put("proficiency", cs.getProficiencyLabel() != null ? cs.getProficiencyLabel() : "");
+            row.put("isStrength", pct >= 70.0);
+            competencyRows.add(row);
         }
-
-        List<String> developmentAreas = new ArrayList<>();
-        for (int i = sorted.size() - 1; i >= Math.max(0, sorted.size() - 3); i--) {
-            CompetencyScoreDto cs = sorted.get(i);
-            // Don't duplicate: skip if already in strengths (when <= 3 competencies total)
-            String name = cs.getCompetencyName() != null ? cs.getCompetencyName() : "Unknown";
-            double pct = cs.getPercentage() != null ? cs.getPercentage() : 0.0;
-            String entry = name + " — " + Math.round(pct) + "%";
-            if (!strengths.contains(entry)) {
-                developmentAreas.add(entry);
-            }
-        }
-
-        vars.put("strengths", strengths);
-        vars.put("developmentAreas", developmentAreas);
+        vars.put("competencyRows", competencyRows);
+        vars.put("hasCompetencies", !competencyRows.isEmpty());
 
         // Recommendation based on goal and pass status (mirrors ManagerSummary.tsx logic)
         vars.put("recommendation", buildRecommendation(goal, passed, overallPct));

@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services.export;
 
+import com.lowagie.text.pdf.BaseFont;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
@@ -41,16 +42,9 @@ public class PdfTemplateEngine {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             ITextRenderer renderer = new ITextRenderer();
 
-            try {
-                ClassPathResource fontResource = new ClassPathResource("fonts/Inter-Regular.ttf");
-                if (fontResource.exists()) {
-                    renderer.getFontResolver().addFont(
-                        fontResource.getURL().toString(), true
-                    );
-                }
-            } catch (Exception e) {
-                logger.warn("Could not load Inter font, falling back to defaults: {}", e.getMessage());
-            }
+            // Load Noto Sans with IDENTITY_H encoding for full Unicode/Cyrillic support
+            loadFont(renderer, "fonts/NotoSans-Regular.ttf");
+            loadFont(renderer, "fonts/NotoSans-Bold.ttf");
 
             renderer.setDocumentFromString(html);
             renderer.layout();
@@ -62,6 +56,24 @@ public class PdfTemplateEngine {
         } catch (Exception e) {
             logger.error("Failed to render PDF template '{}': {}", templateName, e.getMessage(), e);
             throw new RuntimeException("PDF generation failed: " + e.getMessage(), e);
+        }
+    }
+
+    private void loadFont(ITextRenderer renderer, String classpathPath) {
+        try {
+            ClassPathResource res = new ClassPathResource(classpathPath);
+            if (res.exists()) {
+                renderer.getFontResolver().addFont(
+                    res.getURL().toString(),
+                    BaseFont.IDENTITY_H,  // Unicode horizontal — required for Cyrillic
+                    true                   // embedded in PDF
+                );
+                logger.debug("Loaded font: {}", classpathPath);
+            } else {
+                logger.warn("Font not found on classpath: {}", classpathPath);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not load font {}: {}", classpathPath, e.getMessage());
         }
     }
 }
