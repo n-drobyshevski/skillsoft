@@ -232,8 +232,13 @@ public class BlueprintConversionService {
         blueprint.setTeamId(teamId);
         blueprint.setSaturationThreshold(saturationThreshold);
 
-        log.info("Created TeamFitBlueprint with team ID {} for template {}",
-                teamId, template.getId());
+        // Propagate competencyIds from template for canvas-based assembly
+        if (template.getCompetencyIds() != null && !template.getCompetencyIds().isEmpty()) {
+            blueprint.setCompetencyIds(template.getCompetencyIds());
+        }
+
+        log.info("Created TeamFitBlueprint with team ID {} and {} competencies for template {}",
+                teamId, blueprint.getCompetencyIds().size(), template.getId());
 
         return blueprint;
     }

@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.services.impl;
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.dto.TemplateReadinessResponse.CompetencyReadiness;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.HealthStatus;
 import app.skillsoft.assessmentbackend.domain.entities.*;
@@ -659,6 +660,16 @@ public class TestSessionServiceImpl implements TestSessionService {
                         "Please go to the template's Blueprint tab and add at least one competency. " +
                         "Template ID: " + template.getId());
             }
+        }
+
+        // Ensure TeamFitBlueprint has competencyIds from the template
+        // (legacy seed data stores them in the template's competency_ids column, not the blueprint JSON)
+        if (typedBlueprint instanceof TeamFitBlueprint teamFit
+                && (teamFit.getCompetencyIds() == null || teamFit.getCompetencyIds().isEmpty())
+                && template.getCompetencyIds() != null && !template.getCompetencyIds().isEmpty()) {
+            log.info("Propagating {} template competencyIds into TeamFitBlueprint for template {}",
+                    template.getCompetencyIds().size(), template.getId());
+            teamFit.setCompetencyIds(template.getCompetencyIds());
         }
 
         // Inject candidate context into the blueprint for Delta Testing
