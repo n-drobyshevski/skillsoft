@@ -73,7 +73,9 @@ public class TeamFitAssembler implements TestAssembler {
         var teamId = teamFitBlueprint.getTeamId();
         if (teamId == null) {
             log.warn("No team ID provided in TeamFitBlueprint");
-            return AssemblyResult.empty();
+            return AssemblyResult.withWarnings(List.of(
+                InventoryWarning.info("TeamFit assessment requires a team profile. Please select a team before starting the test.")
+            ));
         }
 
         var rawThreshold = teamFitBlueprint.getSaturationThreshold();

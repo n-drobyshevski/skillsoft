@@ -635,6 +635,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorResponse.addContext("totalQuestionsAvailable", ex.getTotalQuestionsAvailable());
         errorResponse.addContext("questionsRequired", ex.getQuestionsRequired());
         errorResponse.addContext("competencyIssues", ex.getCompetencyIssues());
+        if (ex.getAssemblyWarnings() != null && !ex.getAssemblyWarnings().isEmpty()) {
+            errorResponse.addContext("assemblyWarnings", ex.getAssemblyWarnings());
+        }
 
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
     }

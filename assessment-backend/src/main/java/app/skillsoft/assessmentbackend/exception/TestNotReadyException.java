@@ -16,6 +16,7 @@ public class TestNotReadyException extends RuntimeException {
     private final List<CompetencyIssue> competencyIssues;
     private final int totalQuestionsAvailable;
     private final int questionsRequired;
+    private final List<String> assemblyWarnings;
 
     /**
      * Details about a specific competency's readiness issues.
@@ -42,17 +43,32 @@ public class TestNotReadyException extends RuntimeException {
             List<CompetencyIssue> competencyIssues,
             int totalQuestionsAvailable,
             int questionsRequired) {
-        super(buildMessage(competencyIssues, totalQuestionsAvailable, questionsRequired));
+        this(templateId, competencyIssues, totalQuestionsAvailable, questionsRequired, List.of());
+    }
+
+    public TestNotReadyException(
+            UUID templateId,
+            List<CompetencyIssue> competencyIssues,
+            int totalQuestionsAvailable,
+            int questionsRequired,
+            List<String> assemblyWarnings) {
+        super(buildMessage(competencyIssues, totalQuestionsAvailable, questionsRequired, assemblyWarnings));
         this.templateId = templateId;
         this.competencyIssues = competencyIssues;
         this.totalQuestionsAvailable = totalQuestionsAvailable;
         this.questionsRequired = questionsRequired;
+        this.assemblyWarnings = assemblyWarnings != null ? assemblyWarnings : List.of();
     }
 
     private static String buildMessage(
             List<CompetencyIssue> issues,
             int available,
-            int required) {
+            int required,
+            List<String> assemblyWarnings) {
+        if (assemblyWarnings != null && !assemblyWarnings.isEmpty()) {
+            return "Cannot start test session: " + String.join("; ", assemblyWarnings);
+        }
+
         if (issues == null || issues.isEmpty()) {
             return String.format(
                 "Cannot start test session: No questions available (found %d, need %d). " +
@@ -94,5 +110,9 @@ public class TestNotReadyException extends RuntimeException {
 
     public int getQuestionsRequired() {
         return questionsRequired;
+    }
+
+    public List<String> getAssemblyWarnings() {
+        return assemblyWarnings;
     }
 }

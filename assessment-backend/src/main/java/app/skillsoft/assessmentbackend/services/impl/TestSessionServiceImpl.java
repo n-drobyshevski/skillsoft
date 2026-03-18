@@ -11,6 +11,7 @@ import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.repository.*;
@@ -131,12 +132,14 @@ public class TestSessionServiceImpl implements TestSessionService {
 
         // Generate question order based on template configuration
         // Pass clerkUserId for Delta Testing (gap-based question selection)
-        List<UUID> questionOrder;
+        AssemblyResult assemblyResult;
         try {
-            questionOrder = generateQuestionOrder(template, request.clerkUserId());
+            assemblyResult = generateQuestionOrder(template, request.clerkUserId());
         } finally {
             questionSelectionService.clearSessionSeed();
         }
+
+        List<UUID> questionOrder = assemblyResult.questionIds();
 
         // CRITICAL VALIDATION: Prevent sessions with empty question order
         if (questionOrder == null || questionOrder.isEmpty()) {
@@ -144,6 +147,11 @@ public class TestSessionServiceImpl implements TestSessionService {
                      "Competencies: {}, QuestionsPerIndicator: {}, Goal: {}",
                      template.getId(), template.getCompetencyIds(),
                      template.getQuestionsPerIndicator(), template.getGoal());
+
+            // Extract assembly-level warnings (e.g. "No team ID", "No competency data")
+            List<String> assemblyWarnings = assemblyResult.warnings().stream()
+                    .map(w -> w.message())
+                    .toList();
 
             // Build detailed error info using readiness check
             TemplateReadinessResponse readiness = checkTemplateReadiness(template.getId());
@@ -164,7 +172,8 @@ public class TestSessionServiceImpl implements TestSessionService {
                     template.getId(),
                     issues,
                     readiness.totalQuestionsAvailable(),
-                    readiness.questionsRequired()
+                    readiness.questionsRequired(),
+                    assemblyWarnings
             );
         }
 
@@ -624,7 +633,7 @@ public class TestSessionServiceImpl implements TestSessionService {
      * @return Ordered list of question UUIDs for the session
      * @throws IllegalStateException if template has no typed blueprint configured
      */
-    private List<UUID> generateQuestionOrder(TestTemplate template, String clerkUserId) {
+    private AssemblyResult generateQuestionOrder(TestTemplate template, String clerkUserId) {
         var typedBlueprint = template.getTypedBlueprint();
         Instant assemblyStartTime = Instant.now();
 
@@ -694,7 +703,7 @@ public class TestSessionServiceImpl implements TestSessionService {
                     "Starting question selection"
             );
 
-            List<UUID> questions = assembler.assemble(enrichedBlueprint).questionIds();
+            AssemblyResult assemblyResult = assembler.assemble(enrichedBlueprint);
 
             // Update progress to VALIDATING phase
             assemblyProgressTracker.updatePhase(
@@ -705,21 +714,21 @@ public class TestSessionServiceImpl implements TestSessionService {
             );
 
             // Complete progress tracking
-            assemblyProgressTracker.complete(trackingId, questions.size());
+            assemblyProgressTracker.complete(trackingId, assemblyResult.questionIds().size());
 
             // Publish assembly completed event
             eventPublisher.publishEvent(AssemblyCompletedEvent.fromStart(
                     null, // Session ID not yet available
                     template.getId(),
                     enrichedBlueprint.getStrategy(),
-                    questions.size(),
+                    assemblyResult.questionIds().size(),
                     assemblyStartTime
             ));
 
             log.info("TestAssembler produced {} questions for goal: {}",
-                questions.size(), enrichedBlueprint.getStrategy());
+                assemblyResult.questionIds().size(), enrichedBlueprint.getStrategy());
 
-            return questions;
+            return assemblyResult;
         } catch (Exception e) {
             // Mark progress as failed
             assemblyProgressTracker.fail(trackingId, e.getMessage());
