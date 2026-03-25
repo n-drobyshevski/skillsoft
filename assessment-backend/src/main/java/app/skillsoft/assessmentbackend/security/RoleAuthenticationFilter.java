@@ -27,6 +27,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Custom authentication filter that extracts user information from request headers.
@@ -72,8 +73,13 @@ public class RoleAuthenticationFilter extends OncePerRequestFilter {
     // Header names for user information
     public static final String USER_ID_HEADER = "X-User-Id";
     public static final String USER_ROLE_HEADER = "X-User-Role";
+    public static final String EFFECTIVE_ROLE_HEADER = "X-Effective-Role";
     public static final String AUTH_TIMESTAMP_HEADER = "X-Auth-Timestamp";
     public static final String AUTH_SIGNATURE_HEADER = "X-Auth-Signature";
+
+    /** Role hierarchy levels for downgrade validation. */
+    private static final Map<UserRole, Integer> ROLE_LEVEL = Map.of(
+            UserRole.USER, 0, UserRole.EDITOR, 1, UserRole.ADMIN, 2);
 
     @Value("${app.security.hmac-secret:}")
     private String hmacSecret;
@@ -122,35 +128,46 @@ public class RoleAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        // Read effective role header (lens-based permission downgrade)
+        String effectiveRoleHeader = request.getHeader(EFFECTIVE_ROLE_HEADER);
+
         // --- HMAC Verification ---
         if (hmacEnabled) {
             String timestamp = request.getHeader(AUTH_TIMESTAMP_HEADER);
             String signature = request.getHeader(AUTH_SIGNATURE_HEADER);
 
-            if (!verifyHmacSignature(userId, userRoleHeader, timestamp, signature, response)) {
+            if (!verifyHmacSignature(userId, userRoleHeader, effectiveRoleHeader, timestamp, signature, response)) {
                 // Response already committed with 401 inside verifyHmacSignature
                 return;
             }
         }
 
-        // Parse the user role, default to USER if invalid or not provided
-        UserRole userRole = parseUserRole(userRoleHeader);
+        // Parse the actual user role, default to USER if invalid or not provided
+        UserRole actualRole = parseUserRole(userRoleHeader);
 
-        // Create authorities based on role hierarchy
-        List<GrantedAuthority> authorities = createAuthorities(userRole);
+        // Resolve effective role (lens downgrade), validated against actual role
+        UserRole effectiveRole = resolveEffectiveRole(actualRole, effectiveRoleHeader);
+
+        if (effectiveRole != actualRole) {
+            logger.info("Lens downgrade active: user={}, actual={}, effective={}",
+                    userId, actualRole, effectiveRole);
+        }
+
+        // Create authorities based on EFFECTIVE role (not actual) for permission enforcement
+        List<GrantedAuthority> authorities = createAuthorities(effectiveRole);
 
         // Create authentication token
         UsernamePasswordAuthenticationToken authentication =
             new UsernamePasswordAuthenticationToken(userId, null, authorities);
 
-        // Set additional details
-        authentication.setDetails(new UserAuthenticationDetails(userId, userRole));
+        // Set details with both roles for audit trail
+        authentication.setDetails(new UserAuthenticationDetails(userId, actualRole, effectiveRole));
 
         // Set the authentication in the security context
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        logger.debug("Authenticated user: {} with role: {} and authorities: {}",
-            userId, userRole, authorities);
+        logger.debug("Authenticated user: {} with actual={}, effective={}, authorities: {}",
+            userId, actualRole, effectiveRole, authorities);
 
         filterChain.doFilter(request, response);
     }
@@ -162,12 +179,17 @@ public class RoleAuthenticationFilter extends OncePerRequestFilter {
     /**
      * Verify the HMAC-SHA256 signature of the authentication headers.
      *
+     * Supports two message formats for backward compatibility:
+     * - With effective role: "userId:userRole:effectiveRole:timestamp"
+     * - Without effective role: "userId:userRole:timestamp"
+     *
      * @return {@code true} if the signature is valid; {@code false} if the request
      *         was rejected (401 already written to response).
      */
     private boolean verifyHmacSignature(
             String userId,
             String userRole,
+            String effectiveRole,
             String timestamp,
             String signature,
             HttpServletResponse response) throws IOException {
@@ -199,8 +221,16 @@ public class RoleAuthenticationFilter extends OncePerRequestFilter {
             return false;
         }
 
-        // Compute expected signature: HMAC-SHA256( userId + ":" + userRole + ":" + timestamp )
-        String message = userId + ":" + (userRole != null ? userRole : "") + ":" + timestamp;
+        // Compute expected signature
+        // With effective role: "userId:userRole:effectiveRole:timestamp"
+        // Without effective role: "userId:userRole:timestamp"
+        String rolesPart = (userRole != null ? userRole : "");
+        String message;
+        if (effectiveRole != null && !effectiveRole.isBlank()) {
+            message = userId + ":" + rolesPart + ":" + effectiveRole + ":" + timestamp;
+        } else {
+            message = userId + ":" + rolesPart + ":" + timestamp;
+        }
         String expectedSignature;
         try {
             expectedSignature = computeHmacHex(message);
@@ -327,7 +357,33 @@ public class RoleAuthenticationFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Custom authentication details class to hold additional user information.
+     * Resolve the effective role from the X-Effective-Role header.
+     * The effective role can only be equal to or lower than the actual role (downgrade only).
+     * If the header is absent or invalid, the actual role is returned unchanged.
+     *
+     * @param actualRole     the user's real role from Clerk
+     * @param effectiveHeader the X-Effective-Role header value (may be null)
+     * @return the resolved effective role, guaranteed <= actualRole
      */
-    public record UserAuthenticationDetails(String clerkId, UserRole role) {}
+    private UserRole resolveEffectiveRole(UserRole actualRole, String effectiveHeader) {
+        if (effectiveHeader == null || effectiveHeader.isBlank()) {
+            return actualRole;
+        }
+
+        UserRole requested = parseUserRole(effectiveHeader);
+
+        // Only allow downgrade, never escalation
+        if (ROLE_LEVEL.getOrDefault(requested, 0) <= ROLE_LEVEL.getOrDefault(actualRole, 0)) {
+            return requested;
+        }
+
+        logger.warn("Privilege escalation attempt blocked: actual={}, requested={}", actualRole, requested);
+        return actualRole;
+    }
+
+    /**
+     * Authentication details carrying both the actual Clerk role and the effective
+     * (lens-downgraded) role for audit trail purposes.
+     */
+    public record UserAuthenticationDetails(String clerkId, UserRole actualRole, UserRole effectiveRole) {}
 }

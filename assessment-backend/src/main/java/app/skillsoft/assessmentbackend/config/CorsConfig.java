@@ -77,6 +77,7 @@ public class CorsConfig implements WebMvcConfigurer {
             "Authorization",
             "X-User-Id",
             "X-User-Role",
+            "X-Effective-Role",
             "X-Requested-With",
             "Access-Control-Request-Method",
             "Access-Control-Request-Headers"
