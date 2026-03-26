@@ -29,7 +29,9 @@ import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import app.skillsoft.assessmentbackend.domain.dto.BulkDeleteResultDto;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -60,6 +62,7 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final ActivityTrackingService activityTrackingService;
     private final BlueprintConversionService blueprintConversionService;
     private final QuestionSelectionService questionSelectionService;
+    private final TestSessionService self;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -76,7 +79,8 @@ public class TestSessionServiceImpl implements TestSessionService {
             ScoringOrchestrationService scoringOrchestrationService,
             ActivityTrackingService activityTrackingService,
             BlueprintConversionService blueprintConversionService,
-            QuestionSelectionService questionSelectionService) {
+            QuestionSelectionService questionSelectionService,
+            @Lazy TestSessionService self) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -92,6 +96,7 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.activityTrackingService = activityTrackingService;
         this.blueprintConversionService = blueprintConversionService;
         this.questionSelectionService = questionSelectionService;
+        this.self = self;
     }
 
     @Override
@@ -1243,5 +1248,47 @@ public class TestSessionServiceImpl implements TestSessionService {
     public Optional<AssemblyProgress> getAssemblyProgress(UUID templateId) {
         // Template ID is used as tracking ID during assembly
         return assemblyProgressTracker.getProgress(templateId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSession(UUID sessionId) {
+        TestSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestSession", sessionId));
+
+        log.info("Deleting test session {} (template={}, user={}, status={})",
+                sessionId, session.getTemplate().getId(),
+                session.getClerkUserId(), session.getStatus());
+
+        try {
+            sessionRepository.delete(session);
+            sessionRepository.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("Optimistic lock on session {}, retrying once", sessionId);
+            TestSession refreshed = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new ResourceNotFoundException("TestSession", sessionId));
+            sessionRepository.delete(refreshed);
+        }
+    }
+
+    @Override
+    public BulkDeleteResultDto bulkDeleteSessions(List<UUID> sessionIds) {
+        log.info("Bulk deleting {} test sessions", sessionIds.size());
+
+        int deleted = 0;
+        int failed = 0;
+
+        for (UUID sessionId : sessionIds) {
+            try {
+                self.deleteSession(sessionId);
+                deleted++;
+            } catch (Exception e) {
+                log.warn("Failed to delete session {}: {}", sessionId, e.getMessage());
+                failed++;
+            }
+        }
+
+        log.info("Bulk delete complete: {} deleted, {} failed", deleted, failed);
+        return new BulkDeleteResultDto(deleted, failed);
     }
 }
