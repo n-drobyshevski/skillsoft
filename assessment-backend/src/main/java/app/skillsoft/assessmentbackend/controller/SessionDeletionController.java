@@ -2,6 +2,7 @@ package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.BulkDeleteResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.BulkDeleteSessionsRequest;
+import app.skillsoft.assessmentbackend.security.SessionSecurityService;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,15 +38,17 @@ public class SessionDeletionController {
     private static final Logger logger = LoggerFactory.getLogger(SessionDeletionController.class);
 
     private final TestSessionService testSessionService;
+    private final SessionSecurityService sessionSecurity;
 
     @DeleteMapping("/{sessionId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteSession(@PathVariable UUID sessionId) {
-        logger.info("DELETE /api/v1/tests/sessions/{}", sessionId);
+        String adminId = sessionSecurity.getAuthenticatedUserId();
+        logger.info("Admin {} deleting session {}", adminId, sessionId);
 
         testSessionService.deleteSession(sessionId);
 
-        logger.info("Successfully deleted session {}", sessionId);
+        logger.info("Admin {} successfully deleted session {}", adminId, sessionId);
         return ResponseEntity.noContent().build();
     }
 
@@ -53,11 +56,13 @@ public class SessionDeletionController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<BulkDeleteResultDto> bulkDeleteSessions(
             @Valid @RequestBody BulkDeleteSessionsRequest request) {
-        logger.info("DELETE /api/v1/tests/sessions/bulk - {} sessions requested", request.sessionIds().size());
+        String adminId = sessionSecurity.getAuthenticatedUserId();
+        logger.info("Admin {} bulk deleting {} sessions", adminId, request.sessionIds().size());
 
         BulkDeleteResultDto result = testSessionService.bulkDeleteSessions(request.sessionIds());
 
-        logger.info("Bulk delete result: {} deleted, {} failed", result.deleted(), result.failed());
+        logger.info("Admin {} bulk delete result: {} deleted, {} failed",
+                adminId, result.deleted(), result.failed());
         return ResponseEntity.ok(result);
     }
 }
