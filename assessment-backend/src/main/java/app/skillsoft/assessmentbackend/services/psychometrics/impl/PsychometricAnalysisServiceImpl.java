@@ -38,7 +38,12 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
 
     private static final Logger logger = LoggerFactory.getLogger(PsychometricAnalysisServiceImpl.class);
 
-    // Psychometric thresholds
+    // Psychometric thresholds — tiered confidence system
+    // Tier 1 (PRELIMINARY): difficulty + distractors only — directional signal
+    private static final int MIN_RESPONSES_PRELIMINARY = 10;
+    // Tier 2 (EXPLORATORY): adds discrimination + alpha — wide confidence intervals
+    private static final int MIN_RESPONSES_EXPLORATORY = 20;
+    // Tier 3 (STANDARD): full analysis — publication-grade confidence
     private static final int MIN_RESPONSES = 50;
 
     /**
@@ -106,32 +111,44 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         long responseCount = testAnswerRepository.countByQuestion_Id(questionId);
         stats.setResponseCount((int) responseCount);
 
-        if (responseCount < MIN_RESPONSES) {
+        if (responseCount < MIN_RESPONSES_PRELIMINARY) {
             logger.info("Insufficient responses ({}) for question {}. Setting PROBATION status.",
                     responseCount, questionId);
             updateStatusWithHistory(stats, ItemValidityStatus.PROBATION,
-                    "Insufficient responses: " + responseCount + " < " + MIN_RESPONSES);
+                    "Insufficient responses: " + responseCount + " < " + MIN_RESPONSES_PRELIMINARY);
             stats.setLastCalculatedAt(LocalDateTime.now());
             return itemStatisticsRepository.save(stats);
         }
 
-        // Calculate metrics
+        // Tier 1 (n >= 10): Calculate difficulty + distractors
         BigDecimal difficultyIndex = calculateDifficultyIndex(questionId);
-        BigDecimal discriminationIndex = calculateDiscriminationIndex(questionId);
         Map<String, Double> distractorEfficiency = analyzeDistractors(questionId);
 
         stats.setDifficultyIndex(difficultyIndex);
-        stats.setDiscriminationIndex(discriminationIndex);
         stats.setDistractorEfficiency(distractorEfficiency);
-
-        // Set difficulty flag
         stats.setDifficultyFlag(determineDifficultyFlag(difficultyIndex));
 
-        // Set discrimination flag
-        stats.setDiscriminationFlag(determineDiscriminationFlag(discriminationIndex));
+        // Tier 2 (n >= 20): Also calculate discrimination
+        BigDecimal discriminationIndex = null;
+        if (responseCount >= MIN_RESPONSES_EXPLORATORY) {
+            discriminationIndex = calculateDiscriminationIndex(questionId);
+            stats.setDiscriminationIndex(discriminationIndex);
+            stats.setDiscriminationFlag(determineDiscriminationFlag(discriminationIndex));
+        }
 
-        // Determine validity status
-        ItemValidityStatus newStatus = determineValidityStatus(difficultyIndex, discriminationIndex);
+        // Determine validity status based on available data
+        ItemValidityStatus newStatus;
+        if (responseCount >= MIN_RESPONSES) {
+            // Tier 3: Full status determination
+            newStatus = determineValidityStatus(difficultyIndex, discriminationIndex);
+        } else {
+            // Tier 1-2: Preliminary status (metrics calculated but low confidence)
+            newStatus = ItemValidityStatus.PRELIMINARY;
+            // Exception: still auto-retire toxic items even at low n
+            if (discriminationIndex != null && discriminationIndex.compareTo(BigDecimal.ZERO) < 0) {
+                newStatus = ItemValidityStatus.RETIRED;
+            }
+        }
         updateStatusWithHistory(stats, newStatus, generateStatusReason(difficultyIndex, discriminationIndex));
 
         stats.setLastCalculatedAt(LocalDateTime.now());
@@ -180,7 +197,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         // Get item score paired with total test score
         List<Object[]> scorePairs = testAnswerRepository.findItemTotalScorePairs(questionId);
 
-        if (scorePairs.size() < MIN_RESPONSES) {
+        if (scorePairs.size() < MIN_RESPONSES_EXPLORATORY) {
             logger.debug("Insufficient score pairs ({}) for discrimination calculation", scorePairs.size());
             return null;
         }
@@ -198,7 +215,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
             }
         }
 
-        if (itemScores.size() < MIN_RESPONSES) {
+        if (itemScores.size() < MIN_RESPONSES_EXPLORATORY) {
             return null;
         }
 
@@ -293,7 +310,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         int k = matrix.itemCount(); // number of items
         int n = matrix.sessionCount(); // number of respondents
 
-        if (k < 2 || n < MIN_RESPONSES) {
+        if (k < 2 || n < MIN_RESPONSES_EXPLORATORY) {
             logger.debug("Insufficient data for alpha calculation: k={}, n={}", k, n);
             return null;
         }
@@ -308,7 +325,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 .filter(scores -> scores.size() >= k * RESPONSE_COMPLETENESS_THRESHOLD)
                 .collect(Collectors.toList());
 
-        if (completeScores.size() < MIN_RESPONSES) {
+        if (completeScores.size() < MIN_RESPONSES_EXPLORATORY) {
             logger.debug("Insufficient complete responses for alpha: {}", completeScores.size());
             return null;
         }
@@ -415,7 +432,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 .filter(scores -> scores.size() >= k * RESPONSE_COMPLETENESS_THRESHOLD)
                 .collect(Collectors.toList());
 
-        if (completeScores.size() < MIN_RESPONSES) {
+        if (completeScores.size() < MIN_RESPONSES_EXPLORATORY) {
             return alphaIfDeleted;
         }
 
@@ -641,7 +658,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
             Set<UUID> allQuestions) {
 
         int k = allQuestions.size();
-        if (k < 2 || sessionScores.size() < MIN_RESPONSES) {
+        if (k < 2 || sessionScores.size() < MIN_RESPONSES_EXPLORATORY) {
             return null;
         }
 
@@ -654,7 +671,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 .filter(scores -> scores.size() >= k * RESPONSE_COMPLETENESS_THRESHOLD)
                 .collect(Collectors.toList());
 
-        if (completeScores.size() < MIN_RESPONSES) {
+        if (completeScores.size() < MIN_RESPONSES_EXPLORATORY) {
             return null;
         }
 
@@ -833,8 +850,15 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 stats.getDifficultyIndex(),
                 stats.getDiscriminationIndex());
 
-        if (stats.getResponseCount() < MIN_RESPONSES) {
+        if (stats.getResponseCount() < MIN_RESPONSES_PRELIMINARY) {
             newStatus = ItemValidityStatus.PROBATION;
+        } else if (stats.getResponseCount() < MIN_RESPONSES) {
+            newStatus = ItemValidityStatus.PRELIMINARY;
+            // Exception: keep RETIRED for toxic items
+            if (stats.getDiscriminationIndex() != null
+                    && stats.getDiscriminationIndex().compareTo(BigDecimal.ZERO) < 0) {
+                newStatus = ItemValidityStatus.RETIRED;
+            }
         }
 
         updateStatusWithHistory(stats, newStatus,
@@ -916,6 +940,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         int totalItems = (int) itemStatisticsRepository.count();
         int activeItems = (int) itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.ACTIVE);
         int probationItems = (int) itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.PROBATION);
+        int preliminaryItems = (int) itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.PRELIMINARY);
         int flaggedItems = (int) itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.FLAGGED_FOR_REVIEW);
         int retiredItems = (int) itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.RETIRED);
 
@@ -924,6 +949,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         int reliableCompetencies = (int) competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.RELIABLE);
         int acceptableCompetencies = (int) competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.ACCEPTABLE);
         int unreliableCompetencies = (int) competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.UNRELIABLE);
+        int preliminaryCompetencies = (int) competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.PRELIMINARY);
         int insufficientDataCompetencies = (int) competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.INSUFFICIENT_DATA);
 
         // Average metrics
@@ -943,12 +969,14 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 .totalItems(totalItems)
                 .activeItems(activeItems)
                 .probationItems(probationItems)
+                .preliminaryItems(preliminaryItems)
                 .flaggedItems(flaggedItems)
                 .retiredItems(retiredItems)
                 .totalCompetencies(totalCompetencies)
                 .reliableCompetencies(reliableCompetencies)
                 .acceptableCompetencies(acceptableCompetencies)
                 .unreliableCompetencies(unreliableCompetencies)
+                .preliminaryCompetencies(preliminaryCompetencies)
                 .insufficientDataCompetencies(insufficientDataCompetencies)
                 .averageAlpha(averageAlpha)
                 .averageDiscrimination(averageDiscrimination)
@@ -1085,7 +1113,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
      * Determine reliability status based on Cronbach's Alpha.
      */
     private ReliabilityStatus determineReliabilityStatus(BigDecimal alpha, int sampleSize, int itemCount) {
-        if (sampleSize < MIN_RESPONSES || itemCount < 2) {
+        if (sampleSize < MIN_RESPONSES_EXPLORATORY || itemCount < 2) {
             return ReliabilityStatus.INSUFFICIENT_DATA;
         }
 
@@ -1093,6 +1121,13 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
             return ReliabilityStatus.INSUFFICIENT_DATA;
         }
 
+        // Exploratory tier (20-49 sessions): return PRELIMINARY regardless of alpha value
+        // The point estimate is informative but confidence interval is too wide for definitive status
+        if (sampleSize < MIN_RESPONSES) {
+            return ReliabilityStatus.PRELIMINARY;
+        }
+
+        // Standard tier (>= 50 sessions): full status determination
         if (alpha.compareTo(ALPHA_RELIABLE) >= 0) {
             return ReliabilityStatus.RELIABLE;
         }
@@ -1245,6 +1280,9 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         int reliable = (int) allTraits.stream()
                 .filter(t -> t.getReliabilityStatus() == ReliabilityStatus.RELIABLE)
                 .count();
+        int preliminary = (int) allTraits.stream()
+                .filter(t -> t.getReliabilityStatus() == ReliabilityStatus.PRELIMINARY)
+                .count();
         int unreliable = (int) allTraits.stream()
                 .filter(t -> t.getReliabilityStatus() == ReliabilityStatus.UNRELIABLE)
                 .count();
@@ -1265,6 +1303,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         return new PsychometricHealthReport.BigFiveReliabilitySummary(
                 total,
                 reliable,
+                preliminary,
                 unreliable,
                 insufficient,
                 averageAlpha,

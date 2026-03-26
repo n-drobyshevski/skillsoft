@@ -243,8 +243,9 @@ public class PsychometricBlueprintValidator {
     public boolean hasSufficientQuestions(UUID indicatorId, int requiredCount) {
         Map<ItemValidityStatus, Integer> summary = getAvailabilitySummary(indicatorId);
 
-        // Count eligible questions (ACTIVE + PROBATION + FLAGGED, but not RETIRED)
+        // Count eligible questions (ACTIVE + PRELIMINARY + PROBATION + FLAGGED, but not RETIRED)
         int eligible = summary.getOrDefault(ItemValidityStatus.ACTIVE, 0)
+                + summary.getOrDefault(ItemValidityStatus.PRELIMINARY, 0)
                 + summary.getOrDefault(ItemValidityStatus.PROBATION, 0)
                 + summary.getOrDefault(ItemValidityStatus.FLAGGED_FOR_REVIEW, 0);
 

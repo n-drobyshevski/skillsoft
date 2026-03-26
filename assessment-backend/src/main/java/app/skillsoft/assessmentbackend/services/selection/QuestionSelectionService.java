@@ -224,6 +224,7 @@ public interface QuestionSelectionService {
     default List<AssessmentQuestion> filterByValidity(List<AssessmentQuestion> questions) {
         return filterByValidity(questions, Set.of(
                 ItemValidityStatus.ACTIVE,
+                ItemValidityStatus.PRELIMINARY,
                 ItemValidityStatus.PROBATION,
                 ItemValidityStatus.FLAGGED_FOR_REVIEW
         ));

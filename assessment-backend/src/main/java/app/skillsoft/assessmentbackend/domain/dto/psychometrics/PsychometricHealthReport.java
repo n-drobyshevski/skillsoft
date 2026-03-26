@@ -13,12 +13,14 @@ import java.util.List;
  * @param totalItems              total number of assessment questions with statistics
  * @param activeItems             count of validated items (ACTIVE status)
  * @param probationItems          count of new items gathering data (PROBATION status)
+ * @param preliminaryItems        count of items in preliminary threshold (PRELIMINARY status)
  * @param flaggedItems            count of items requiring HR review (FLAGGED_FOR_REVIEW status)
  * @param retiredItems            count of deactivated items (RETIRED status)
  * @param totalCompetencies       total number of competencies with reliability data
  * @param reliableCompetencies    count of competencies with alpha >= 0.7
  * @param acceptableCompetencies  count of competencies with 0.6 <= alpha < 0.7
  * @param unreliableCompetencies  count of competencies with alpha < 0.6
+ * @param preliminaryCompetencies count of competencies in preliminary threshold (PRELIMINARY status)
  * @param insufficientDataCompetencies count of competencies without enough data
  * @param averageAlpha            average Cronbach's Alpha across all competencies
  * @param averageDiscrimination   average discrimination index across all items
@@ -32,6 +34,7 @@ public record PsychometricHealthReport(
         int totalItems,
         int activeItems,
         int probationItems,
+        int preliminaryItems,
         int flaggedItems,
         int retiredItems,
 
@@ -40,6 +43,7 @@ public record PsychometricHealthReport(
         int reliableCompetencies,
         int acceptableCompetencies,
         int unreliableCompetencies,
+        int preliminaryCompetencies,
         int insufficientDataCompetencies,
 
         // Aggregate Metrics
@@ -155,6 +159,7 @@ public record PsychometricHealthReport(
     public record BigFiveReliabilitySummary(
             int totalTraits,
             int reliableTraits,
+            int preliminaryTraits,
             int unreliableTraits,
             int insufficientDataTraits,
             BigDecimal averageTraitAlpha,
@@ -196,12 +201,14 @@ public record PsychometricHealthReport(
         private int totalItems;
         private int activeItems;
         private int probationItems;
+        private int preliminaryItems;
         private int flaggedItems;
         private int retiredItems;
         private int totalCompetencies;
         private int reliableCompetencies;
         private int acceptableCompetencies;
         private int unreliableCompetencies;
+        private int preliminaryCompetencies;
         private int insufficientDataCompetencies;
         private BigDecimal averageAlpha;
         private BigDecimal averageDiscrimination;
@@ -222,6 +229,11 @@ public record PsychometricHealthReport(
 
         public Builder probationItems(int probationItems) {
             this.probationItems = probationItems;
+            return this;
+        }
+
+        public Builder preliminaryItems(int preliminaryItems) {
+            this.preliminaryItems = preliminaryItems;
             return this;
         }
 
@@ -252,6 +264,11 @@ public record PsychometricHealthReport(
 
         public Builder unreliableCompetencies(int unreliableCompetencies) {
             this.unreliableCompetencies = unreliableCompetencies;
+            return this;
+        }
+
+        public Builder preliminaryCompetencies(int preliminaryCompetencies) {
+            this.preliminaryCompetencies = preliminaryCompetencies;
             return this;
         }
 
@@ -292,9 +309,9 @@ public record PsychometricHealthReport(
 
         public PsychometricHealthReport build() {
             return new PsychometricHealthReport(
-                    totalItems, activeItems, probationItems, flaggedItems, retiredItems,
+                    totalItems, activeItems, probationItems, preliminaryItems, flaggedItems, retiredItems,
                     totalCompetencies, reliableCompetencies, acceptableCompetencies,
-                    unreliableCompetencies, insufficientDataCompetencies,
+                    unreliableCompetencies, preliminaryCompetencies, insufficientDataCompetencies,
                     averageAlpha, averageDiscrimination,
                     topFlaggedItems, bigFiveReliabilitySummary,
                     lastAuditRun, itemsAnalyzedSinceLastAudit

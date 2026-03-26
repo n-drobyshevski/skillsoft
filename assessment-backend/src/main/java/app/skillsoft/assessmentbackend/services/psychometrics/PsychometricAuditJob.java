@@ -185,8 +185,9 @@ public class PsychometricAuditJob {
         try {
             long responseCount = answerRepository.countByQuestion_Id(questionId);
 
-            // Check if this is a threshold milestone (50, 100, 150, etc.)
-            if (responseCount >= minResponses && responseCount % minResponses == 0) {
+            // Trigger at preliminary (10), exploratory (20), then standard milestones (50, 100, 150...)
+            if (responseCount == 10 || responseCount == 20 ||
+                (responseCount >= minResponses && responseCount % minResponses == 0)) {
                 log.info("Question {} reached {} responses, triggering psychometric recalculation",
                         questionId, responseCount);
 
@@ -251,7 +252,7 @@ public class PsychometricAuditJob {
     private AuditStepResult recalculateItemsWithNewResponses() {
         // Find items that need recalculation (have responses since last calculation)
         LocalDateTime threshold = LocalDateTime.now().minusDays(1);
-        List<UUID> questionIds = itemStatsRepository.findQuestionsNeedingRecalculation(minResponses, threshold);
+        List<UUID> questionIds = itemStatsRepository.findQuestionsNeedingRecalculation(10, threshold);
 
         int succeeded = 0;
         int failed = 0;
@@ -271,7 +272,7 @@ public class PsychometricAuditJob {
         for (ItemStatistics stats : probationItems) {
             if (stats.getLastCalculatedAt() == null) {
                 long responseCount = answerRepository.countByQuestion_Id(stats.getQuestionId());
-                if (responseCount >= minResponses) {
+                if (responseCount >= 10) { // MIN_RESPONSES_PRELIMINARY
                     try {
                         auditExecutor.processItemStatistics(stats.getQuestionId());
                         succeeded++;

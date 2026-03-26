@@ -8,7 +8,8 @@ public enum ReliabilityStatus {
     RELIABLE("Надежный", "Cronbach's Alpha >= 0.7"),
     ACCEPTABLE("Приемлемый", "Cronbach's Alpha 0.6 - 0.7"),
     UNRELIABLE("Ненадежный", "Cronbach's Alpha < 0.6"),
-    INSUFFICIENT_DATA("Недостаточно данных", "Not enough responses for reliable calculation");
+    PRELIMINARY("Предварительный", "Alpha calculated from 20-49 sessions, exploratory estimate"),
+    INSUFFICIENT_DATA("Недостаточно данных", "Not enough responses for any calculation");
 
     private final String displayName;
     private final String description;

@@ -271,10 +271,10 @@ class PsychometricAnalysisServiceImplTest {
         @Test
         @DisplayName("should set PROBATION status when responses below minimum")
         void shouldSetProbationStatusWhenBelowMinimum() {
-            // Given - less than 50 responses
+            // Given - less than 10 responses (below PRELIMINARY threshold)
             when(assessmentQuestionRepository.findById(questionId)).thenReturn(Optional.of(mockQuestion));
             when(itemStatisticsRepository.findByQuestion_Id(questionId)).thenReturn(Optional.empty());
-            when(testAnswerRepository.countByQuestion_Id(questionId)).thenReturn(30L);
+            when(testAnswerRepository.countByQuestion_Id(questionId)).thenReturn(5L);
             when(itemStatisticsRepository.save(any(ItemStatistics.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -293,9 +293,9 @@ class PsychometricAnalysisServiceImplTest {
         @Test
         @DisplayName("should set PROBATION when insufficient responses")
         void shouldSetProbationWhenInsufficientResponses() {
-            // Given
+            // Given - less than 10 responses (below PRELIMINARY threshold)
             ItemStatistics stats = new ItemStatistics(mockQuestion);
-            stats.setResponseCount(30);
+            stats.setResponseCount(5);
 
             when(itemStatisticsRepository.findByQuestion_Id(questionId)).thenReturn(Optional.of(stats));
             when(itemStatisticsRepository.save(any(ItemStatistics.class)))
@@ -492,6 +492,7 @@ class PsychometricAnalysisServiceImplTest {
             // Given - mock all required repository calls
             when(itemStatisticsRepository.count()).thenReturn(85L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.ACTIVE)).thenReturn(50L);
+            when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.PRELIMINARY)).thenReturn(0L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.PROBATION)).thenReturn(20L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.FLAGGED_FOR_REVIEW)).thenReturn(5L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.RETIRED)).thenReturn(10L);
@@ -501,6 +502,7 @@ class PsychometricAnalysisServiceImplTest {
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.RELIABLE)).thenReturn(0L);
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.ACCEPTABLE)).thenReturn(0L);
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.UNRELIABLE)).thenReturn(0L);
+            when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.PRELIMINARY)).thenReturn(0L);
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.INSUFFICIENT_DATA)).thenReturn(0L);
             when(competencyReliabilityRepository.calculateAverageAlpha()).thenReturn(null);
 
@@ -527,6 +529,7 @@ class PsychometricAnalysisServiceImplTest {
             // Given - totalItems comes from count(), not sum
             when(itemStatisticsRepository.count()).thenReturn(100L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.ACTIVE)).thenReturn(40L);
+            when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.PRELIMINARY)).thenReturn(0L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.PROBATION)).thenReturn(30L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.FLAGGED_FOR_REVIEW)).thenReturn(10L);
             when(itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.RETIRED)).thenReturn(20L);
@@ -536,6 +539,7 @@ class PsychometricAnalysisServiceImplTest {
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.RELIABLE)).thenReturn(0L);
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.ACCEPTABLE)).thenReturn(0L);
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.UNRELIABLE)).thenReturn(0L);
+            when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.PRELIMINARY)).thenReturn(0L);
             when(competencyReliabilityRepository.countByReliabilityStatus(ReliabilityStatus.INSUFFICIENT_DATA)).thenReturn(0L);
             when(competencyReliabilityRepository.calculateAverageAlpha()).thenReturn(null);
 
