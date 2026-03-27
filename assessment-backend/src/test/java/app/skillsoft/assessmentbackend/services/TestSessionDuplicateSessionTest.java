@@ -119,7 +119,8 @@ class TestSessionDuplicateSessionTest {
                 scoringOrchestrationService,
                 activityTrackingService,
                 blueprintConversionService,
-                questionSelectionService
+                questionSelectionService,
+                null // @Lazy self-reference, not needed in unit tests
         );
 
         // Initialize test data
