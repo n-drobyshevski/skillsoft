@@ -73,11 +73,21 @@ application-secrets.properties
 *.swo
 .github/
 # ====================
+# AI Tooling
+# ====================
+.agents/
+.claude/
+.superpowers/
+skills-lock.json
+
+# ====================
 # OS Files
 # ====================
 .DS_Store
 Thumbs.db
 Desktop.ini
+*.png
+*.pdf
 
 # ====================
 # Logs & Temporary Files
