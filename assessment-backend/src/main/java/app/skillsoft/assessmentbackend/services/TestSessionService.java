@@ -73,6 +73,13 @@ public interface TestSessionService {
     TestSessionDto abandonSession(UUID sessionId);
 
     /**
+     * Discard a test session completely (exit without saving).
+     * Deletes the session and all associated answers from the database.
+     * Only allowed for IN_PROGRESS or NOT_STARTED sessions.
+     */
+    void discardSession(UUID sessionId);
+
+    /**
      * Get all answers for a session.
      */
     List<TestAnswerDto> getSessionAnswers(UUID sessionId);

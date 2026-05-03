@@ -193,6 +193,27 @@ public class TestSessionController {
         return ResponseEntity.ok(session);
     }
 
+    /**
+     * Discard a test session (exit without saving).
+     *
+     * Completely deletes the session and all associated answers.
+     * Only allowed for IN_PROGRESS or NOT_STARTED sessions.
+     *
+     * @param sessionId Session UUID to discard
+     * @return 204 No Content on success
+     */
+    @PostMapping("/{sessionId}/discard")
+    @PreAuthorize("@sessionSecurity.isSessionOwner(#sessionId)")
+    @Operation(summary = "Discard session", description = "Permanently delete a test session and all answers")
+    @ApiResponse(responseCode = "204", description = "Session discarded")
+    @ApiResponse(responseCode = "404", description = "Session not found")
+    public ResponseEntity<Void> discardSession(@PathVariable UUID sessionId) {
+        logger.debug("POST /api/v1/tests/sessions/{}/discard", sessionId);
+        testSessionService.discardSession(sessionId);
+        logger.info("Discarded session: {}", sessionId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ==================== ANSWER SUBMISSION ====================
 
     /**

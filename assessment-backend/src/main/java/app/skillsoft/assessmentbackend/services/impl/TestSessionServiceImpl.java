@@ -589,6 +589,35 @@ public class TestSessionServiceImpl implements TestSessionService {
     }
 
     @Override
+    @Transactional
+    public void discardSession(UUID sessionId) {
+        TestSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestSession", sessionId));
+
+        SessionStatus status = session.getStatus();
+        if (status != SessionStatus.IN_PROGRESS && status != SessionStatus.NOT_STARTED) {
+            throw new IllegalStateException(
+                    "Cannot discard session in " + status + " status. Only IN_PROGRESS or NOT_STARTED sessions can be discarded.");
+        }
+
+        log.info("Discarding test session {} (template={}, user={}, status={})",
+                sessionId, session.getTemplate().getId(),
+                session.getClerkUserId(), session.getStatus());
+
+        try {
+            sessionRepository.delete(session);
+            sessionRepository.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("Optimistic lock on discard session {}, retrying once", sessionId);
+            TestSession refreshed = sessionRepository.findById(sessionId)
+                    .orElse(null);
+            if (refreshed != null) {
+                sessionRepository.delete(refreshed);
+            }
+        }
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<TestAnswerDto> getSessionAnswers(UUID sessionId) {
         return answerRepository.findBySession_IdOrderByAnsweredAtAsc(sessionId).stream()
