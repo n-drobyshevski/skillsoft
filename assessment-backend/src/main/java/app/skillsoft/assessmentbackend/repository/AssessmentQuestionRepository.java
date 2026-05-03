@@ -224,7 +224,7 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
 
     long countByQuestionType(QuestionType questionType);
 
-    @Query("SELECT COALESCE(AVG(q.timeLimit), 0) FROM AssessmentQuestion q WHERE q.isActive = true AND q.timeLimit IS NOT NULL")
+    @Query("SELECT COALESCE(AVG(COALESCE(q.timeLimit, 60)), 0) FROM AssessmentQuestion q WHERE q.isActive = true")
     double averageTimeLimit();
 
     /**

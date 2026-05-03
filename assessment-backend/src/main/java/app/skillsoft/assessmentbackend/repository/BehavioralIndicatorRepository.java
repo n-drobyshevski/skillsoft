@@ -76,7 +76,7 @@ public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralI
                     WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.SELF_REPORTED THEN 4.0
                     WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.REQUIRES_DOCUMENTATION THEN 5.0
                 END
-            ), 0) FROM BehavioralIndicator bi WHERE bi.isActive = true
+            ), 0) FROM BehavioralIndicator bi
             """)
         double averageObservabilityComplexity();
 }
