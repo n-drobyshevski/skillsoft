@@ -17,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -96,9 +97,11 @@ class EntityStatsServiceTest {
             when(indicatorRepository.countWithActiveQuestions()).thenReturn(72L);
             when(indicatorRepository.countByMeasurementTypeIn(anyList())).thenReturn(60L);
             when(indicatorRepository.averageObservabilityComplexity()).thenReturn(2.35);
+            List<Object[]> scopeRows = new ArrayList<>();
             for (ContextScope scope : ContextScope.values()) {
-                when(indicatorRepository.countByContextScope(scope)).thenReturn(25L);
+                scopeRows.add(new Object[]{scope, 25L});
             }
+            when(indicatorRepository.countGroupedByContextScope()).thenReturn(scopeRows);
 
             EntityStatsDto result = entityStatsService.getEntityStats();
             IndicatorStatsDto stats = result.indicators();
@@ -114,15 +117,12 @@ class EntityStatsServiceTest {
         @Test
         @DisplayName("should pass correct measurement types for measurable count")
         void shouldPassCorrectMeasurementTypes() {
-            // Stub all required methods to avoid UnnecessaryStubbingException
             when(indicatorRepository.count()).thenReturn(0L);
             when(indicatorRepository.countByIsActiveTrue()).thenReturn(0L);
             when(indicatorRepository.countWithActiveQuestions()).thenReturn(0L);
             when(indicatorRepository.countByMeasurementTypeIn(anyList())).thenReturn(0L);
             when(indicatorRepository.averageObservabilityComplexity()).thenReturn(0.0);
-            for (ContextScope scope : ContextScope.values()) {
-                when(indicatorRepository.countByContextScope(scope)).thenReturn(0L);
-            }
+            when(indicatorRepository.countGroupedByContextScope()).thenReturn(List.of());
 
             entityStatsService.getEntityStats();
 
@@ -146,14 +146,15 @@ class EntityStatsServiceTest {
             when(questionRepository.countWithActiveIndicators()).thenReturn(400L);
             when(questionRepository.countByDifficultyLevelIn(anyList())).thenReturn(150L);
             when(questionRepository.averageTimeLimit()).thenReturn(45.67);
+            List<Object[]> difficultyRows = new ArrayList<>();
             for (DifficultyLevel level : DifficultyLevel.values()) {
-                when(questionRepository.countByDifficultyLevel(level)).thenReturn(100L);
+                difficultyRows.add(new Object[]{level, 100L});
             }
-            for (QuestionType type : QuestionType.values()) {
-                when(questionRepository.countByQuestionType(type)).thenReturn(0L);
-            }
-            when(questionRepository.countByQuestionType(QuestionType.LIKERT)).thenReturn(200L);
-            when(questionRepository.countByQuestionType(QuestionType.MCQ)).thenReturn(150L);
+            when(questionRepository.countGroupedByDifficultyLevel()).thenReturn(difficultyRows);
+            when(questionRepository.countGroupedByQuestionType()).thenReturn(List.of(
+                    new Object[]{QuestionType.LIKERT, 200L},
+                    new Object[]{QuestionType.MCQ, 150L}
+            ));
 
             EntityStatsDto result = entityStatsService.getEntityStats();
             QuestionStatsDto stats = result.questions();
@@ -164,7 +165,6 @@ class EntityStatsServiceTest {
             assertThat(stats.hardQuestions()).isEqualTo(150);
             assertThat(stats.averageTimeLimitSeconds()).isEqualTo(45.7);
             assertThat(stats.byDifficulty()).hasSize(DifficultyLevel.values().length);
-            // Only types with count > 0 are included
             assertThat(stats.byQuestionType()).containsEntry("LIKERT", 200L);
             assertThat(stats.byQuestionType()).containsEntry("MCQ", 150L);
             assertThat(stats.byQuestionType()).doesNotContainKey("SJT");
@@ -178,12 +178,8 @@ class EntityStatsServiceTest {
             when(questionRepository.countWithActiveIndicators()).thenReturn(0L);
             when(questionRepository.countByDifficultyLevelIn(anyList())).thenReturn(0L);
             when(questionRepository.averageTimeLimit()).thenReturn(0.0);
-            for (DifficultyLevel level : DifficultyLevel.values()) {
-                when(questionRepository.countByDifficultyLevel(level)).thenReturn(0L);
-            }
-            for (QuestionType type : QuestionType.values()) {
-                when(questionRepository.countByQuestionType(type)).thenReturn(0L);
-            }
+            when(questionRepository.countGroupedByDifficultyLevel()).thenReturn(List.of());
+            when(questionRepository.countGroupedByQuestionType()).thenReturn(List.of());
 
             entityStatsService.getEntityStats();
 

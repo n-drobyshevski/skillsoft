@@ -1,10 +1,8 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
@@ -118,7 +116,7 @@ public class TestSession {
      * Contains: firstName, lastName, email (optional), notes (optional), collectedAt.
      */
     @Column(name = "anonymous_taker_info", columnDefinition = "jsonb")
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     private AnonymousTakerInfo anonymousTakerInfo;
 
     // ========================================

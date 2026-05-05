@@ -1,8 +1,8 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
-import org.hibernate.annotations.Type;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -70,7 +70,7 @@ public class ScoringAuditLog {
      * Snapshot of indicator weights used in this calculation.
      * Map of indicatorId -> weight value.
      */
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "indicator_weights", columnDefinition = "jsonb")
     private Map<String, Double> indicatorWeights;
 
@@ -78,7 +78,7 @@ public class ScoringAuditLog {
      * Per-competency score breakdown with weighted details.
      * List of maps containing competencyId, percentage, weightedScore, indicatorCount.
      */
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "competency_breakdown", columnDefinition = "jsonb")
     private List<Map<String, Object>> competencyBreakdown;
 
@@ -86,7 +86,7 @@ public class ScoringAuditLog {
      * Scoring configuration snapshot at time of calculation.
      * Captures thresholds, boost values, and other config used.
      */
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "config_snapshot", columnDefinition = "jsonb")
     private Map<String, Object> configSnapshot;
 

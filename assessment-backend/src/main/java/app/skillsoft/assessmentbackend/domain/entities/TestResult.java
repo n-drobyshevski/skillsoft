@@ -1,10 +1,8 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
@@ -103,7 +101,7 @@ public class TestResult {
      * Stored as JSONB for flexible personality analysis storage.
      */
     @Column(name = "big_five_profile", columnDefinition = "jsonb")
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Double> bigFiveProfile;
 
     /**
@@ -112,7 +110,7 @@ public class TestResult {
      * Stored as JSONB for flexible extension without schema changes.
      */
     @Column(name = "extended_metrics", columnDefinition = "jsonb")
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> extendedMetrics;
 
     /**

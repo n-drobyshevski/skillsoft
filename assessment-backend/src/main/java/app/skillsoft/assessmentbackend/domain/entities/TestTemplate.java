@@ -3,10 +3,8 @@ package app.skillsoft.assessmentbackend.domain.entities;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
@@ -139,7 +137,7 @@ public class TestTemplate {
      * Stored in the same JSONB column as legacy blueprint field.
      * When both are set, typedBlueprint takes precedence.
      */
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "typed_blueprint", columnDefinition = "jsonb")
     private TestBlueprintDto typedBlueprint;
 

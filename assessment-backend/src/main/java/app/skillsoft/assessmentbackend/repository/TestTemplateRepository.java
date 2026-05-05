@@ -92,39 +92,4 @@ public interface TestTemplateRepository extends JpaRepository<TestTemplate, UUID
 
     // ==================== LEGACY QUERIES (for backwards compatibility) ====================
 
-    /**
-     * @deprecated Use findByIsActiveTrueAndDeletedAtIsNull instead
-     */
-    @Deprecated
-    List<TestTemplate> findByIsActiveTrue();
-
-    /**
-     * @deprecated Use findByIsActiveTrueAndDeletedAtIsNull(Pageable) instead
-     */
-    @Deprecated
-    Page<TestTemplate> findByIsActiveTrue(Pageable pageable);
-
-    /**
-     * @deprecated Use findByNameContainingIgnoreCaseAndDeletedAtIsNull instead
-     */
-    @Deprecated
-    List<TestTemplate> findByNameContainingIgnoreCase(String name);
-
-    /**
-     * @deprecated Use findByNameContainingIgnoreCaseAndIsActiveTrueAndDeletedAtIsNull instead
-     */
-    @Deprecated
-    List<TestTemplate> findByNameContainingIgnoreCaseAndIsActiveTrue(String name);
-
-    /**
-     * @deprecated Use existsByNameIgnoreCaseAndDeletedAtIsNull instead
-     */
-    @Deprecated
-    boolean existsByNameIgnoreCase(String name);
-
-    /**
-     * @deprecated Use countByIsActiveTrueAndDeletedAtIsNull instead
-     */
-    @Deprecated
-    long countByIsActiveTrue();
 }

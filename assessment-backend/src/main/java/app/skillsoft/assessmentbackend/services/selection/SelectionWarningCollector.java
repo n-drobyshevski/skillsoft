@@ -82,7 +82,7 @@ public final class SelectionWarningCollector {
                     && w.params() != null && w.params().containsKey("competencyName")) {
                 String name = w.params().get("competencyName");
                 int count = 0;
-                try { count = Integer.parseInt(w.params().get("count")); } catch (NumberFormatException ignored) {}
+                try { count = Integer.parseInt(w.params().get("count")); } catch (NumberFormatException e) { count = 1; }
                 borrowedByCompetency.merge(name, count, Integer::sum);
             } else {
                 result.add(w);

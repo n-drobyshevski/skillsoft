@@ -1,10 +1,8 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
@@ -54,7 +52,7 @@ public class CompetencyPassportEntity {
      * Keys: OPENNESS, CONSCIENTIOUSNESS, EXTRAVERSION, AGREEABLENESS, NEUROTICISM
      */
     @Column(name = "big_five_profile", columnDefinition = "jsonb")
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Double> bigFiveProfile;
 
     @Column(name = "last_assessed", nullable = false)
