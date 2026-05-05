@@ -78,6 +78,7 @@ application-secrets.properties
 .agents/
 .claude/
 .superpowers/
+.playwright-mcp/
 skills-lock.json
 
 # ====================
