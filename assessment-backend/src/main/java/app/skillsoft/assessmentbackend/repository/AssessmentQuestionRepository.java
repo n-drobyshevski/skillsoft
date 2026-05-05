@@ -224,6 +224,12 @@ public interface AssessmentQuestionRepository extends JpaRepository<AssessmentQu
 
     long countByQuestionType(QuestionType questionType);
 
+    @Query("SELECT q.difficultyLevel, COUNT(q) FROM AssessmentQuestion q GROUP BY q.difficultyLevel")
+    List<Object[]> countGroupedByDifficultyLevel();
+
+    @Query("SELECT q.questionType, COUNT(q) FROM AssessmentQuestion q GROUP BY q.questionType")
+    List<Object[]> countGroupedByQuestionType();
+
     @Query("SELECT COALESCE(AVG(COALESCE(q.timeLimit, 60)), 0) FROM AssessmentQuestion q WHERE q.isActive = true")
     double averageTimeLimit();
 

@@ -57,6 +57,9 @@ public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralI
 
         long countByContextScope(ContextScope contextScope);
 
+        @Query("SELECT bi.contextScope, COUNT(bi) FROM BehavioralIndicator bi GROUP BY bi.contextScope")
+        List<Object[]> countGroupedByContextScope();
+
         @Query("""
             SELECT COUNT(DISTINCT bi) FROM BehavioralIndicator bi
             JOIN AssessmentQuestion q ON q.behavioralIndicator = bi

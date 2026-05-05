@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,8 +87,9 @@ public class EntityStatsServiceImpl implements EntityStatsService {
         double avgComplexity = round1(indicatorRepository.averageObservabilityComplexity());
 
         Map<String, Long> byContextScope = new LinkedHashMap<>();
-        for (ContextScope scope : ContextScope.values()) {
-            long count = indicatorRepository.countByContextScope(scope);
+        for (Object[] row : indicatorRepository.countGroupedByContextScope()) {
+            ContextScope scope = (ContextScope) row[0];
+            Long count = (Long) row[1];
             byContextScope.put(scope.name(), count);
         }
 
@@ -110,13 +110,16 @@ public class EntityStatsServiceImpl implements EntityStatsService {
         double avgTimeLimit = round1(questionRepository.averageTimeLimit());
 
         Map<String, Long> byDifficulty = new LinkedHashMap<>();
-        for (DifficultyLevel level : DifficultyLevel.values()) {
-            byDifficulty.put(level.name(), questionRepository.countByDifficultyLevel(level));
+        for (Object[] row : questionRepository.countGroupedByDifficultyLevel()) {
+            DifficultyLevel level = (DifficultyLevel) row[0];
+            Long count = (Long) row[1];
+            byDifficulty.put(level.name(), count);
         }
 
         Map<String, Long> byQuestionType = new LinkedHashMap<>();
-        for (QuestionType type : QuestionType.values()) {
-            long count = questionRepository.countByQuestionType(type);
+        for (Object[] row : questionRepository.countGroupedByQuestionType()) {
+            QuestionType type = (QuestionType) row[0];
+            Long count = (Long) row[1];
             if (count > 0) {
                 byQuestionType.put(type.name(), count);
             }
