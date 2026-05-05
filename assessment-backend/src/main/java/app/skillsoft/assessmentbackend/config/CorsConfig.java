@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -18,22 +19,19 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-/**
- * CORS configuration for allowing cross-origin requests from frontend.
- * 
- * This configuration ensures CORS headers are properly sent for all requests,
- * including OPTIONS preflight requests. The CorsFilter is registered with
- * highest precedence to ensure it runs before Spring Security filters.
- */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
     private static final Logger logger = LoggerFactory.getLogger(CorsConfig.class);
 
     private final DeprecationHeaderInterceptor deprecationHeaderInterceptor;
+    private final List<String> allowedOrigins;
 
-    public CorsConfig(DeprecationHeaderInterceptor deprecationHeaderInterceptor) {
+    public CorsConfig(
+            DeprecationHeaderInterceptor deprecationHeaderInterceptor,
+            @Value("${app.cors.allowed-origins:http://localhost:3000}") List<String> allowedOrigins) {
         this.deprecationHeaderInterceptor = deprecationHeaderInterceptor;
+        this.allowedOrigins = allowedOrigins;
     }
 
     @Override
@@ -44,31 +42,22 @@ public class CorsConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(@NonNull CorsRegistry registry) {
-        logger.info("CORS: Configuring WebMvcConfigurer CORS mappings");
+        logger.info("CORS: Configuring allowed origins: {}", allowedOrigins);
         registry.addMapping("/**")
-                .allowedOriginPatterns("*")
+                .allowedOriginPatterns(allowedOrigins.toArray(String[]::new))
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
                 .allowedHeaders("*")
                 .allowCredentials(true)
                 .maxAge(86400);
     }
 
-    /**
-     * Creates the CORS configuration used by both Spring Security and the CorsFilter.
-     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        
-        logger.info("CORS: Configuring CorsConfigurationSource");
-        
-        // Allow all origins with patterns (required when allowCredentials=true)
-        configuration.setAllowedOriginPatterns(List.of("*"));
-        
-        // Allow credentials for authentication
+
+        configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowCredentials(true);
-        
-        // Allow all headers including custom auth headers
+
         configuration.setAllowedHeaders(List.of(
             "*",
             "Origin",
@@ -82,8 +71,7 @@ public class CorsConfig implements WebMvcConfigurer {
             "Access-Control-Request-Method",
             "Access-Control-Request-Headers"
         ));
-        
-        // Expose response headers to the client
+
         configuration.setExposedHeaders(List.of(
             "Access-Control-Allow-Origin",
             "Access-Control-Allow-Credentials",
@@ -91,29 +79,22 @@ public class CorsConfig implements WebMvcConfigurer {
             "Access-Control-Allow-Methods",
             "Access-Control-Max-Age"
         ));
-        
-        // Allow all necessary HTTP methods
+
         configuration.setAllowedMethods(List.of(
             "GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"
         ));
-        
-        // Cache preflight response for 24 hours (reduces OPTIONS request volume)
+
         configuration.setMaxAge(86400L);
-        
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-    
-    /**
-     * Creates a CorsFilter bean with highest precedence.
-     * This ensures CORS headers are added before any other filter processes the request,
-     * which is critical for OPTIONS preflight requests.
-     */
+
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
     public CorsFilter corsFilter() {
-        logger.info("CORS: Creating CorsFilter with highest precedence");
+        logger.info("CORS: Creating CorsFilter with allowed origins: {}", allowedOrigins);
         return new CorsFilter(corsConfigurationSource());
     }
 }
