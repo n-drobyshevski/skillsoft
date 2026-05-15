@@ -80,6 +80,42 @@ application-secrets.properties
 .superpowers/
 .playwright-mcp/
 skills-lock.json
+# Cursor AI
+.cursor/
+.cursorignore
+.cursorindexingignore
+# GitHub Copilot
+.copilot/
+# Continue.dev
+.continue/
+# Aider
+.aider/
+aider.conf.yml
+.aider.tags.cache.v3/
+# Windsurf
+.windsurf/
+# Codeium / Tabnine
+.codeium/
+.tabnine/
+# Roo Cline / Cline
+.roo/
+.roomodes
+.clinerules
+.cline/
+# Google Gemini
+.gemini/
+# OpenAI Codex
+.codex/
+# Claude Code memory
+MEMORY.md
+memory/
+# AI-generated artifact files (plans, audits, etc.)
+PLAN_*.md
+AUDIT-*.md
+*-ROADMAP.md
+# Local AI instruction / design files
+CLAUDE.md
+DESIGN.md
 
 # ====================
 # OS Files
