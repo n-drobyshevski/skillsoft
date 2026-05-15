@@ -42,26 +42,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Enhanced Global Exception Handler for the SkillSoft Assessment Backend.
- * 
- * This class provides centralized exception handling across all controllers following
- * Spring Boot best practices for REST API error handling.
- * 
- * Features:
- * - Extends ResponseEntityExceptionHandler for comprehensive Spring MVC exception coverage
- * - Structured error responses using ErrorResponse DTO
- * - Configurable stack trace inclusion for development/debugging
- * - Security-aware error messages (no sensitive data exposure)
- * - Comprehensive logging with correlation IDs
- * - Validation error handling with field-specific details
- * - Database constraint violation handling
- * - Security exception handling
- * 
- * @author SkillSoft Development Team
- * @version 2.0
- * @since 1.0
- */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
@@ -81,9 +61,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final String TRACE_PARAM = "trace";
     private static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
 
-    // ===============================
     // UTILITY METHODS
-    // ===============================
 
     /**
      * Extract path from WebRequest
@@ -175,9 +153,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return sb.toString();
     }
 
-    // ===============================
     // SPRING FRAMEWORK EXCEPTIONS
-    // ===============================
 
     /**
      * Handle validation errors from @Valid annotation
@@ -334,9 +310,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
     }
 
-    // ===============================
     // SECURITY EXCEPTIONS
-    // ===============================
 
     /**
      * Handle AccessDeniedException (insufficient permissions/role).
@@ -384,9 +358,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
     }
 
-    // ===============================
     // DOMAIN-SPECIFIC EXCEPTIONS
-    // ===============================
 
     /**
      * Handle EntityNotFoundException (JPA/Database entity not found)
@@ -642,9 +614,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
     }
 
-    // ===============================
     // ANONYMOUS SESSION EXCEPTIONS
-    // ===============================
 
     /**
      * Handle InvalidSessionTokenException when anonymous session token is missing or invalid.
@@ -751,9 +721,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.GONE).body(errorResponse);
     }
 
-    // ===============================
     // DATABASE & SECURITY EXCEPTIONS
-    // ===============================
 
     /**
      * Handle optimistic locking failures (concurrent modification).
@@ -830,9 +798,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
 
-    // ===============================
     // CATCH-ALL EXCEPTION HANDLERS
-    // ===============================
 
     /**
      * Handle runtime exceptions
@@ -878,9 +844,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
 
-    // ===============================
     // VALIDATION ERROR CLASS
-    // ===============================
 
     /**
      * Inner class for validation error details

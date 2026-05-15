@@ -539,9 +539,7 @@ public class AnonymousTestServiceImpl implements AnonymousTestService {
         );
     }
 
-    // ========================================
     // PRIVATE HELPER METHODS
-    // ========================================
 
     /**
      * Validate session access token and return the session.

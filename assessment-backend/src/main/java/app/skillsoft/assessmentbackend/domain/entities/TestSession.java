@@ -78,9 +78,7 @@ public class TestSession {
     @OneToOne(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     private TestResult result;
 
-    // ========================================
     // ANONYMOUS SESSION FIELDS
-    // ========================================
 
     /**
      * Reference to the share link used to create this session.
@@ -119,9 +117,7 @@ public class TestSession {
     @JdbcTypeCode(SqlTypes.JSON)
     private AnonymousTakerInfo anonymousTakerInfo;
 
-    // ========================================
     // END ANONYMOUS SESSION FIELDS
-    // ========================================
 
     @Column(name = "last_activity_at")
     private LocalDateTime lastActivityAt;
@@ -375,9 +371,7 @@ public class TestSession {
         return shareLink != null ? shareLink.getId() : null;
     }
 
-    // ========================================
     // ANONYMOUS SESSION GETTERS/SETTERS
-    // ========================================
 
     public TemplateShareLink getShareLink() {
         return shareLink;

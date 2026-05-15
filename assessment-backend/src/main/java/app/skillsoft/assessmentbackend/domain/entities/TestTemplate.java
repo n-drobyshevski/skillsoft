@@ -48,10 +48,7 @@ public class TestTemplate {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    // ============================================
-    // VERSIONING FIELDS
-    // Immutable Versioning Pattern
-    // ============================================
+    // Versioning fields
 
     /**
      * Version number for this template.
@@ -177,35 +174,22 @@ public class TestTemplate {
     @Column(name = "show_results_immediately")
     private Boolean showResultsImmediately = true;
 
-    // ============================================
-    // VISIBILITY & OWNERSHIP FIELDS
-    // Per visibility system implementation
-    // ============================================
-
     /**
      * Owner of this template (creator by default).
-     * Required for visibility and sharing features.
-     * The owner always has full access to the template.
+     * The owner always has full access regardless of visibility setting.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private User owner;
 
     /**
-     * Visibility mode for this template.
-     * Controls who can access the template:
-     * - PUBLIC: All authenticated users can access
-     * - PRIVATE: Only owner and explicitly shared users/teams (default)
-     * - LINK: Anyone with a valid share link (supports anonymous access)
+     * Controls access: PUBLIC = all users, PRIVATE = owner/shares only, LINK = anonymous share link.
      */
     @Column(name = "visibility", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
     private TemplateVisibility visibility = TemplateVisibility.PRIVATE;
 
-    /**
-     * Timestamp when visibility was last changed.
-     * Used for audit trails and link invalidation.
-     */
+    /** Used for audit trails and share link invalidation. */
     @Column(name = "visibility_changed_at")
     private LocalDateTime visibilityChangedAt;
 
@@ -215,22 +199,10 @@ public class TestTemplate {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // ============================================
-    // SOFT DELETE FIELDS
-    // ============================================
-
-    /**
-     * Soft delete timestamp.
-     * When set, the template is considered deleted but data is preserved.
-     * Null means the template is active (not deleted).
-     */
+    /** Non-null means the template is soft-deleted; data is preserved. */
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    /**
-     * User who deleted this template.
-     * Tracks who performed the soft delete for audit purposes.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "deleted_by_id")
     private User deletedBy;
@@ -298,9 +270,6 @@ public class TestTemplate {
         this.description = description;
     }
 
-    // ============================================
-    // VERSIONING GETTERS/SETTERS
-    // ============================================
 
     public Integer getVersion() {
         return version;
@@ -361,10 +330,6 @@ public class TestTemplate {
         }
     }
 
-    // ============================================
-    // VERSIONING METHODS
-    // Immutable Versioning Pattern
-    // ============================================
 
     /**
      * Create a new version of this template.
@@ -476,16 +441,7 @@ public class TestTemplate {
         }
     }
 
-    // ============================================
-    // BLUEPRINT HELPER METHODS
-    // Per ROADMAP.md Section 1.2
-    // ============================================
-
-    /**
-     * Get the strategy from blueprint.
-     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
-     * @return Strategy string (e.g., "OVERVIEW", "JOB_FIT", "TEAM_FIT")
-     */
+    /** Reads typedBlueprint first, falls back to legacy blueprint Map. */
     @Transient
     public String getStrategy() {
         if (typedBlueprint != null && typedBlueprint.getStrategy() != null) {
@@ -499,11 +455,6 @@ public class TestTemplate {
         return null;
     }
 
-    /**
-     * Get the O*NET SOC code for JOB_FIT scenarios.
-     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
-     * @return SOC code (e.g., "15-1132.00") or null
-     */
     @Transient
     public String getOnetSocCode() {
         if (typedBlueprint instanceof JobFitBlueprint jobFit && jobFit.getOnetSocCode() != null) {
@@ -517,11 +468,6 @@ public class TestTemplate {
         return null;
     }
 
-    /**
-     * Get the team ID for TEAM_FIT scenarios.
-     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
-     * @return Team UUID string or null
-     */
     @Transient
     public String getTeamId() {
         if (typedBlueprint instanceof TeamFitBlueprint teamFit && teamFit.getTeamId() != null) {
@@ -671,9 +617,6 @@ public class TestTemplate {
         this.updatedAt = updatedAt;
     }
 
-    // ============================================
-    // VISIBILITY & OWNERSHIP GETTERS/SETTERS
-    // ============================================
 
     public User getOwner() {
         return owner;
@@ -750,9 +693,6 @@ public class TestTemplate {
         return clerkId.equals(owner.getClerkId());
     }
 
-    // ============================================
-    // SOFT DELETE GETTERS/SETTERS AND METHODS
-    // ============================================
 
     public LocalDateTime getDeletedAt() {
         return deletedAt;

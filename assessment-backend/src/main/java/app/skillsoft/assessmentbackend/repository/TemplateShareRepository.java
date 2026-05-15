@@ -20,9 +20,7 @@ import java.util.UUID;
 @Repository
 public interface TemplateShareRepository extends JpaRepository<TemplateShare, UUID> {
 
-    // ============================================
     // FIND BY TEMPLATE
-    // ============================================
 
     /**
      * Find all shares for a template (including expired/revoked).
@@ -48,9 +46,7 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
             @Param("templateId") UUID templateId,
             @Param("granteeType") GranteeType granteeType);
 
-    // ============================================
     // FIND BY USER
-    // ============================================
 
     /**
      * Find active share for a specific template and user.
@@ -72,9 +68,7 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
            "AND (s.expiresAt IS NULL OR s.expiresAt > CURRENT_TIMESTAMP)")
     List<TemplateShare> findActiveByUserId(@Param("userId") UUID userId);
 
-    // ============================================
     // FIND BY TEAM
-    // ============================================
 
     /**
      * Find active share for a specific template and team.
@@ -109,9 +103,7 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
            "AND (s.expiresAt IS NULL OR s.expiresAt > CURRENT_TIMESTAMP)")
     List<TemplateShare> findActiveByTeamIds(@Param("teamIds") List<UUID> teamIds);
 
-    // ============================================
     // PERMISSION CHECKS
-    // ============================================
 
     /**
      * Check if a user has a specific permission for a template (directly).
@@ -141,9 +133,7 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
             @Param("teamIds") List<UUID> teamIds,
             @Param("minPermission") SharePermission minPermission);
 
-    // ============================================
     // STATISTICS & COUNTS
-    // ============================================
 
     /**
      * Count active shares for a template.
@@ -171,9 +161,7 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
            "AND (s.expiresAt IS NULL OR s.expiresAt > CURRENT_TIMESTAMP)")
     long countActiveTeamSharesByTemplateId(@Param("templateId") UUID templateId);
 
-    // ============================================
     // EXISTENCE CHECKS
-    // ============================================
 
     /**
      * Check if a user share already exists (even if revoked).
@@ -187,9 +175,7 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
     boolean existsByTemplateIdAndTeamIdAndGranteeType(
             UUID templateId, UUID teamId, GranteeType granteeType);
 
-    // ============================================
     // SHARED WITH ME QUERIES
-    // ============================================
 
     /**
      * Find all active direct shares for a user with eager loading.
@@ -241,9 +227,7 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
             @Param("userId") UUID userId,
             @Param("teamIds") List<UUID> teamIds);
 
-    // ============================================
     // BULK DELETE FOR TEMPLATE DELETION
-    // ============================================
 
     /**
      * Delete all shares for a template.

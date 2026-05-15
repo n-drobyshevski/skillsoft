@@ -142,9 +142,7 @@ public class BlueprintValidationServiceImpl implements BlueprintValidationServic
         return result;
     }
 
-    // ========================================================================
     // Individual Validation Checks
-    // ========================================================================
 
     /**
      * Validate that the template has a non-blank name.
@@ -336,9 +334,7 @@ public class BlueprintValidationServiceImpl implements BlueprintValidationServic
         // For future weighted blueprints: iterate weight map and check threshold
     }
 
-    // ========================================================================
     // Blueprint Competency Extraction
-    // ========================================================================
 
     /**
      * Extract competency IDs from the polymorphic blueprint.

@@ -815,8 +815,6 @@ public class TestSessionServiceImpl implements TestSessionService {
             log.debug("Injected candidateClerkUserId '{}' into JobFitBlueprint for Delta Testing", clerkUserId);
         }
 
-        // TODO: Future enhancement - inject candidate context for TEAM_FIT blueprints as well
-
         return enrichedBlueprint;
     }
 

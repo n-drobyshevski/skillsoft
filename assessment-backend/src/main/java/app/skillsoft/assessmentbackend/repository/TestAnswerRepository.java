@@ -121,9 +121,7 @@ public interface TestAnswerRepository extends JpaRepository<TestAnswer, UUID> {
             @Param("sessionId") UUID sessionId,
             @Param("competencyId") UUID competencyId);
 
-    // ============================================
     // PSYCHOMETRIC ANALYSIS QUERIES
-    // ============================================
 
     /**
      * Count total responses for a specific question across all sessions.

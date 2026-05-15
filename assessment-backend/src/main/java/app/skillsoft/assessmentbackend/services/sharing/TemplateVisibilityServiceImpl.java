@@ -110,9 +110,7 @@ public class TemplateVisibilityServiceImpl implements TemplateVisibilityService 
                 .orElse(null);
     }
 
-    // ============================================
     // PRIVATE HELPERS
-    // ============================================
 
     private TestTemplate findTemplateOrThrow(UUID templateId) {
         return templateRepository.findById(templateId)

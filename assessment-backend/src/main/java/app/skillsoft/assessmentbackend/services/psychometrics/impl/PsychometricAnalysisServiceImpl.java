@@ -87,9 +87,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         this.competencyRepository = competencyRepository;
     }
 
-    // ============================================
     // ITEM-LEVEL ANALYSIS
-    // ============================================
 
     @Override
     public ItemStatistics calculateItemStatistics(UUID questionId) {
@@ -254,9 +252,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         return efficiency;
     }
 
-    // ============================================
     // COMPETENCY-LEVEL ANALYSIS
-    // ============================================
 
     @Override
     public CompetencyReliability calculateCompetencyReliability(UUID competencyId) {
@@ -545,9 +541,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         return alphaIfDeleted;
     }
 
-    // ============================================
     // BIG FIVE TRAIT-LEVEL ANALYSIS
-    // ============================================
 
     @Override
     public BigFiveReliability calculateBigFiveReliability(BigFiveTrait trait) {
@@ -745,9 +739,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         return factor.multiply(BigDecimal.ONE.subtract(varianceRatio)).setScale(SCALE, RoundingMode.HALF_UP);
     }
 
-    // ============================================
     // BATCH OPERATIONS
-    // ============================================
 
     @Override
     public List<ItemStatistics> recalculateAllItems() {
@@ -836,9 +828,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         return results;
     }
 
-    // ============================================
     // ITEM STATUS MANAGEMENT
-    // ============================================
 
     @Override
     public void updateItemValidityStatus(UUID questionId) {
@@ -927,9 +917,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
         logger.info("Item {} activated", questionId);
     }
 
-    // ============================================
     // HEALTH REPORTING
-    // ============================================
 
     @Override
     @Transactional(readOnly = true)
@@ -989,9 +977,7 @@ public class PsychometricAnalysisServiceImpl implements PsychometricAnalysisServ
                 .build();
     }
 
-    // ============================================
     // HELPER METHODS
-    // ============================================
 
     /**
      * Calculate Pearson correlation coefficient between two lists.

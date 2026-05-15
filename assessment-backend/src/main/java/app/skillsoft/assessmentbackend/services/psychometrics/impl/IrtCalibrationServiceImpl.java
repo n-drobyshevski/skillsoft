@@ -179,9 +179,7 @@ public class IrtCalibrationServiceImpl implements IrtCalibrationService {
         return runJmle(competencyId, matrix);
     }
 
-    // ============================================
     // JMLE ALGORITHM
-    // ============================================
 
     /**
      * Run the Joint Maximum Likelihood Estimation (JMLE) algorithm.
@@ -340,9 +338,7 @@ public class IrtCalibrationServiceImpl implements IrtCalibrationService {
         );
     }
 
-    // ============================================
     // RESPONSE MATRIX BUILDING
-    // ============================================
 
     /**
      * Build a binary response matrix from the score data, filtering extreme items.
@@ -431,9 +427,7 @@ public class IrtCalibrationServiceImpl implements IrtCalibrationService {
         return new ResponseMatrix(questionIds, nItems, nRespondents, itemPValues, responses);
     }
 
-    // ============================================
     // NEWTON-RAPHSON ESTIMATION METHODS
-    // ============================================
 
     /**
      * Estimate theta (ability) for a respondent using Newton-Raphson on the log-likelihood.
@@ -530,9 +524,7 @@ public class IrtCalibrationServiceImpl implements IrtCalibrationService {
         return a;
     }
 
-    // ============================================
     // PROBABILITY AND UTILITY METHODS
-    // ============================================
 
     /**
      * Compute the 2PL probability of a correct response.
@@ -579,9 +571,7 @@ public class IrtCalibrationServiceImpl implements IrtCalibrationService {
         return Math.max(min, Math.min(max, value));
     }
 
-    // ============================================
     // RESPONSE MATRIX DATA STRUCTURE
-    // ============================================
 
     /**
      * Internal data structure holding the binary response matrix and item metadata.

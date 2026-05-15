@@ -80,9 +80,7 @@ public class AnonymousTakerInfo implements Serializable {
      */
     private Integer tabSwitchCount;
 
-    // ========================================
     // Constructors
-    // ========================================
 
     /**
      * Default constructor required for JSON deserialization.
@@ -119,9 +117,7 @@ public class AnonymousTakerInfo implements Serializable {
         this.collectedAt = LocalDateTime.now();
     }
 
-    // ========================================
     // Business Methods
-    // ========================================
 
     /**
      * Get the taker's full display name.
@@ -154,9 +150,7 @@ public class AnonymousTakerInfo implements Serializable {
         return email != null && !email.isBlank();
     }
 
-    // ========================================
     // Getters and Setters
-    // ========================================
 
     public String getFirstName() {
         return firstName;
@@ -222,9 +216,7 @@ public class AnonymousTakerInfo implements Serializable {
         this.tabSwitchCount = tabSwitchCount;
     }
 
-    // ========================================
     // Object Overrides
-    // ========================================
 
     @Override
     public boolean equals(Object o) {

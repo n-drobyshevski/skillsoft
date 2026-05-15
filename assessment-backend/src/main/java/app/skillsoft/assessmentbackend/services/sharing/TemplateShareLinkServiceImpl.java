@@ -326,9 +326,7 @@ public class TemplateShareLinkServiceImpl implements TemplateShareLinkService {
         return TemplateShareLink.MAX_EXPIRY_DAYS;
     }
 
-    // ============================================
     // PRIVATE HELPERS
-    // ============================================
 
     /**
      * Determine if the token should be masked for the requesting user.

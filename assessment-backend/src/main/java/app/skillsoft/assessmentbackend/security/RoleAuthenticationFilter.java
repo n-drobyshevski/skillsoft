@@ -172,9 +172,7 @@ public class RoleAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    // ========================================================================
     // HMAC Verification
-    // ========================================================================
 
     /**
      * Verify the HMAC-SHA256 signature of the authentication headers.
@@ -288,9 +286,7 @@ public class RoleAuthenticationFilter extends OncePerRequestFilter {
         response.getWriter().flush();
     }
 
-    // ========================================================================
     // Existing helper methods (unchanged)
-    // ========================================================================
 
     /**
      * Check if the endpoint is public and doesn't require authentication.

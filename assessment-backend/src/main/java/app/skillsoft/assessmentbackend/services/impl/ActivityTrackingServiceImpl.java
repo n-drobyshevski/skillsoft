@@ -248,9 +248,7 @@ public class ActivityTrackingServiceImpl implements ActivityTrackingService {
         logger.info("Recorded SESSION_TIMED_OUT event for session {}", session.getId());
     }
 
-    // ============================================
     // Private Helper Methods
-    // ============================================
 
     private TestActivityDto mapToActivityDto(TestSession session, User user, TestResult result) {
         String userName = user != null ? user.getFullName() : "Unknown User";

@@ -94,9 +94,7 @@ public interface TestActivityEventRepository extends JpaRepository<TestActivityE
     @Query("SELECT e FROM TestActivityEvent e WHERE e.templateId = :templateId ORDER BY e.eventTimestamp DESC LIMIT 1")
     TestActivityEvent findLatestByTemplateId(@Param("templateId") UUID templateId);
 
-    // ============================================
     // BULK DELETE FOR TEMPLATE DELETION
-    // ============================================
 
     /**
      * Delete all activity events for a template.

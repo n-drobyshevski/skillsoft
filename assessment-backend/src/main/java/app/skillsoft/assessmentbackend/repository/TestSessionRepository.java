@@ -127,9 +127,7 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
      */
     long countByStatus(SessionStatus status);
 
-    // ============================================
     // OPTIMIZED QUERIES (N+1 Prevention)
-    // ============================================
 
     /**
      * Find sessions for a user with template eagerly loaded.
@@ -168,9 +166,7 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
     @Query("SELECT s FROM TestSession s JOIN FETCH s.template WHERE s.id = :sessionId")
     Optional<TestSession> findByIdWithTemplate(@Param("sessionId") UUID sessionId);
 
-    // ============================================
     // ACTIVITY TRACKING QUERIES
-    // ============================================
 
     /**
      * Find recent completed/abandoned/timed-out sessions with template for activity feed.
@@ -259,9 +255,7 @@ public interface TestSessionRepository extends JpaRepository<TestSession, UUID> 
         WHERE r.session.template.id = :templateId
         """)
     TemplateScoreTimeProjection getTemplateScoreAndTimeAggregates(@Param("templateId") UUID templateId);
-    // ============================================
     // ANONYMOUS SESSION QUERIES
-    // ============================================
 
     Optional<TestSession> findBySessionAccessTokenHash(String tokenHash);
 

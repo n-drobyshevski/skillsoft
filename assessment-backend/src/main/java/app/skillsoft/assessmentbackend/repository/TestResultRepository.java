@@ -148,9 +148,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
      */
     List<TestResult> findTop10ByOrderByCompletedAtDesc();
 
-    // ============================================
     // OPTIMIZED QUERIES (N+1 Prevention)
-    // ============================================
 
     /**
      * Find result by ID with session and template eagerly loaded.
@@ -241,9 +239,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
     @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template ORDER BY r.completedAt DESC LIMIT :limit")
     List<TestResult> findRecentWithSessionAndTemplate(@Param("limit") int limit);
 
-    // ============================================
     // PERCENTILE RECALCULATION QUERIES
-    // ============================================
 
     /**
      * Find recent results for a template completed after a cutoff time.
@@ -256,9 +252,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
             @Param("templateId") UUID templateId,
             @Param("cutoff") LocalDateTime cutoff);
 
-    // ============================================
     // ANONYMOUS RESULT QUERIES
-    // ============================================
 
     /**
      * Find anonymous results for a template (owner view).
@@ -372,15 +366,6 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
            "WHERE r.id = :resultId AND s.clerkUserId IS NULL")
     Optional<TestResult> findAnonymousByIdWithSessionAndTemplate(@Param("resultId") UUID resultId);
 
-    // ============================================
-    // SUBSCALE PERCENTILE QUERIES (JSONB)
-    // ============================================
-    // TODO: These JSONB array queries cannot effectively use GIN indexes because they
-    // require value extraction and numeric comparison (not just containment checks).
-    // jsonb_path_query_first with @@ only supports existence/containment, not aggregation.
-    // Future optimization: denormalize competency_scores into a dedicated
-    // `test_result_competency_scores` table with proper indexes on (template_id, competency_id, percentage).
-
     /**
      * Count results where a specific competency's percentage score is below a threshold.
      * Uses JSONB array element extraction to query nested competency_scores.
@@ -427,9 +412,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
             @Param("templateId") UUID templateId,
             @Param("competencyId") String competencyId);
 
-    // ============================================
     // HISTORICAL STATISTICS QUERIES (for CI calculation)
-    // ============================================
 
     /**
      * Calculate standard deviation of percentage scores for a specific competency across all results.
@@ -490,9 +473,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID>, J
         """, nativeQuery = true)
     Double calculateCompetencyScoreSDUnbounded(@Param("competencyId") String competencyId);
 
-    // ============================================
     // COMPARISON QUERIES
-    // ============================================
 
     /**
      * Fetch multiple results by ID list with session and template eagerly loaded.

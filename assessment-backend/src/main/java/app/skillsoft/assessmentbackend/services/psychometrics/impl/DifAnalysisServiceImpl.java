@@ -183,9 +183,7 @@ public class DifAnalysisServiceImpl implements DifAnalysisService {
         );
     }
 
-    // ============================================
     // INTERNAL DATA STRUCTURES
-    // ============================================
 
     /**
      * Parsed score matrix with group membership information.
@@ -222,9 +220,7 @@ public class DifAnalysisServiceImpl implements DifAnalysisService {
         boolean isValid() { return n() > 0; }
     }
 
-    // ============================================
     // SCORE MATRIX PARSING
-    // ============================================
 
     /**
      * Parse raw database results into a ScoreMatrix with group membership.
@@ -259,9 +255,7 @@ public class DifAnalysisServiceImpl implements DifAnalysisService {
         return new ScoreMatrix(focalScores, referenceScores, allQuestions);
     }
 
-    // ============================================
     // VALIDATION
-    // ============================================
 
     private void validateGroupSizes(Set<UUID> focalGroupSessionIds, Set<UUID> referenceGroupSessionIds) {
         if (focalGroupSessionIds == null || focalGroupSessionIds.isEmpty()) {
@@ -305,9 +299,7 @@ public class DifAnalysisServiceImpl implements DifAnalysisService {
         }
     }
 
-    // ============================================
     // MANTEL-HAENSZEL DIF COMPUTATION
-    // ============================================
 
     /**
      * Compute DIF statistics for all items in the score matrix.
@@ -611,9 +603,7 @@ public class DifAnalysisServiceImpl implements DifAnalysisService {
         return new ContingencyCell(a, b, c, d);
     }
 
-    // ============================================
     // STATISTICAL HELPERS
-    // ============================================
 
     /**
      * Compute the p-value for a chi-square statistic with 1 degree of freedom.

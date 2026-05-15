@@ -156,9 +156,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         );
     }
 
-    // ============================================
     // VALIDATION
-    // ============================================
 
     private void validateResultCount(List<UUID> resultIds) {
         if (resultIds == null || resultIds.size() < MIN_CANDIDATES) {
@@ -171,9 +169,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         }
     }
 
-    // ============================================
     // BLUEPRINT EXTRACTION
-    // ============================================
 
     /**
      * Extract TeamFitBlueprint from template configuration.
@@ -219,9 +215,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         return null;
     }
 
-    // ============================================
     // CANDIDATE SUMMARY BUILDING
-    // ============================================
 
     /**
      * Intermediate holder for candidate data before ranking is applied.
@@ -276,9 +270,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         );
     }
 
-    // ============================================
     // RANKING
-    // ============================================
 
     private List<CandidateSummaryDto> assignRanks(List<CandidateSummaryHolder> holders) {
         // Sort by overallPercentage descending for overallRank
@@ -334,9 +326,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         return ranks;
     }
 
-    // ============================================
     // COMPETENCY COMPARISON
-    // ============================================
 
     private List<CompetencyComparisonDto> buildCompetencyComparison(
             List<TestResult> results,
@@ -409,9 +399,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         return comparisons;
     }
 
-    // ============================================
     // GAP COVERAGE MATRIX
-    // ============================================
 
     private List<GapCoverageEntryDto> buildGapCoverageMatrix(
             List<CompetencyComparisonDto> competencyComparisons,
@@ -442,9 +430,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
             .toList();
     }
 
-    // ============================================
     // COMPLEMENTARITY PAIRS
-    // ============================================
 
     private List<CandidatePairComplementarityDto> buildComplementarityPairs(
             List<TestResult> results,
@@ -504,9 +490,7 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
         return pairs;
     }
 
-    // ============================================
     // UTILITY METHODS
-    // ============================================
 
     private Double extractDouble(Map<String, Object> map, String key) {
         Object value = map.get(key);
