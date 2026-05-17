@@ -46,9 +46,16 @@ public class BehavioralIndicator {
     @Column(name="is_active", nullable = false)
     private boolean isActive;
 
+    /**
+     * Approval workflow status. Column is NOT NULL; new indicators created
+     * via {@code CreateIndicatorRequest} go through {@code fromCreateRequest()},
+     * which does NOT set this field. Default to DRAFT here so inserts never
+     * violate the NOT NULL constraint. Updates that pass an explicit value
+     * (Update DTO) still override this through the setter.
+     */
     @Column(name = "approval_status", nullable = false)
     @Enumerated(EnumType.STRING)
-    private ApprovalStatus approvalStatus;
+    private ApprovalStatus approvalStatus = ApprovalStatus.DRAFT;
 
     /**
      * Context Scope - Determines the applicability of this behavioral indicator.
