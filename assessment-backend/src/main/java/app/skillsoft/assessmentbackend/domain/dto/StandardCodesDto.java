@@ -34,7 +34,7 @@ import java.io.Serializable;
  *     "facet": "achievement_striving"
  *   },
  *   "onetRef": {
- *     "code": "2.B.1.a",
+ *     "code": "1.A.1.a.1",
  *     "title": "Oral Comprehension",
  *     "elementType": "ability"
  *   },
@@ -173,25 +173,27 @@ public record StandardCodesDto(
     /**
      * O*NET (Occupational Information Network) reference DTO.
      * <p>
-     * O*NET codes follow specific patterns depending on element type:
+     * O*NET Content Model element IDs use a dotted hierarchy of 2 to 5 segments,
+     * starting with a digit. Examples by element type:
      * </p>
      * <ul>
-     *   <li>Abilities: X.X.X.X (e.g., "1.A.1.a")</li>
-     *   <li>Skills: X.X.X (e.g., "2.B.1")</li>
-     *   <li>Knowledge: X.X.X (e.g., "2.C.1")</li>
-     *   <li>Work Activities: X.X.X.X (e.g., "4.A.1.a")</li>
+     *   <li>Abilities: 5 segments (e.g., "1.A.1.a.1" Oral Comprehension)</li>
+     *   <li>Skills: 4 segments (e.g., "2.B.1.a" Active Listening)</li>
+     *   <li>Knowledge: 4 segments (e.g., "2.C.1.b")</li>
+     *   <li>Work Styles: 4 segments (e.g., "1.C.1.a")</li>
+     *   <li>Interests / Work Values / Work Contexts: 3-4 segments</li>
      * </ul>
      *
-     * @param code        O*NET element code (e.g., "2.B.1.a")
+     * @param code        O*NET element code (e.g., "1.A.1.a.1" or "2.B.1.a")
      * @param title       Human-readable title from O*NET database
-     * @param elementType Type of O*NET element: ability, skill, knowledge, work_activity, work_style
+     * @param elementType Type of O*NET element: ability, skill, knowledge, work_activity, work_style, interest, work_value, work_context
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record OnetRefDto(
             @NotBlank(message = "O*NET code is required")
             @Pattern(
-                    regexp = "^\\d+\\.[A-Z](\\.\\d+)?(\\.\\w+)?$",
-                    message = "O*NET code must follow pattern like '2.B.1.a' or '1.A.1'"
+                    regexp = "^\\d+(\\.[A-Za-z0-9]+){1,4}$",
+                    message = "O*NET code must be a valid Content Model element ID (e.g. '1.A.1.a.1' or '2.B.1.a')"
             )
             @Size(max = 20, message = "O*NET code must not exceed 20 characters")
             String code,

@@ -5,10 +5,16 @@ import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -150,6 +156,53 @@ class CompetencyDeserializationTest {
             
             assertThat(dto.standardCodes().escoRef()).isNotNull();
             assertThat(dto.standardCodes().escoRef().skillType()).isEqualTo("skill");
+        }
+    }
+
+    @Nested
+    @DisplayName("OnetRefDto @Pattern Validation Tests")
+    class OnetRefDtoValidationTests {
+
+        private Validator validator;
+
+        @BeforeEach
+        void setUpValidator() {
+            try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+                validator = factory.getValidator();
+            }
+        }
+
+        @Test
+        @DisplayName("Should accept 5-segment ability element IDs (e.g. 1.A.1.a.1)")
+        void shouldAcceptFiveSegmentAbilityCode() {
+            // Regression test for the bug where the @Pattern was capped at 4 segments,
+            // causing every O*NET ability (all 52 of them) to fail validation on submit.
+            StandardCodesDto.OnetRefDto ref =
+                    new StandardCodesDto.OnetRefDto("1.A.1.a.1", "Oral Comprehension", "ability");
+            Set<ConstraintViolation<StandardCodesDto.OnetRefDto>> violations = validator.validate(ref);
+            assertThat(violations).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Should accept 4-segment skill / work-style / knowledge codes")
+        void shouldAcceptFourSegmentCodes() {
+            Set<ConstraintViolation<StandardCodesDto.OnetRefDto>> skill =
+                    validator.validate(new StandardCodesDto.OnetRefDto("2.B.1.a", "Active Listening", "skill"));
+            Set<ConstraintViolation<StandardCodesDto.OnetRefDto>> workStyle =
+                    validator.validate(new StandardCodesDto.OnetRefDto("1.C.1.a", "Achievement/Effort", "work_style"));
+            Set<ConstraintViolation<StandardCodesDto.OnetRefDto>> knowledge =
+                    validator.validate(new StandardCodesDto.OnetRefDto("2.C.1.a", "Administration", "knowledge"));
+            assertThat(skill).isEmpty();
+            assertThat(workStyle).isEmpty();
+            assertThat(knowledge).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Should reject malformed codes (no leading digit, wrong separators)")
+        void shouldRejectMalformedCodes() {
+            assertThat(validator.validate(new StandardCodesDto.OnetRefDto("A.1.B", null, null))).isNotEmpty();
+            assertThat(validator.validate(new StandardCodesDto.OnetRefDto("1-A-1", null, null))).isNotEmpty();
+            assertThat(validator.validate(new StandardCodesDto.OnetRefDto("not.a.code!", null, null))).isNotEmpty();
         }
     }
 
