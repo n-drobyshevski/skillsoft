@@ -1,11 +1,13 @@
 package app.skillsoft.assessmentbackend.repository;
 
+import app.skillsoft.assessmentbackend.domain.entities.ResultStatus;
 import app.skillsoft.assessmentbackend.domain.entities.TestResult;
 import app.skillsoft.assessmentbackend.domain.projections.TemplateStatisticsProjection;
 import app.skillsoft.assessmentbackend.domain.projections.UserStatisticsProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -16,12 +18,29 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
+public interface TestResultRepository extends JpaRepository<TestResult, UUID>, JpaSpecificationExecutor<TestResult> {
 
     /**
      * Find result by session ID
      */
     Optional<TestResult> findBySession_Id(UUID sessionId);
+
+    /**
+     * Find results by multiple session IDs (batch lookup).
+     * Used for activity tracking to avoid N+1 queries when enriching DTOs with scores.
+     */
+    @Query("SELECT r FROM TestResult r WHERE r.session.id IN :sessionIds")
+    List<TestResult> findBySessionIdIn(@Param("sessionIds") Iterable<UUID> sessionIds);
+
+    /**
+     * Find result by session ID and status.
+     * Used for idempotency checks to detect already-completed scoring.
+     *
+     * @param sessionId The session UUID
+     * @param status    The result status to filter by
+     * @return Optional containing the result if found with the given status
+     */
+    Optional<TestResult> findBySession_IdAndStatus(UUID sessionId, ResultStatus status);
 
     /**
      * Find all results for a user
@@ -80,6 +99,16 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
     List<TestResult> findByCompletedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
 
     /**
+     * Find results within a date range with session and template eagerly loaded (paginated).
+     */
+    @Query(value = "SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.completedAt BETWEEN :startDate AND :endDate",
+           countQuery = "SELECT COUNT(r) FROM TestResult r WHERE r.completedAt BETWEEN :startDate AND :endDate")
+    Page<TestResult> findByCompletedAtBetweenWithSessionAndTemplate(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            Pageable pageable);
+
+    /**
      * Find results for a template (for template statistics)
      */
     @Query("SELECT r FROM TestResult r WHERE r.session.template.id = :templateId")
@@ -119,9 +148,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
      */
     List<TestResult> findTop10ByOrderByCompletedAtDesc();
 
-    // ============================================
     // OPTIMIZED QUERIES (N+1 Prevention)
-    // ============================================
 
     /**
      * Find result by ID with session and template eagerly loaded.
@@ -138,7 +165,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
     /**
      * Find results for a user with session and template eagerly loaded.
      */
-    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId ORDER BY r.completedAt DESC")
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId ORDER BY r.completedAt ASC")
     List<TestResult> findByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId);
 
     /**
@@ -155,9 +182,16 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
     List<TestResult> findPassedByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId);
 
     /**
+     * Find passed results for a user with session and template eagerly loaded (paginated).
+     */
+    @Query(value = "SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND r.passed = true",
+           countQuery = "SELECT COUNT(r) FROM TestResult r WHERE r.clerkUserId = :userId AND r.passed = true")
+    Page<TestResult> findPassedByClerkUserIdWithSessionAndTemplate(@Param("userId") String clerkUserId, Pageable pageable);
+
+    /**
      * Find user's results for a specific template with session eagerly loaded.
      */
-    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND s.template.id = :templateId ORDER BY r.completedAt DESC")
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template WHERE r.clerkUserId = :userId AND s.template.id = :templateId ORDER BY r.completedAt ASC")
     List<TestResult> findByUserAndTemplateWithSession(
             @Param("userId") String clerkUserId,
             @Param("templateId") UUID templateId);
@@ -205,9 +239,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
     @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template ORDER BY r.completedAt DESC LIMIT :limit")
     List<TestResult> findRecentWithSessionAndTemplate(@Param("limit") int limit);
 
-    // ============================================
     // PERCENTILE RECALCULATION QUERIES
-    // ============================================
 
     /**
      * Find recent results for a template completed after a cutoff time.
@@ -220,9 +252,7 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
             @Param("templateId") UUID templateId,
             @Param("cutoff") LocalDateTime cutoff);
 
-    // ============================================
     // ANONYMOUS RESULT QUERIES
-    // ============================================
 
     /**
      * Find anonymous results for a template (owner view).
@@ -335,6 +365,125 @@ public interface TestResultRepository extends JpaRepository<TestResult, UUID> {
            "LEFT JOIN FETCH s.shareLink " +
            "WHERE r.id = :resultId AND s.clerkUserId IS NULL")
     Optional<TestResult> findAnonymousByIdWithSessionAndTemplate(@Param("resultId") UUID resultId);
+
+    /**
+     * Count results where a specific competency's percentage score is below a threshold.
+     * Uses JSONB array element extraction to query nested competency_scores.
+     *
+     * @param templateId   The template to filter by
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @param score        The score threshold
+     * @return Count of results with lower competency percentage
+     */
+    @Query(value = """
+        SELECT COUNT(*) FROM test_results tr
+        JOIN test_sessions ts ON tr.session_id = ts.id
+        WHERE ts.template_id = :templateId
+        AND tr.competency_scores IS NOT NULL
+        AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(tr.competency_scores) elem
+            WHERE elem->>'competencyId' = :competencyId
+            AND (elem->>'percentage')::numeric < :score
+        )
+        """, nativeQuery = true)
+    Long countCompetencyScoresBelow(
+            @Param("templateId") UUID templateId,
+            @Param("competencyId") String competencyId,
+            @Param("score") double score);
+
+    /**
+     * Count total results that have a score for a specific competency.
+     *
+     * @param templateId   The template to filter by
+     * @param competencyId The competency UUID as string
+     * @return Total count of results containing this competency score
+     */
+    @Query(value = """
+        SELECT COUNT(*) FROM test_results tr
+        JOIN test_sessions ts ON tr.session_id = ts.id
+        WHERE ts.template_id = :templateId
+        AND tr.competency_scores IS NOT NULL
+        AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(tr.competency_scores) elem
+            WHERE elem->>'competencyId' = :competencyId
+        )
+        """, nativeQuery = true)
+    Long countCompetencyScoresTotal(
+            @Param("templateId") UUID templateId,
+            @Param("competencyId") String competencyId);
+
+    // HISTORICAL STATISTICS QUERIES (for CI calculation)
+
+    /**
+     * Calculate standard deviation of percentage scores for a specific competency across all results.
+     * Uses JSONB array element extraction. Returns null if fewer than 30 results exist (insufficient sample).
+     *
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @return Population standard deviation, or null if sample too small
+     */
+    @Query(value = """
+        SELECT CASE WHEN COUNT(*) >= 30 THEN STDDEV_POP(score) ELSE NULL END
+        FROM (
+            SELECT (elem->>'percentage')::numeric AS score
+            FROM test_results tr
+            JOIN test_sessions ts ON tr.session_id = ts.id
+            CROSS JOIN LATERAL jsonb_array_elements(tr.competency_scores) elem
+            WHERE tr.competency_scores IS NOT NULL
+            AND elem->>'competencyId' = :competencyId
+        ) sub
+        """, nativeQuery = true)
+    Double calculateCompetencyScoreSD(@Param("competencyId") String competencyId);
+
+    /**
+     * Count the number of results that have a score for a specific competency.
+     * Used by ConfidenceIntervalCalculator to determine sample size for SD estimation.
+     *
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @return Number of results containing this competency score
+     */
+    @Query(value = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT 1
+            FROM test_results tr
+            CROSS JOIN LATERAL jsonb_array_elements(tr.competency_scores) elem
+            WHERE tr.competency_scores IS NOT NULL
+            AND elem->>'competencyId' = :competencyId
+        ) sub
+        """, nativeQuery = true)
+    Long countCompetencyScoreSamples(@Param("competencyId") String competencyId);
+
+    /**
+     * Calculate standard deviation of percentage scores for a specific competency,
+     * regardless of sample size. Returns null only if no data exists.
+     * Used with countCompetencyScoreSamples() for bootstrap SD estimation.
+     *
+     * @param competencyId The competency UUID as string (for JSONB comparison)
+     * @return Population standard deviation, or null if no data
+     */
+    @Query(value = """
+        SELECT STDDEV_POP(score)
+        FROM (
+            SELECT (elem->>'percentage')::numeric AS score
+            FROM test_results tr
+            CROSS JOIN LATERAL jsonb_array_elements(tr.competency_scores) elem
+            WHERE tr.competency_scores IS NOT NULL
+            AND elem->>'competencyId' = :competencyId
+        ) sub
+        """, nativeQuery = true)
+    Double calculateCompetencyScoreSDUnbounded(@Param("competencyId") String competencyId);
+
+    // COMPARISON QUERIES
+
+    /**
+     * Fetch multiple results by ID list with session and template eagerly loaded.
+     * Used for candidate comparison mode.
+     *
+     * @param resultIds List of result UUIDs to fetch
+     * @return List of results with session and template eagerly loaded
+     */
+    @Query("SELECT r FROM TestResult r JOIN FETCH r.session s JOIN FETCH s.template t WHERE r.id IN :resultIds")
+    List<TestResult> findAllByIdInWithSessionAndTemplate(@Param("resultIds") List<UUID> resultIds);
 
     /**
      * Calculate average score for results from a specific share link.

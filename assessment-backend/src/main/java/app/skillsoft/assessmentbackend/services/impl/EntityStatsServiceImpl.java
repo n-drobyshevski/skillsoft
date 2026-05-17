@@ -1,0 +1,156 @@
+package app.skillsoft.assessmentbackend.services.impl;
+
+import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto;
+import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto.CompetencyStatsDto;
+import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto.IndicatorStatsDto;
+import app.skillsoft.assessmentbackend.domain.dto.stats.EntityStatsDto.QuestionStatsDto;
+import app.skillsoft.assessmentbackend.domain.dto.stats.NavigationBadgeCountsDto;
+import app.skillsoft.assessmentbackend.domain.entities.*;
+import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.repository.ItemStatisticsRepository;
+import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
+import app.skillsoft.assessmentbackend.repository.UserRepository;
+import app.skillsoft.assessmentbackend.services.EntityStatsService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+@Transactional(readOnly = true)
+public class EntityStatsServiceImpl implements EntityStatsService {
+
+    private final CompetencyRepository competencyRepository;
+    private final BehavioralIndicatorRepository indicatorRepository;
+    private final AssessmentQuestionRepository questionRepository;
+    private final TestSessionRepository testSessionRepository;
+    private final ItemStatisticsRepository itemStatisticsRepository;
+    private final UserRepository userRepository;
+
+    public EntityStatsServiceImpl(
+            CompetencyRepository competencyRepository,
+            BehavioralIndicatorRepository indicatorRepository,
+            AssessmentQuestionRepository questionRepository,
+            TestSessionRepository testSessionRepository,
+            ItemStatisticsRepository itemStatisticsRepository,
+            UserRepository userRepository
+    ) {
+        this.competencyRepository = competencyRepository;
+        this.indicatorRepository = indicatorRepository;
+        this.questionRepository = questionRepository;
+        this.testSessionRepository = testSessionRepository;
+        this.itemStatisticsRepository = itemStatisticsRepository;
+        this.userRepository = userRepository;
+    }
+
+    @Override
+    public EntityStatsDto getEntityStats() {
+        return new EntityStatsDto(
+                computeCompetencyStats(),
+                computeIndicatorStats(),
+                computeQuestionStats()
+        );
+    }
+
+    private CompetencyStatsDto computeCompetencyStats() {
+        long total = competencyRepository.count();
+        long active = competencyRepository.countByIsActiveTrue();
+        long withIndicators = competencyRepository.countWithIndicators();
+        double avgWeight = round1(competencyRepository.averageIndicatorWeight());
+
+        Map<String, Long> byCategory = new LinkedHashMap<>();
+        for (Object[] row : competencyRepository.countByCategory()) {
+            CompetencyCategory category = (CompetencyCategory) row[0];
+            Long count = (Long) row[1];
+            byCategory.put(category.name(), count);
+        }
+
+        return new CompetencyStatsDto(total, active, withIndicators, avgWeight, byCategory);
+    }
+
+    private IndicatorStatsDto computeIndicatorStats() {
+        long total = indicatorRepository.count();
+        long active = indicatorRepository.countByIsActiveTrue();
+        long withQuestions = indicatorRepository.countWithActiveQuestions();
+
+        List<IndicatorMeasurementType> measurableTypes = List.of(
+                IndicatorMeasurementType.FREQUENCY,
+                IndicatorMeasurementType.QUALITY,
+                IndicatorMeasurementType.IMPACT
+        );
+        long measurable = indicatorRepository.countByMeasurementTypeIn(measurableTypes);
+        double avgComplexity = round1(indicatorRepository.averageObservabilityComplexity());
+
+        Map<String, Long> byContextScope = new LinkedHashMap<>();
+        for (Object[] row : indicatorRepository.countGroupedByContextScope()) {
+            ContextScope scope = (ContextScope) row[0];
+            Long count = (Long) row[1];
+            byContextScope.put(scope.name(), count);
+        }
+
+        return new IndicatorStatsDto(total, active, withQuestions, measurable, avgComplexity, byContextScope);
+    }
+
+    private QuestionStatsDto computeQuestionStats() {
+        long total = questionRepository.count();
+        long active = questionRepository.countByIsActiveTrue();
+        long withActiveIndicators = questionRepository.countWithActiveIndicators();
+
+        List<DifficultyLevel> hardLevels = List.of(
+                DifficultyLevel.ADVANCED,
+                DifficultyLevel.EXPERT,
+                DifficultyLevel.SPECIALIZED
+        );
+        long hardQuestions = questionRepository.countByDifficultyLevelIn(hardLevels);
+        double avgTimeLimit = round1(questionRepository.averageTimeLimit());
+
+        Map<String, Long> byDifficulty = new LinkedHashMap<>();
+        for (Object[] row : questionRepository.countGroupedByDifficultyLevel()) {
+            DifficultyLevel level = (DifficultyLevel) row[0];
+            Long count = (Long) row[1];
+            byDifficulty.put(level.name(), count);
+        }
+
+        Map<String, Long> byQuestionType = new LinkedHashMap<>();
+        for (Object[] row : questionRepository.countGroupedByQuestionType()) {
+            QuestionType type = (QuestionType) row[0];
+            Long count = (Long) row[1];
+            if (count > 0) {
+                byQuestionType.put(type.name(), count);
+            }
+        }
+
+        return new QuestionStatsDto(total, active, withActiveIndicators, hardQuestions, avgTimeLimit, byDifficulty, byQuestionType);
+    }
+
+    @Override
+    public NavigationBadgeCountsDto getNavigationBadgeCounts(String clerkUserId) {
+        long inProgressTests = (clerkUserId != null && !clerkUserId.isBlank())
+                ? testSessionRepository.countByClerkUserIdAndStatus(clerkUserId, SessionStatus.IN_PROGRESS)
+                : 0L;
+
+        long pendingCompetencies = competencyRepository.countByApprovalStatus(ApprovalStatus.PENDING_REVIEW);
+
+        long flaggedItems = itemStatisticsRepository.countByValidityStatus(ItemValidityStatus.FLAGGED_FOR_REVIEW);
+
+        long newUsers = userRepository.countByCreatedAtAfterAndIsActiveTrue(
+                LocalDateTime.now().minusDays(7));
+
+        return new NavigationBadgeCountsDto(
+                inProgressTests,
+                0L,
+                pendingCompetencies,
+                flaggedItems,
+                newUsers
+        );
+    }
+
+    private static double round1(double value) {
+        return Math.round(value * 10.0) / 10.0;
+    }
+}

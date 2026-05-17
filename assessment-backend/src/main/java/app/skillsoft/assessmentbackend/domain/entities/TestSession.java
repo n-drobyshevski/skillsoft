@@ -1,9 +1,8 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
@@ -15,6 +14,10 @@ import java.util.UUID;
 /**
  * Entity representing a test session.
  * Tracks the state and progress of a user taking a test.
+ *
+ * Uses {@code @Version} for optimistic locking to prevent concurrent
+ * state transitions (e.g., simultaneous complete + abandon/timeout)
+ * from producing inconsistent state.
  */
 @Entity
 @Table(name = "test_sessions", indexes = {
@@ -26,8 +29,16 @@ import java.util.UUID;
 public class TestSession {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    /**
+     * Optimistic locking version. Prevents concurrent state transitions
+     * (e.g., simultaneous complete + abandon) from producing inconsistent state.
+     * Managed automatically by JPA; do not set manually.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id", nullable = false)
@@ -61,14 +72,13 @@ public class TestSession {
     private List<UUID> questionOrder = new ArrayList<>();
 
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<TestAnswer> answers = new ArrayList<>();
 
     @OneToOne(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     private TestResult result;
 
-    // ========================================
     // ANONYMOUS SESSION FIELDS
-    // ========================================
 
     /**
      * Reference to the share link used to create this session.
@@ -104,12 +114,10 @@ public class TestSession {
      * Contains: firstName, lastName, email (optional), notes (optional), collectedAt.
      */
     @Column(name = "anonymous_taker_info", columnDefinition = "jsonb")
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     private AnonymousTakerInfo anonymousTakerInfo;
 
-    // ========================================
     // END ANONYMOUS SESSION FIELDS
-    // ========================================
 
     @Column(name = "last_activity_at")
     private LocalDateTime lastActivityAt;
@@ -129,6 +137,7 @@ public class TestSession {
      * @param clerkUserId The Clerk user ID
      */
     public TestSession(TestTemplate template, String clerkUserId) {
+        this.id = UUID.randomUUID();
         this.template = template;
         this.clerkUserId = clerkUserId;
         this.status = SessionStatus.NOT_STARTED;
@@ -148,6 +157,7 @@ public class TestSession {
      */
     public TestSession(TestTemplate template, TemplateShareLink shareLink,
                        String sessionAccessTokenHash, String ipAddress, String userAgent) {
+        this.id = UUID.randomUUID();
         this.template = template;
         this.shareLink = shareLink;
         this.sessionAccessTokenHash = sessionAccessTokenHash;
@@ -225,6 +235,14 @@ public class TestSession {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 
     public TestTemplate getTemplate() {
@@ -353,9 +371,7 @@ public class TestSession {
         return shareLink != null ? shareLink.getId() : null;
     }
 
-    // ========================================
     // ANONYMOUS SESSION GETTERS/SETTERS
-    // ========================================
 
     public TemplateShareLink getShareLink() {
         return shareLink;

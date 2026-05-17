@@ -34,6 +34,8 @@ public class CacheConfig {
     public static final String COMPETENCIES_CACHE = "competencies";
     public static final String QUESTION_POOL_COUNTS_CACHE = "questionPoolCounts";
     public static final String TEMPLATE_METADATA_CACHE = "templateMetadata";
+    public static final String SIMULATION_RESULTS_CACHE = "simulationResults";
+    public static final String ACTIVE_TEMPLATES_CACHE = "activeTemplates";
 
     @Bean
     public CacheManager cacheManager() {
@@ -93,9 +95,28 @@ public class CacheConfig {
                 .recordStats()
                 .build());
 
-        log.info("Initialized Caffeine caches: {}, {}, {}, {}, {}, {}",
+        // Simulation results - deterministic for same blueprint+profile
+        // 10-minute TTL, max 100 entries (keyed by blueprint hash + profile)
+        manager.registerCustomCache(SIMULATION_RESULTS_CACHE,
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(10))
+                .maximumSize(100)
+                .recordStats()
+                .build());
+
+        // Active templates list - frequently queried for template selection UI
+        // 5-minute TTL, max 50 entries
+        manager.registerCustomCache(ACTIVE_TEMPLATES_CACHE,
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(5))
+                .maximumSize(50)
+                .recordStats()
+                .build());
+
+        log.info("Initialized Caffeine caches: {}, {}, {}, {}, {}, {}, {}, {}",
             ONET_PROFILES_CACHE, TEAM_PROFILES_CACHE, PASSPORT_SCORES_CACHE,
-            COMPETENCIES_CACHE, QUESTION_POOL_COUNTS_CACHE, TEMPLATE_METADATA_CACHE);
+            COMPETENCIES_CACHE, QUESTION_POOL_COUNTS_CACHE, TEMPLATE_METADATA_CACHE,
+            SIMULATION_RESULTS_CACHE, ACTIVE_TEMPLATES_CACHE);
 
         return manager;
     }

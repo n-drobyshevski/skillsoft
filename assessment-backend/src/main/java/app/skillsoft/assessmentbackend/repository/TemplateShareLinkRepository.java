@@ -19,9 +19,7 @@ import java.util.UUID;
 @Repository
 public interface TemplateShareLinkRepository extends JpaRepository<TemplateShareLink, UUID> {
 
-    // ============================================
     // TOKEN LOOKUP
-    // ============================================
 
     /**
      * Find a share link by its token.
@@ -42,9 +40,7 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
      */
     boolean existsByToken(String token);
 
-    // ============================================
     // FIND BY TEMPLATE
-    // ============================================
 
     /**
      * Find all links for a template (including expired/revoked).
@@ -69,9 +65,7 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
     List<TemplateShareLink> findByTemplateIdOrderByCreatedAtDesc(
             @Param("templateId") UUID templateId);
 
-    // ============================================
     // LINK COUNTS (for limit enforcement)
-    // ============================================
 
     /**
      * Count active links for a template.
@@ -88,9 +82,7 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
      */
     long countByTemplateId(UUID templateId);
 
-    // ============================================
     // LINK VALIDATION
-    // ============================================
 
     /**
      * Check if a valid link exists for a template.
@@ -102,21 +94,20 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
            "AND (l.maxUses IS NULL OR l.currentUses < l.maxUses)")
     boolean hasActiveLinks(@Param("templateId") UUID templateId);
 
-    // ============================================
     // USAGE TRACKING
-    // ============================================
 
     /**
-     * Increment usage count for a link.
+     * Atomically increment usage count for a link, respecting maxUses limit.
+     * Returns 1 if successfully incremented, 0 if the link has reached its usage limit.
+     * This prevents race conditions where two concurrent requests both pass validation.
      */
     @Modifying
     @Query("UPDATE TemplateShareLink l SET l.currentUses = l.currentUses + 1, " +
-           "l.lastUsedAt = CURRENT_TIMESTAMP WHERE l.id = :linkId")
+           "l.lastUsedAt = CURRENT_TIMESTAMP WHERE l.id = :linkId " +
+           "AND (l.maxUses IS NULL OR l.currentUses < l.maxUses)")
     int incrementUsage(@Param("linkId") UUID linkId);
 
-    // ============================================
     // BULK OPERATIONS
-    // ============================================
 
     /**
      * Revoke all active links for a template.
@@ -135,9 +126,7 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
            "WHERE l.isActive = true AND l.expiresAt < CURRENT_TIMESTAMP")
     int revokeExpired();
 
-    // ============================================
     // STATISTICS
-    // ============================================
 
     /**
      * Get total usage across all links for a template.
@@ -153,9 +142,7 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
            "ORDER BY l.createdAt DESC")
     List<TemplateShareLink> findByCreatedById(@Param("userId") UUID userId);
 
-    // ============================================
     // CLEANUP QUERIES
-    // ============================================
 
     /**
      * Find expired links older than a certain date (for cleanup).
@@ -172,9 +159,7 @@ public interface TemplateShareLinkRepository extends JpaRepository<TemplateShare
            "AND l.isActive = false")
     int deleteExpiredLinksBefore(@Param("cutoffDate") LocalDateTime cutoffDate);
 
-    // ============================================
     // BULK DELETE FOR TEMPLATE DELETION
-    // ============================================
 
     /**
      * Delete all share links for a template.

@@ -46,6 +46,9 @@ public record UpdateTestTemplateRequest(
 
         Boolean allowBackNavigation,
 
-        Boolean showResultsImmediately
+        Boolean showResultsImmediately,
+
+        /** When true, allows updating a PUBLISHED template in-place (skip editable guard) */
+        Boolean forceOverwrite
 ) {
 }

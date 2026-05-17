@@ -539,15 +539,7 @@ class AssessmentQuestionIntegrationTest {
             AssessmentQuestionDto createdDto = objectMapper.readValue(response, AssessmentQuestionDto.class);
 
             // When - Update with completely new JSONB structure
-            // Build as a Map to ensure JSON field names match UpdateQuestionRequest exactly
-            Map<String, Object> updateRequest = new HashMap<>();
-            updateRequest.put("questionText", "Обновленный сценарий лидерства в кризисной ситуации");
-            updateRequest.put("questionType", "SITUATIONAL_JUDGMENT");
-            updateRequest.put("scoringRubric", "Новая система оценки кризисного лидерства");
-            updateRequest.put("difficultyLevel", "EXPERT");
-            updateRequest.put("isActive", true);
-            updateRequest.put("orderIndex", 1);
-
+            // Build request as a Map to match UpdateQuestionRequest field names
             List<Map<String, Object>> newAnswerOptions = new ArrayList<>();
 
             Map<String, Object> option1 = new HashMap<>();
@@ -574,14 +566,21 @@ class AssessmentQuestionIntegrationTest {
             option2.put("metrics", metrics2);
             newAnswerOptions.add(option2);
 
-            updateRequest.put("answerOptions", newAnswerOptions);
+            Map<String, Object> updateRequestMap = new HashMap<>();
+            updateRequestMap.put("questionText", "Обновленный сценарий лидерства в кризисной ситуации");
+            updateRequestMap.put("questionType", "SITUATIONAL_JUDGMENT");
+            updateRequestMap.put("answerOptions", newAnswerOptions);
+            updateRequestMap.put("scoringRubric", "Новая система оценки кризисного лидерства");
+            updateRequestMap.put("difficultyLevel", "EXPERT");
+            updateRequestMap.put("isActive", true);
+            updateRequestMap.put("orderIndex", 1);
 
             // Then - Verify update
             mockMvc.perform(put("/api/questions/{questionId}", createdDto.id())
                             .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .characterEncoding("UTF-8")
-                            .content(objectMapper.writeValueAsString(updateRequest)))
+                            .content(objectMapper.writeValueAsString(updateRequestMap)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.questionText", containsString("кризисной ситуации")))
                     .andExpect(jsonPath("$.answerOptions", hasSize(2)))

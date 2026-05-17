@@ -7,12 +7,15 @@ import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.selection.SelectionWarningCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Assembler for TEAM_FIT (Dynamic Gap Analysis) assessment strategy.
@@ -59,7 +62,7 @@ public class TeamFitAssembler implements TestAssembler {
     }
 
     @Override
-    public List<UUID> assemble(TestBlueprintDto blueprint) {
+    public AssemblyResult assemble(TestBlueprintDto blueprint) {
         if (!(blueprint instanceof TeamFitBlueprint teamFitBlueprint)) {
             throw new IllegalArgumentException(
                 "TeamFitAssembler requires TeamFitBlueprint, got: " +
@@ -70,52 +73,89 @@ public class TeamFitAssembler implements TestAssembler {
         var teamId = teamFitBlueprint.getTeamId();
         if (teamId == null) {
             log.warn("No team ID provided in TeamFitBlueprint");
-            return List.of();
+            return AssemblyResult.withWarnings(List.of(
+                InventoryWarning.info("TeamFit assessment requires a team profile. Please select a team before starting the test.")
+            ));
         }
 
-        var saturationThreshold = teamFitBlueprint.getSaturationThreshold();
-        if (saturationThreshold <= 0 || saturationThreshold > 1) {
-            saturationThreshold = DEFAULT_SATURATION_THRESHOLD;
-        }
+        var rawThreshold = teamFitBlueprint.getSaturationThreshold();
+        final double saturationThreshold = (rawThreshold <= 0 || rawThreshold > 1)
+            ? DEFAULT_SATURATION_THRESHOLD
+            : rawThreshold;
 
-        log.info("Assembling TEAM_FIT test for team: {} (threshold: {})",
-            teamId, saturationThreshold);
+        var canvasCompetencyIds = teamFitBlueprint.getCompetencyIds();
+        boolean hasCanvas = canvasCompetencyIds != null && !canvasCompetencyIds.isEmpty();
 
-        // Step 1: Fetch team profile
+        log.info("Assembling TEAM_FIT test for team: {} (threshold: {}, canvas competencies: {})",
+            teamId, saturationThreshold, hasCanvas ? canvasCompetencyIds.size() : 0);
+
+        // Step 1: Fetch team profile for saturation weighting
         var teamProfile = teamService.getTeamProfile(teamId);
-        if (teamProfile.isEmpty()) {
-            log.warn("No team profile found for team: {}", teamId);
-            return List.of();
+        Map<UUID, Double> saturationLevels = teamProfile
+            .map(tp -> tp.competencySaturation())
+            .filter(m -> !m.isEmpty())
+            .orElse(Map.of());
+
+        log.info("Team profile saturation data: {} competencies", saturationLevels.size());
+
+        // Step 2: Determine competencies to assess.
+        // Canvas competencies are the primary source (user-selected, known to have questions).
+        // Team saturation data is used for weighting/ordering only.
+        List<UUID> targetCompetencies;
+
+        if (hasCanvas) {
+            // Use canvas competencies — apply team saturation as weighting
+            targetCompetencies = new ArrayList<>(canvasCompetencyIds);
+
+            // Canvas competencies not in team profile are treated as gaps (low saturation)
+            var effectiveSaturation = new HashMap<>(saturationLevels);
+            for (UUID compId : canvasCompetencyIds) {
+                effectiveSaturation.putIfAbsent(compId, 0.1); // Unknown = assume critical gap
+            }
+            saturationLevels = effectiveSaturation;
+
+            log.info("Using {} canvas competencies with team saturation weighting", canvasCompetencyIds.size());
+        } else if (!saturationLevels.isEmpty()) {
+            // No canvas — fall back to team profile undersaturated competencies
+            targetCompetencies = saturationLevels.entrySet().stream()
+                .filter(e -> e.getValue() < saturationThreshold)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toCollection(ArrayList::new));
+
+            if (targetCompetencies.isEmpty()) {
+                targetCompetencies = new ArrayList<>(saturationLevels.keySet());
+            }
+
+            log.info("No canvas competencies, using {} from team profile", targetCompetencies.size());
+        } else {
+            log.warn("No canvas competencies and no team profile data for team: {}", teamId);
+            return AssemblyResult.withWarnings(List.of(
+                InventoryWarning.info("No competency data available - add competencies to the canvas or ensure team members have completed assessments")
+            ));
         }
 
-        // Step 2: Get undersaturated competencies (team gaps)
-        var undersaturatedCompetencies = teamService.getUndersaturatedCompetencies(
-            teamId,
-            saturationThreshold
-        );
+        log.info("Target competencies for assembly: {} (team: {})",
+            targetCompetencies.size(), teamId);
 
-        if (undersaturatedCompetencies.isEmpty()) {
-            log.info("No undersaturated competencies found for team: {}", teamId);
-            // Fall back to all competencies from the team profile
-            undersaturatedCompetencies = new ArrayList<>(
-                teamProfile.get().competencySaturation().keySet()
+        // Step 3: Select questions for target competencies using QuestionSelectionService
+        List<InventoryWarning> warnings = new ArrayList<>();
+
+        SelectionWarningCollector.begin();
+        try {
+            var selectedQuestions = selectQuestionsForUndersaturatedCompetencies(
+                targetCompetencies,
+                saturationLevels
             );
+
+            log.info("Assembled {} questions for TEAM_FIT assessment (team: {})",
+                selectedQuestions.size(), teamId);
+
+            warnings.addAll(SelectionWarningCollector.drain());
+            return new AssemblyResult(selectedQuestions, warnings);
+        } catch (Exception e) {
+            SelectionWarningCollector.clear();
+            throw e;
         }
-
-        log.debug("Found {} undersaturated competencies for team: {}",
-            undersaturatedCompetencies.size(), teamId);
-
-        // Step 3: Select questions for undersaturated competencies using QuestionSelectionService
-        var saturationLevels = teamProfile.get().competencySaturation();
-        var selectedQuestions = selectQuestionsForUndersaturatedCompetencies(
-            undersaturatedCompetencies,
-            saturationLevels
-        );
-
-        log.info("Assembled {} questions for TEAM_FIT assessment (team: {})",
-            selectedQuestions.size(), teamId);
-
-        return selectedQuestions;
     }
 
     /**
@@ -135,13 +175,16 @@ public class TeamFitAssembler implements TestAssembler {
             .sorted(Comparator.comparing(id -> saturationLevels.getOrDefault(id, 1.0)))
             .toList();
 
+        // Batch-load all indicators for all competencies in a single query (N+1 fix)
+        Map<UUID, List<BehavioralIndicator>> indicatorsByCompetency = indicatorRepository
+            .findByCompetencyIdIn(new HashSet<>(competencyIds))
+            .stream()
+            .filter(BehavioralIndicator::isActive)
+            .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
+            .collect(Collectors.groupingBy(ind -> ind.getCompetency().getId()));
+
         for (var competencyId : sortedCompetencies) {
-            // Get indicators for this competency
-            var indicators = indicatorRepository.findByCompetencyId(competencyId)
-                .stream()
-                .filter(BehavioralIndicator::isActive)
-                .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
-                .toList();
+            var indicators = indicatorsByCompetency.getOrDefault(competencyId, List.of());
 
             if (indicators.isEmpty()) {
                 log.debug("No active indicators for competency {}", competencyId);
@@ -152,11 +195,16 @@ public class TeamFitAssembler implements TestAssembler {
             // Lower saturation = more questions
             var saturation = saturationLevels.getOrDefault(competencyId, 1.0);
             var questionsToSelect = calculateQuestionsForSaturation(saturation);
+            var difficulty = determineDifficultyForGap(saturation);
+
+            log.debug("Competency {} saturation={}, selecting {} questions at {} difficulty",
+                competencyId, String.format("%.2f", saturation), questionsToSelect, difficulty);
 
             // Select questions across indicators for this competency
             var questionsForCompetency = selectQuestionsAcrossIndicators(
                 indicators,
                 questionsToSelect,
+                difficulty,
                 usedQuestions
             );
 
@@ -173,6 +221,7 @@ public class TeamFitAssembler implements TestAssembler {
     private List<UUID> selectQuestionsAcrossIndicators(
             List<BehavioralIndicator> indicators,
             int totalQuestions,
+            DifficultyLevel difficulty,
             Set<UUID> usedQuestions) {
 
         List<UUID> selected = new ArrayList<>();
@@ -187,7 +236,7 @@ public class TeamFitAssembler implements TestAssembler {
             List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
                 indicator.getId(),
                 toSelect,
-                DEFAULT_DIFFICULTY,
+                difficulty,
                 usedQuestions
             );
 
@@ -211,6 +260,23 @@ public class TeamFitAssembler implements TestAssembler {
             return DEFAULT_QUESTIONS_PER_GAP - 1; // Minor gap
         } else {
             return DEFAULT_QUESTIONS_PER_GAP - 2; // Minimal gap
+        }
+    }
+
+    /**
+     * Determine question difficulty based on gap severity.
+     * Deeper gaps (lower saturation) get harder questions to better discriminate candidate ability.
+     *
+     * @param saturation Team saturation level (0.0-1.0) for this competency
+     * @return Appropriate difficulty level
+     */
+    private DifficultyLevel determineDifficultyForGap(double saturation) {
+        if (saturation < 0.1) {
+            return DifficultyLevel.ADVANCED;        // Critical gap: need advanced questions to discriminate
+        } else if (saturation < 0.3) {
+            return DifficultyLevel.INTERMEDIATE;    // Moderate gap: balanced assessment
+        } else {
+            return DifficultyLevel.FOUNDATIONAL;    // Minor gap: basic screening sufficient
         }
     }
 }

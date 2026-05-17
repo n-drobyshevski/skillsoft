@@ -154,6 +154,53 @@ public interface QuestionSelectionService {
             boolean shuffle
     );
 
+    /**
+     * Select questions for multiple competencies with waterfall distribution
+     * and optional context neutrality filtering.
+     *
+     * When contextNeutralOnly is true, only questions tagged as GENERAL/UNIVERSAL
+     * (or without narrow domain tags) are selected. This is critical for OVERVIEW
+     * assessments generating a Competency Passport with construct validity.
+     *
+     * @param competencyIds        List of competency UUIDs
+     * @param questionsPerIndicator Questions per indicator
+     * @param preferredDifficulty  Preferred difficulty (null for any)
+     * @param shuffle              Whether to shuffle the final selection
+     * @param contextNeutralOnly   If true, apply context neutrality filter
+     * @return List of selected question UUIDs
+     */
+    List<UUID> selectQuestionsForCompetencies(
+            List<UUID> competencyIds,
+            int questionsPerIndicator,
+            DifficultyLevel preferredDifficulty,
+            boolean shuffle,
+            boolean contextNeutralOnly
+    );
+
+    /**
+     * Select questions for multiple competencies with weighted distribution.
+     *
+     * Translates competency-level weights to indicator-level weights by multiplying
+     * each indicator's intrinsic weight by its parent competency's weight.
+     * Then delegates to {@link #selectQuestionsWeighted} for proportional allocation.
+     *
+     * @param competencyIds          List of competency UUIDs
+     * @param competencyWeights      Map of competency UUID to weight multiplier (0.5-2.0)
+     * @param questionsPerIndicator  Base questions per indicator (used for total calculation)
+     * @param preferredDifficulty    Preferred difficulty (null for any)
+     * @param shuffle                Whether to shuffle the final selection
+     * @param contextNeutralOnly     If true, apply context neutrality filter
+     * @return List of selected question UUIDs
+     */
+    List<UUID> selectQuestionsForCompetenciesWeighted(
+            List<UUID> competencyIds,
+            Map<UUID, Double> competencyWeights,
+            int questionsPerIndicator,
+            DifficultyLevel preferredDifficulty,
+            boolean shuffle,
+            boolean contextNeutralOnly
+    );
+
     // ========== FILTERING UTILITIES ==========
 
     /**
@@ -177,6 +224,7 @@ public interface QuestionSelectionService {
     default List<AssessmentQuestion> filterByValidity(List<AssessmentQuestion> questions) {
         return filterByValidity(questions, Set.of(
                 ItemValidityStatus.ACTIVE,
+                ItemValidityStatus.PRELIMINARY,
                 ItemValidityStatus.PROBATION,
                 ItemValidityStatus.FLAGGED_FOR_REVIEW
         ));
@@ -209,6 +257,28 @@ public interface QuestionSelectionService {
      * @return Filtered list of context-neutral questions
      */
     List<AssessmentQuestion> filterByContextNeutrality(List<AssessmentQuestion> questions);
+
+    // ========== REPRODUCIBLE RANDOM (BE-008) ==========
+
+    /**
+     * Set a session-based seed for reproducible question ordering.
+     *
+     * When set, all subsequent shuffle operations in this thread will use
+     * a {@code Random} seeded with {@code sessionId.getMostSignificantBits()},
+     * producing the same question order for the same session ID.
+     *
+     * Must be paired with {@link #clearSessionSeed()} after question generation
+     * completes (use try/finally) to prevent leaking state across pooled threads.
+     *
+     * @param sessionId The session UUID used to derive the seed
+     */
+    void setSessionSeed(UUID sessionId);
+
+    /**
+     * Clear the session-based seed, reverting to non-deterministic shuffling.
+     * Must be called after {@link #setSessionSeed(UUID)} to prevent thread leaks.
+     */
+    void clearSessionSeed();
 
     // ========== ELIGIBILITY CHECKS ==========
 

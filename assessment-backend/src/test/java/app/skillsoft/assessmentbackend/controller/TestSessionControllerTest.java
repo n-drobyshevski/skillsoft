@@ -5,12 +5,9 @@ import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.domain.entities.QuestionType;
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
-import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
-import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
-import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
-import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
 import app.skillsoft.assessmentbackend.services.TestSessionService.CurrentQuestionDto;
+import app.skillsoft.assessmentbackend.services.diagnostics.TemplateDiagnosticsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,16 +57,7 @@ class TestSessionControllerTest {
     private TestSessionService testSessionService;
 
     @MockBean
-    private TestTemplateRepository templateRepository;
-
-    @MockBean
-    private CompetencyRepository competencyRepository;
-
-    @MockBean
-    private BehavioralIndicatorRepository indicatorRepository;
-
-    @MockBean
-    private AssessmentQuestionRepository questionRepository;
+    private TemplateDiagnosticsService diagnosticsService;
 
     private UUID sessionId;
     private UUID templateId;

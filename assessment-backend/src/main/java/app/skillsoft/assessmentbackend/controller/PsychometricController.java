@@ -33,13 +33,13 @@ import java.util.stream.Collectors;
  * - Manual audit triggers
  * <p>
  * Security:
- * - All endpoints require ADMIN or HR role
+ * - All endpoints require ADMIN or EDITOR role
  * <p>
  * API Base Path: /api/v1/psychometrics
  */
 @RestController
 @RequestMapping("/api/v1/psychometrics")
-@PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+@PreAuthorize("hasAnyRole('ADMIN', 'EDITOR')")
 public class PsychometricController {
 
     private static final Logger logger = LoggerFactory.getLogger(PsychometricController.class);

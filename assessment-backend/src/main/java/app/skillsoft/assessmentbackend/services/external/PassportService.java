@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services.external;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,6 +36,16 @@ public interface PassportService {
          * Whether passport data is still valid (not expired).
          */
         boolean isValid
+    ) {}
+
+    /**
+     * Extended passport data for API responses, including entity metadata.
+     */
+    record PassportDetails(
+        UUID entityId,
+        CompetencyPassport passport,
+        String clerkUserId,
+        java.time.LocalDateTime expiresAt
     ) {}
 
     /**
@@ -81,6 +92,14 @@ public interface PassportService {
      * @return true if valid passport exists
      */
     boolean hasValidPassportByClerkUserId(String clerkUserId);
+
+    /**
+     * Get detailed passport data for API response, including entity ID and expiration.
+     *
+     * @param clerkUserId The Clerk user ID
+     * @return Full passport details, or empty if no valid passport exists
+     */
+    Optional<PassportDetails> getPassportDetailsByClerkUserId(String clerkUserId);
 
     /**
      * Save or update a candidate's Competency Passport.

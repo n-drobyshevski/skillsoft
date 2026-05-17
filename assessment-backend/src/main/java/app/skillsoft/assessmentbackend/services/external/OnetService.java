@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.services.external;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -73,9 +74,16 @@ public interface OnetService {
 
     /**
      * Check if a SOC code is valid and has profile data.
-     * 
+     *
      * @param socCode The SOC code to validate
      * @return true if the code is valid and has data
      */
     boolean isValidSocCode(String socCode);
+
+    /**
+     * Search occupation profiles by keyword (matches title or description).
+     * @param keyword Search keyword
+     * @return List of matching profiles (up to 10)
+     */
+    List<OnetProfile> searchProfiles(String keyword);
 }

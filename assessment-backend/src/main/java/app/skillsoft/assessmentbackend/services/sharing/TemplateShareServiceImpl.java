@@ -382,9 +382,7 @@ public class TemplateShareServiceImpl implements TemplateShareService {
         return count;
     }
 
-    // ============================================
     // PRIVATE HELPER METHODS
-    // ============================================
 
     private TestTemplate findTemplateOrThrow(UUID templateId) {
         return templateRepository.findById(templateId)
@@ -627,9 +625,7 @@ public class TemplateShareServiceImpl implements TemplateShareService {
         }
     }
 
-    // ============================================
     // SHARED WITH ME OPERATIONS
-    // ============================================
 
     @Override
     @Transactional(readOnly = true)

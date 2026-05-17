@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.services.selection;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
+import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.repository.ItemStatisticsRepository;
 import app.skillsoft.assessmentbackend.services.validation.PsychometricBlueprintValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,7 +51,16 @@ class QuestionSelectionServiceTest {
     private BehavioralIndicatorRepository indicatorRepository;
 
     @Mock
+    private CompetencyRepository competencyRepository;
+
+    @Mock
     private PsychometricBlueprintValidator psychometricValidator;
+
+    @Mock
+    private ItemStatisticsRepository itemStatisticsRepository;
+
+    @Mock
+    private ExposureTrackingService exposureTrackingService;
 
     @InjectMocks
     private QuestionSelectionServiceImpl service;
@@ -276,12 +287,13 @@ class QuestionSelectionServiceTest {
         @DisplayName("should exclude RETIRED questions")
         void shouldExcludeRetiredQuestions() {
             List<AssessmentQuestion> questions = createQuestions(5, DifficultyLevel.INTERMEDIATE);
-            // Mark 2 questions as ineligible (RETIRED)
-            when(psychometricValidator.isEligibleForAssembly(questions.get(0).getId())).thenReturn(false);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(1).getId())).thenReturn(false);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(2).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(3).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(4).getId())).thenReturn(true);
+
+            // Mark 2 questions as RETIRED via ItemStatistics
+            ItemStatistics retiredStats0 = createItemStatistics(questions.get(0), ItemValidityStatus.RETIRED);
+            ItemStatistics retiredStats1 = createItemStatistics(questions.get(1), ItemValidityStatus.RETIRED);
+
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of(retiredStats0, retiredStats1));
 
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                     .thenReturn(questions);
@@ -297,7 +309,13 @@ class QuestionSelectionServiceTest {
         @DisplayName("should return empty when all questions are RETIRED")
         void shouldReturnEmptyWhenAllRetired() {
             List<AssessmentQuestion> questions = createQuestions(3, DifficultyLevel.INTERMEDIATE);
-            questions.forEach(q -> when(psychometricValidator.isEligibleForAssembly(q.getId())).thenReturn(false));
+
+            List<ItemStatistics> retiredStats = questions.stream()
+                    .map(q -> createItemStatistics(q, ItemValidityStatus.RETIRED))
+                    .toList();
+
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(retiredStats);
 
             when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId1))
                     .thenReturn(questions);
@@ -309,13 +327,16 @@ class QuestionSelectionServiceTest {
         }
 
         @Test
-        @DisplayName("filterByValidity should exclude ineligible questions")
-        void filterByValidityShouldExcludeIneligible() {
+        @DisplayName("filterByValidity should exclude RETIRED questions")
+        void filterByValidityShouldExcludeRetired() {
             List<AssessmentQuestion> questions = createQuestions(4, DifficultyLevel.INTERMEDIATE);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(0).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(1).getId())).thenReturn(false);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(2).getId())).thenReturn(true);
-            when(psychometricValidator.isEligibleForAssembly(questions.get(3).getId())).thenReturn(false);
+
+            // questions 1 and 3 are RETIRED
+            ItemStatistics retiredStats1 = createItemStatistics(questions.get(1), ItemValidityStatus.RETIRED);
+            ItemStatistics retiredStats3 = createItemStatistics(questions.get(3), ItemValidityStatus.RETIRED);
+
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of(retiredStats1, retiredStats3));
 
             List<AssessmentQuestion> result = service.filterByValidity(questions);
 
@@ -862,10 +883,8 @@ class QuestionSelectionServiceTest {
             List<AssessmentQuestion> questionsI1 = createQuestionsForIndicator(indicatorId1, 3);
             List<AssessmentQuestion> questionsI2 = createQuestionsForIndicator(indicatorId2, 3);
 
-            when(indicatorRepository.findByCompetencyId(competencyId1))
-                    .thenReturn(List.of(indicator1));
-            when(indicatorRepository.findByCompetencyId(competencyId2))
-                    .thenReturn(List.of(indicator2));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator1, indicator2));
             mockIndicatorQuestions(indicatorId1, questionsI1);
             mockIndicatorQuestions(indicatorId2, questionsI2);
             mockAllQuestionsEligible(questionsI1);
@@ -887,7 +906,7 @@ class QuestionSelectionServiceTest {
             BehavioralIndicator indicator1 = createIndicator(indicatorId1, competencyId1, 1.0f);
             List<AssessmentQuestion> questionsI1 = createQuestionsForIndicator(indicatorId1, 10);
 
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                     .thenReturn(List.of(indicator1));
             mockIndicatorQuestions(indicatorId1, questionsI1);
             mockAllQuestionsEligible(questionsI1);
@@ -924,6 +943,178 @@ class QuestionSelectionServiceTest {
                     false);
 
             assertThat(result).isEmpty();
+        }
+    }
+
+    // =====================================================================
+    // EXPOSURE TRACKING VIA ExposureTrackingService TESTS
+    // =====================================================================
+
+    @Nested
+    @DisplayName("ExposureTrackingService Delegation Tests")
+    class ExposureTrackingDelegationTests {
+
+        @Test
+        @DisplayName("should delegate exposure tracking to ExposureTrackingService")
+        void shouldDelegateToExposureTrackingService() {
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+            List<AssessmentQuestion> questions = createContextNeutralQuestionsForIndicator(indicatorId1, 3);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, questions);
+            mockAllQuestionsEligible(questions);
+
+            service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // Verify ExposureTrackingService.trackExposure was called (not this.trackExposure)
+            verify(exposureTrackingService).trackExposure(anyList());
+        }
+
+        @Test
+        @DisplayName("should not call exposure tracking when no questions selected")
+        void shouldNotCallExposureTrackingWhenEmpty() {
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            verifyNoInteractions(exposureTrackingService);
+        }
+    }
+
+    // =====================================================================
+    // GRADUATED DIFFICULTY DISTRIBUTION TESTS
+    // =====================================================================
+
+    @Nested
+    @DisplayName("Graduated Difficulty Distribution Tests")
+    class GraduatedDifficultyDistributionTests {
+
+        @Test
+        @DisplayName("should select across FOUNDATIONAL, INTERMEDIATE, ADVANCED when questionsPerIndicator >= 3")
+        void shouldSelectAcrossDifficultyBandsWhenThreeOrMore() {
+            // Setup indicator with questions at each difficulty
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+
+            AssessmentQuestion foundational = createContextNeutralQuestion(DifficultyLevel.FOUNDATIONAL);
+            foundational.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion intermediate = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            intermediate.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion advanced = createContextNeutralQuestion(DifficultyLevel.ADVANCED);
+            advanced.setBehavioralIndicatorId(indicatorId1);
+
+            List<AssessmentQuestion> allQuestions = List.of(foundational, intermediate, advanced);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, allQuestions);
+            mockAllQuestionsEligible(allQuestions);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            // questionsPerIndicator = 3 -> triggers graduated difficulty
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // Should get all 3 questions (one per difficulty band)
+            assertThat(result).hasSize(3);
+            assertThat(result).containsExactlyInAnyOrder(
+                    foundational.getId(), intermediate.getId(), advanced.getId());
+        }
+
+        @Test
+        @DisplayName("should fallback to any difficulty when a band has no questions")
+        void shouldFallbackWhenBandHasNoQuestions() {
+            // Setup indicator with only INTERMEDIATE questions (no FOUNDATIONAL or ADVANCED)
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+
+            AssessmentQuestion q1 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q1.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion q2 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q2.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion q3 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q3.setBehavioralIndicatorId(indicatorId1);
+
+            List<AssessmentQuestion> allQuestions = List.of(q1, q2, q3);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, allQuestions);
+            mockAllQuestionsEligible(allQuestions);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            // questionsPerIndicator = 3 -> graduated difficulty, but only INTERMEDIATE available
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // Should still get 3 questions via fallback
+            assertThat(result).hasSize(3);
+            assertThat(result).doesNotHaveDuplicates();
+        }
+
+        @Test
+        @DisplayName("should use single difficulty when questionsPerIndicator < 3")
+        void shouldUseSingleDifficultyWhenLessThanThree() {
+            BehavioralIndicator indicator = createIndicator(indicatorId1, competencyId1, 1.0f);
+
+            AssessmentQuestion q1 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q1.setBehavioralIndicatorId(indicatorId1);
+            AssessmentQuestion q2 = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+            q2.setBehavioralIndicatorId(indicatorId1);
+
+            List<AssessmentQuestion> allQuestions = List.of(q1, q2);
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator));
+            mockIndicatorQuestions(indicatorId1, allQuestions);
+            mockAllQuestionsEligible(allQuestions);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            // questionsPerIndicator = 2 -> single-difficulty path
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 2, DifficultyLevel.INTERMEDIATE, false, true);
+
+            assertThat(result).hasSize(2);
+            assertThat(result).doesNotHaveDuplicates();
+        }
+
+        @Test
+        @DisplayName("should produce no duplicates with graduated difficulty across multiple indicators")
+        void shouldProduceNoDuplicatesAcrossIndicators() {
+            BehavioralIndicator indicator1 = createIndicator(indicatorId1, competencyId1, 1.0f);
+            BehavioralIndicator indicator2 = createIndicator(indicatorId2, competencyId1, 0.8f);
+
+            // 3 questions per indicator at different difficulties
+            List<AssessmentQuestion> questionsI1 = List.of(
+                    createContextNeutralQuestionForIndicator(indicatorId1, DifficultyLevel.FOUNDATIONAL),
+                    createContextNeutralQuestionForIndicator(indicatorId1, DifficultyLevel.INTERMEDIATE),
+                    createContextNeutralQuestionForIndicator(indicatorId1, DifficultyLevel.ADVANCED));
+
+            List<AssessmentQuestion> questionsI2 = List.of(
+                    createContextNeutralQuestionForIndicator(indicatorId2, DifficultyLevel.FOUNDATIONAL),
+                    createContextNeutralQuestionForIndicator(indicatorId2, DifficultyLevel.INTERMEDIATE),
+                    createContextNeutralQuestionForIndicator(indicatorId2, DifficultyLevel.ADVANCED));
+
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                    .thenReturn(List.of(indicator1, indicator2));
+            mockIndicatorQuestions(indicatorId1, questionsI1);
+            mockIndicatorQuestions(indicatorId2, questionsI2);
+            mockAllQuestionsEligible(questionsI1);
+            mockAllQuestionsEligible(questionsI2);
+            when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                    .thenReturn(List.of());
+
+            List<UUID> result = service.selectQuestionsForCompetencies(
+                    List.of(competencyId1), 3, DifficultyLevel.INTERMEDIATE, false, true);
+
+            // 2 indicators * 3 questions = 6
+            assertThat(result).hasSize(6);
+            assertThat(result).doesNotHaveDuplicates();
         }
     }
 
@@ -1130,13 +1321,57 @@ class QuestionSelectionServiceTest {
         return indicator;
     }
 
+    private AssessmentQuestion createContextNeutralQuestion(DifficultyLevel difficulty) {
+        AssessmentQuestion question = createQuestion(difficulty);
+        question.setMetadata(Map.of("tags", List.of("GENERAL")));
+        return question;
+    }
+
+    private AssessmentQuestion createContextNeutralQuestionForIndicator(UUID indicatorId, DifficultyLevel difficulty) {
+        AssessmentQuestion question = createContextNeutralQuestion(difficulty);
+        BehavioralIndicator indicator = new BehavioralIndicator();
+        indicator.setId(indicatorId);
+        question.setBehavioralIndicator(indicator);
+        return question;
+    }
+
+    private List<AssessmentQuestion> createContextNeutralQuestionsForIndicator(UUID indicatorId, int count) {
+        BehavioralIndicator indicator = new BehavioralIndicator();
+        indicator.setId(indicatorId);
+
+        return IntStream.range(0, count)
+                .mapToObj(i -> {
+                    AssessmentQuestion q = createContextNeutralQuestion(DifficultyLevel.INTERMEDIATE);
+                    q.setBehavioralIndicator(indicator);
+                    return q;
+                })
+                .toList();
+    }
+
     private void mockIndicatorQuestions(UUID indicatorId, List<AssessmentQuestion> questions) {
         when(questionRepository.findByBehavioralIndicator_IdAndIsActiveTrue(indicatorId))
                 .thenReturn(new ArrayList<>(questions));
     }
 
+    private ItemStatistics createItemStatistics(AssessmentQuestion question, ItemValidityStatus status) {
+        ItemStatistics stats = new ItemStatistics(question);
+        stats.setValidityStatus(status);
+        return stats;
+    }
+
+    /**
+     * Mock questions as eligible by returning empty item statistics (defaults to PROBATION,
+     * which is not RETIRED and thus passes filterByValidity).
+     *
+     * The implementation batch-loads ItemStatistics via itemStatisticsRepository.findByQuestionIdIn()
+     * and excludes only RETIRED items. When no statistics exist for a question, it defaults
+     * to PROBATION status which is allowed.
+     */
     private void mockAllQuestionsEligible(List<AssessmentQuestion> questions) {
-        questions.forEach(q ->
-            when(psychometricValidator.isEligibleForAssembly(q.getId())).thenReturn(true));
+        // The filterByValidity method now uses itemStatisticsRepository.findByQuestionIdIn()
+        // instead of psychometricValidator.isEligibleForAssembly() per question.
+        // Return empty list = all questions default to PROBATION (not RETIRED) = eligible.
+        lenient().when(itemStatisticsRepository.findByQuestionIdIn(anySet()))
+                .thenReturn(List.of());
     }
 }

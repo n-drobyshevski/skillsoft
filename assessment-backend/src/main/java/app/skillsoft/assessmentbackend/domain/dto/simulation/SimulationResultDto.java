@@ -2,57 +2,26 @@ package app.skillsoft.assessmentbackend.domain.dto.simulation;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Result DTO for test simulation/dry run.
  * Contains validation status, question composition, and sample run data.
  */
 public record SimulationResultDto(
-    /**
-     * Whether the simulation completed successfully with valid configuration.
-     */
     boolean valid,
-    
-    /**
-     * Question composition breakdown.
-     * Key format: "difficulty" or "competencyId:difficulty"
-     * Value: count of questions
-     */
     Map<String, Integer> composition,
-    
-    /**
-     * Sample questions from the simulated test run.
-     */
     List<QuestionSummaryDto> sampleQuestions,
-    
-    /**
-     * Warnings and issues detected during simulation.
-     */
     List<InventoryWarning> warnings,
-    
-    /**
-     * Simulated score based on the profile used.
-     */
     Double simulatedScore,
-    
-    /**
-     * Estimated duration in minutes.
-     */
     Integer estimatedDurationMinutes,
-    
-    /**
-     * Total questions in the assembled test.
-     */
     int totalQuestions,
-    
-    /**
-     * Simulation profile used.
-     */
-    SimulationProfile profile
+    SimulationProfile profile,
+    Map<UUID, CompetencySimulationScore> competencyScores,
+    Integer abilityLevel,
+    String teamName
 ) {
-    /**
-     * Builder for constructing SimulationResultDto.
-     */
+
     public static Builder builder() {
         return new Builder();
     }
@@ -66,6 +35,9 @@ public record SimulationResultDto(
         private Integer estimatedDurationMinutes;
         private int totalQuestions;
         private SimulationProfile profile;
+        private Map<UUID, CompetencySimulationScore> competencyScores;
+        private Integer abilityLevel;
+        private String teamName;
 
         public Builder valid(boolean valid) {
             this.valid = valid;
@@ -107,21 +79,34 @@ public record SimulationResultDto(
             return this;
         }
 
+        public Builder competencyScores(Map<UUID, CompetencySimulationScore> competencyScores) {
+            this.competencyScores = competencyScores;
+            return this;
+        }
+
+        public Builder abilityLevel(Integer abilityLevel) {
+            this.abilityLevel = abilityLevel;
+            return this;
+        }
+
+        public Builder teamName(String teamName) {
+            this.teamName = teamName;
+            return this;
+        }
+
         public SimulationResultDto build() {
             return new SimulationResultDto(
                 valid, composition, sampleQuestions, warnings,
-                simulatedScore, estimatedDurationMinutes, totalQuestions, profile
+                simulatedScore, estimatedDurationMinutes, totalQuestions, profile,
+                competencyScores, abilityLevel, teamName
             );
         }
     }
 
-    /**
-     * Create a failed simulation result.
-     */
     public static SimulationResultDto failed(List<InventoryWarning> warnings) {
         return new SimulationResultDto(
             false, Map.of(), List.of(), warnings,
-            null, null, 0, null
+            null, null, 0, null, null, null, null
         );
     }
 }

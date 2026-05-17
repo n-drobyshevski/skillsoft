@@ -4,6 +4,7 @@ import app.skillsoft.assessmentbackend.domain.dto.CompetencyScoreDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.events.resilience.ResilienceFallbackEvent;
+import app.skillsoft.assessmentbackend.events.scoring.ScoringAuditEvent;
 import app.skillsoft.assessmentbackend.events.scoring.ScoringCompletedEvent;
 import app.skillsoft.assessmentbackend.events.scoring.ScoringFailedEvent;
 import app.skillsoft.assessmentbackend.events.scoring.ScoringStartedEvent;
@@ -12,8 +13,11 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
+import app.skillsoft.assessmentbackend.services.scoring.ConfidenceIntervalCalculator;
+import app.skillsoft.assessmentbackend.services.scoring.ResponseConsistencyAnalyzer;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringResult;
 import app.skillsoft.assessmentbackend.services.scoring.ScoringStrategy;
+import app.skillsoft.assessmentbackend.services.scoring.SubscalePercentileCalculator;
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
@@ -53,18 +57,27 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
     private final TestResultRepository resultRepository;
     private final List<ScoringStrategy> scoringStrategies;
     private final ApplicationEventPublisher eventPublisher;
+    private final ConfidenceIntervalCalculator confidenceIntervalCalculator;
+    private final SubscalePercentileCalculator subscalePercentileCalculator;
+    private final ResponseConsistencyAnalyzer responseConsistencyAnalyzer;
 
     public ScoringOrchestrationServiceImpl(
             TestSessionRepository sessionRepository,
             TestAnswerRepository answerRepository,
             TestResultRepository resultRepository,
             List<ScoringStrategy> scoringStrategies,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ConfidenceIntervalCalculator confidenceIntervalCalculator,
+            SubscalePercentileCalculator subscalePercentileCalculator,
+            ResponseConsistencyAnalyzer responseConsistencyAnalyzer) {
         this.sessionRepository = sessionRepository;
         this.answerRepository = answerRepository;
         this.resultRepository = resultRepository;
         this.scoringStrategies = scoringStrategies;
         this.eventPublisher = eventPublisher;
+        this.confidenceIntervalCalculator = confidenceIntervalCalculator;
+        this.subscalePercentileCalculator = subscalePercentileCalculator;
+        this.responseConsistencyAnalyzer = responseConsistencyAnalyzer;
     }
 
     @Override
@@ -77,6 +90,24 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         Instant scoringStartTime = Instant.now();
 
         log.info("Starting scoring calculation in new transaction for session={}", sessionId);
+
+        // Idempotency guard: return existing COMPLETED result without re-scoring
+        Optional<TestResult> completedResult = resultRepository.findBySession_IdAndStatus(sessionId, ResultStatus.COMPLETED);
+        if (completedResult.isPresent()) {
+            log.info("Idempotent scoring: result already exists for session {}", sessionId);
+            TestSession existingSession = sessionRepository.findByIdWithTemplate(sessionId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+            return toResultDto(completedResult.get(), existingSession);
+        }
+
+        // If existing result is PENDING, delete it and re-score
+        Optional<TestResult> pendingResult = resultRepository.findBySession_Id(sessionId);
+        if (pendingResult.isPresent()) {
+            log.info("Found PENDING result={} for session={}, deleting and re-scoring",
+                    pendingResult.get().getId(), sessionId);
+            resultRepository.delete(pendingResult.get());
+            resultRepository.flush();
+        }
 
         // Fetch session with template for scoring
         TestSession session = sessionRepository.findByIdWithTemplate(sessionId)
@@ -128,6 +159,19 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
             scoringResult = calculateLegacyScore(session, answers);
         }
 
+        // Enrich competency scores with confidence intervals (post-processing)
+        confidenceIntervalCalculator.enrichWithConfidenceIntervals(scoringResult.getCompetencyScores());
+
+        // Enrich competency scores with per-competency percentile ranks
+        subscalePercentileCalculator.enrichWithPercentiles(
+                scoringResult.getCompetencyScores(), session.getTemplate().getId());
+
+        // Run response consistency analysis on all answers (all assessment goals)
+        ResponseConsistencyAnalyzer.ConsistencyResult consistencyResult =
+                responseConsistencyAnalyzer.analyze(answers);
+        scoringResult.setConsistencyScore(consistencyResult.consistencyScore());
+        scoringResult.setConsistencyFlags(consistencyResult.flags());
+
         // Create result entity
         TestResult result = new TestResult(session, session.getClerkUserId());
         result.setOverallScore(scoringResult.getOverallScore());
@@ -142,9 +186,34 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         // Set Big Five profile (only populated for TEAM_FIT goal)
         result.setBigFiveProfile(scoringResult.getBigFiveProfile());
 
-        // Set extended metrics (e.g., TeamFitMetrics for TEAM_FIT goal)
+        // Set extended metrics (e.g., TeamFitMetrics for TEAM_FIT goal, confidence for JOB_FIT, profile for OVERVIEW)
+        Map<String, Object> extendedMetrics = new LinkedHashMap<>();
+
+        // Propagate strategy-level extended metrics (e.g., profilePattern from OVERVIEW scoring)
+        if (scoringResult.getExtendedMetrics() != null) {
+            extendedMetrics.putAll(scoringResult.getExtendedMetrics());
+        }
+
         if (scoringResult.getTeamFitMetrics() != null) {
-            Map<String, Object> extendedMetrics = convertTeamFitMetricsToMap(scoringResult.getTeamFitMetrics());
+            extendedMetrics.putAll(convertTeamFitMetricsToMap(scoringResult.getTeamFitMetrics()));
+        }
+
+        // Propagate decision confidence metrics (populated by JOB_FIT scoring)
+        if (scoringResult.getDecisionConfidence() != null) {
+            extendedMetrics.put("decisionConfidence", scoringResult.getDecisionConfidence());
+            extendedMetrics.put("confidenceLevel", scoringResult.getConfidenceLevel());
+            extendedMetrics.put("confidenceMessage", scoringResult.getConfidenceMessage());
+        }
+
+        // Propagate response consistency metrics (populated for all goals)
+        if (scoringResult.getConsistencyScore() != null) {
+            extendedMetrics.put("consistencyScore", scoringResult.getConsistencyScore());
+            extendedMetrics.put("consistencyFlags", scoringResult.getConsistencyFlags());
+            extendedMetrics.put("speedAnomalyRate", consistencyResult.speedAnomalyRate());
+            extendedMetrics.put("straightLiningRate", consistencyResult.straightLiningRate());
+        }
+
+        if (!extendedMetrics.isEmpty()) {
             result.setExtendedMetrics(extendedMetrics);
         }
 
@@ -166,6 +235,10 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
                 Boolean.TRUE.equals(saved.getPassed()),
                 scoringStartTime
         ));
+
+        // Publish scoring audit event for traceability (persisted asynchronously)
+        publishAuditEvent(session, saved, goal, strategy, scoringResult,
+                answers.size(), (int) answered, (int) skipped, scoringStartTime);
 
         log.info("Scoring completed successfully for session={} resultId={} score={}%",
                 sessionId, saved.getId(), saved.getOverallPercentage());
@@ -259,6 +332,10 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
      * Calculate the percentile rank for a given score based on historical results.
      * Percentile indicates what percentage of test takers scored below this score.
      *
+     * IMPORTANT: This method is called BEFORE the current result is saved to the database.
+     * Therefore, totalCount does NOT include the current result, and we use totalCount
+     * directly as the denominator (no need for totalCount - 1).
+     *
      * @param templateId The template ID to compare against
      * @param score The current score to calculate percentile for
      * @return Percentile rank (0-100), or 50 if no historical data exists
@@ -270,29 +347,21 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         }
 
         try {
-            // Get count of results below this score
+            // Get count of results below this score (current result NOT yet saved)
             long belowCount = resultRepository.countResultsBelowScore(templateId, score);
 
-            // Get total count of results for this template
+            // Get total count of existing results for this template (excludes current unsaved result)
             long totalCount = resultRepository.countResultsByTemplateId(templateId);
 
-            // Handle edge cases
+            // Handle edge case: no historical results yet (this is the first result)
             if (totalCount == 0) {
-                // First result for this template - default to 50th percentile
                 log.debug("First result for template {}, defaulting to 50th percentile", templateId);
                 return 50;
             }
 
-            if (totalCount == 1) {
-                // Only one result (the current one being saved)
-                // Return 50 as baseline
-                log.debug("Only one result for template {}, defaulting to 50th percentile", templateId);
-                return 50;
-            }
-
-            // Calculate percentile: (count below / total) * 100
-            // Using (totalCount - 1) to exclude the current result from denominator
-            double percentile = ((double) belowCount / (totalCount - 1)) * 100;
+            // Calculate percentile: (count below / total existing results) * 100
+            // totalCount is the correct denominator because the current result is not yet saved
+            double percentile = ((double) belowCount / totalCount) * 100;
 
             // Round and clamp to 0-100 range
             int result = (int) Math.round(percentile);
@@ -416,6 +485,57 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
     }
 
     /**
+     * Publish audit event with scoring snapshot for traceability.
+     * Extracts indicator weights from competency score DTOs.
+     */
+    private void publishAuditEvent(TestSession session, TestResult saved,
+                                    AssessmentGoal goal, ScoringStrategy strategy,
+                                    ScoringResult scoringResult,
+                                    int totalAnswers, int answeredCount, int skippedCount,
+                                    Instant scoringStartTime) {
+        try {
+            // Extract indicator weights from the scoring result
+            Map<String, Double> indicatorWeights = new LinkedHashMap<>();
+            if (scoringResult.getCompetencyScores() != null) {
+                for (var cs : scoringResult.getCompetencyScores()) {
+                    if (cs.getIndicatorScores() != null) {
+                        for (var is : cs.getIndicatorScores()) {
+                            if (is.getIndicatorId() != null) {
+                                indicatorWeights.put(is.getIndicatorId().toString(),
+                                        is.getWeight() != null ? is.getWeight() : 1.0);
+                            }
+                        }
+                    }
+                }
+            }
+
+            eventPublisher.publishEvent(ScoringAuditEvent.from(
+                    session.getId(),
+                    saved.getId(),
+                    session.getClerkUserId(),
+                    session.getTemplate().getId(),
+                    goal,
+                    strategy != null ? strategy.getClass().getSimpleName() : "LegacyScoring",
+                    saved.getOverallScore(),
+                    saved.getOverallPercentage(),
+                    saved.getPassed(),
+                    saved.getPercentile(),
+                    scoringResult.getCompetencyScores(),
+                    indicatorWeights,
+                    null, // config snapshot - can be enriched later
+                    totalAnswers,
+                    answeredCount,
+                    skippedCount,
+                    scoringStartTime
+            ));
+        } catch (Exception e) {
+            // Audit event failure should never prevent scoring from completing
+            log.warn("Failed to publish scoring audit event for session={}: {}",
+                    session.getId(), e.getMessage());
+        }
+    }
+
+    /**
      * Convert TestResult entity to DTO.
      */
     private TestResultDto toResultDto(TestResult result, TestSession session) {
@@ -456,6 +576,9 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
         map.put("diversityCount", metrics.getDiversityCount());
         map.put("saturationCount", metrics.getSaturationCount());
         map.put("gapCount", metrics.getGapCount());
+        map.put("competencySaturation", metrics.getCompetencySaturation());
+        map.put("teamSize", metrics.getTeamSize());
+        map.put("personalityCompatibility", metrics.getPersonalityCompatibility());
         return map;
     }
 }

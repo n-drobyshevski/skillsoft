@@ -3,20 +3,26 @@ package app.skillsoft.assessmentbackend.services.impl;
 import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.TemplateStatus;
+import app.skillsoft.assessmentbackend.domain.entities.TemplateVisibility;
 import app.skillsoft.assessmentbackend.domain.dto.CreateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestTemplateSummaryDto;
 import app.skillsoft.assessmentbackend.domain.dto.UpdateTestTemplateRequest;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
+import app.skillsoft.assessmentbackend.domain.dto.validation.BlueprintValidationResult;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
+import app.skillsoft.assessmentbackend.exception.TemplateNotEditableException;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
+import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.TestTemplateService;
+import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -33,13 +39,19 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     private static final Logger log = LoggerFactory.getLogger(TestTemplateServiceImpl.class);
 
     private final TestTemplateRepository templateRepository;
+    private final UserRepository userRepository;
     private final BlueprintConversionService blueprintConversionService;
+    private final BlueprintValidationService blueprintValidationService;
 
     public TestTemplateServiceImpl(
             TestTemplateRepository templateRepository,
-            BlueprintConversionService blueprintConversionService) {
+            UserRepository userRepository,
+            BlueprintConversionService blueprintConversionService,
+            BlueprintValidationService blueprintValidationService) {
         this.templateRepository = templateRepository;
+        this.userRepository = userRepository;
         this.blueprintConversionService = blueprintConversionService;
+        this.blueprintValidationService = blueprintValidationService;
     }
 
     @Override
@@ -50,11 +62,21 @@ public class TestTemplateServiceImpl implements TestTemplateService {
     }
 
     @Override
+    @Cacheable(value = CacheConfig.ACTIVE_TEMPLATES_CACHE)
     public List<TestTemplateSummaryDto> listActiveTemplates() {
         // Return only active, non-deleted templates
         return templateRepository.findByIsActiveTrueAndDeletedAtIsNull().stream()
                 .map(this::toSummaryDto)
                 .toList();
+    }
+
+    @Override
+    public List<TestTemplateSummaryDto> listMyTemplates(String clerkId) {
+        return userRepository.findByClerkId(clerkId)
+                .map(user -> templateRepository.findActiveOwnedByUser(user.getId()).stream()
+                        .map(this::toSummaryDto)
+                        .toList())
+                .orElseGet(List::of);
     }
 
     @Override
@@ -66,7 +88,7 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
     public TestTemplateDto createTemplate(CreateTestTemplateRequest request) {
         // Validate that template name is unique among non-deleted templates
         if (templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(request.name())) {
@@ -82,10 +104,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         
         // Set blueprint configuration (goal-specific assessment parameters)
         template.setBlueprint(request.blueprint());
-        
-        // Legacy: Set competencyIds for backward compatibility
-        template.setCompetencyIds(request.competencyIds());
-        
+
+        // Note: competencyIds is deprecated; not populated for new templates.
+        // Existing templates may still have data in this field for backward compatibility.
+
         template.setQuestionsPerIndicator(request.questionsPerIndicator());
         template.setTimeLimitMinutes(request.timeLimitMinutes());
         template.setPassingScore(request.passingScore());
@@ -105,10 +127,18 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public TestTemplateDto updateTemplate(UUID id, UpdateTestTemplateRequest request) {
         TestTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
+
+        // Guard: Only DRAFT templates can be modified (unless force-overwrite is requested)
+        if (!template.isEditable() && !Boolean.TRUE.equals(request.forceOverwrite())) {
+            throw new TemplateNotEditableException(template.getStatus());
+        }
 
         // Update only provided fields
         if (request.name() != null) {
@@ -175,31 +205,43 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public boolean deleteTemplate(UUID id) {
-        if (templateRepository.existsById(id)) {
-            templateRepository.deleteById(id);
-            return true;
-        }
-        return false;
+        return templateRepository.findById(id)
+                .map(template -> {
+                    template.softDelete(null);
+                    templateRepository.save(template);
+                    log.info("Template {} soft-deleted via deleteTemplate()", id);
+                    return true;
+                })
+                .orElse(false);
     }
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public TestTemplateDto activateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
         template.setIsActive(true);
         return toDto(templateRepository.save(template));
     }
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#id"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public TestTemplateDto deactivateTemplate(UUID id) {
         TestTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", id));
         template.setIsActive(false);
         return toDto(templateRepository.save(template));
     }
@@ -231,7 +273,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = CacheConfig.TEMPLATE_METADATA_CACHE, key = "#templateId"),
+        @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    })
     public PublishResult publishTemplate(UUID templateId) {
         log.info("Publishing template: {}", templateId);
 
@@ -271,48 +316,125 @@ public class TestTemplateServiceImpl implements TestTemplateService {
         );
     }
 
+    @Override
+    @Transactional
+    @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    public TestTemplateDto cloneTemplate(UUID templateId) {
+        log.info("Cloning template: {}", templateId);
+
+        // 1. Find the source template
+        TestTemplate source = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", templateId));
+
+        // 2. Determine a unique name for the clone
+        String cloneName = "Copy of " + source.getName();
+        if (templateRepository.existsByNameIgnoreCaseAndDeletedAtIsNull(cloneName)) {
+            cloneName = cloneName + " (" + System.currentTimeMillis() + ")";
+        }
+
+        // 3. Create new template with deep-copied fields and reset metadata
+        TestTemplate clone = new TestTemplate();
+        clone.setName(cloneName);
+        clone.setDescription(source.getDescription());
+        clone.setGoal(source.getGoal());
+
+        // Deep copy blueprint configurations
+        if (source.getBlueprint() != null) {
+            clone.setBlueprint(new java.util.HashMap<>(source.getBlueprint()));
+        }
+        if (source.getTypedBlueprint() != null) {
+            clone.setTypedBlueprint(source.getTypedBlueprint().deepCopy());
+        }
+        if (source.getCompetencyIds() != null) {
+            clone.setCompetencyIds(new ArrayList<>(source.getCompetencyIds()));
+        }
+
+        // Copy test configuration settings
+        clone.setQuestionsPerIndicator(source.getQuestionsPerIndicator());
+        clone.setTimeLimitMinutes(source.getTimeLimitMinutes());
+        clone.setPassingScore(source.getPassingScore());
+        clone.setShuffleQuestions(source.getShuffleQuestions());
+        clone.setShuffleOptions(source.getShuffleOptions());
+        clone.setAllowSkip(source.getAllowSkip());
+        clone.setAllowBackNavigation(source.getAllowBackNavigation());
+        clone.setShowResultsImmediately(source.getShowResultsImmediately());
+
+        // Reset metadata: brand new template, not a version
+        clone.setVersion(1);
+        clone.setParentId(null);
+        clone.setStatus(TemplateStatus.DRAFT);
+        clone.setIsActive(true);
+        clone.setVisibility(TemplateVisibility.PRIVATE);
+
+        // Auto-convert legacy blueprint to typed blueprint for test assembly
+        blueprintConversionService.ensureTypedBlueprint(clone);
+
+        TestTemplate saved = templateRepository.save(clone);
+        log.info("Cloned template {} -> new template {} (name: '{}')",
+                templateId, saved.getId(), saved.getName());
+        return toDto(saved);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = CacheConfig.ACTIVE_TEMPLATES_CACHE, allEntries = true)
+    public TestTemplateDto createNextVersion(UUID templateId, boolean archiveOriginal) {
+        log.info("Creating next version for template: {}, archiveOriginal: {}", templateId, archiveOriginal);
+
+        // 1. Find the source template
+        TestTemplate source = templateRepository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestTemplate", templateId));
+
+        // 2. Only non-DRAFT templates should be versioned (DRAFT can be edited directly)
+        if (source.getStatus() == TemplateStatus.DRAFT) {
+            throw new IllegalStateException("Template is already in DRAFT status. Edit it directly.");
+        }
+
+        // 3. Create next version using the entity method (preserves parentId chain)
+        TestTemplate nextVersion = source.createNextVersion();
+
+        // 4. Ensure blueprint conversion for the new version
+        blueprintConversionService.ensureTypedBlueprint(nextVersion);
+
+        // 5. Persist the new version
+        TestTemplate savedVersion = templateRepository.save(nextVersion);
+        log.info("Created template version {} (id: {}) from parent {} (id: {})",
+                savedVersion.getVersion(), savedVersion.getId(), source.getVersion(), source.getId());
+
+        // 6. Optionally archive the original
+        if (archiveOriginal) {
+            source.archive();
+            templateRepository.save(source);
+            log.info("Archived original template: {}", templateId);
+        }
+
+        return toDto(savedVersion);
+    }
+
     /**
      * Validates that a template has all required configuration to be published.
      *
-     * <p>This validation ensures templates are ready for test assembly by requiring
-     * a typed blueprint. Legacy blueprint data will be auto-converted before validation.</p>
+     * <p>Delegates to {@link BlueprintValidationService} for centralized validation.
+     * Returns a flat list of error message strings for backward compatibility with
+     * the existing publish flow.</p>
      *
      * @param template The template to validate
      * @return List of validation error messages (empty if valid)
      */
     private List<String> validateTemplateForPublishing(TestTemplate template) {
-        List<String> errors = new ArrayList<>();
+        BlueprintValidationResult result = blueprintValidationService.validateForPublishing(template);
 
-        // Check template has a name
-        if (template.getName() == null || template.getName().trim().isEmpty()) {
-            errors.add("Template must have a name");
+        // Log warnings even though they don't block publishing
+        if (result.hasWarnings()) {
+            log.info("Template {} has {} validation warnings: {}",
+                    template.getId(),
+                    result.warnings().size(),
+                    result.warnings().stream()
+                            .map(w -> w.id() + ": " + w.message())
+                            .toList());
         }
 
-        // Attempt to auto-convert legacy blueprint to typed blueprint
-        blueprintConversionService.ensureTypedBlueprint(template);
-
-        // Now strictly require typed blueprint for test assembly
-        if (template.getTypedBlueprint() == null) {
-            errors.add("Template must have a valid blueprint configured. " +
-                    "Please go to the Blueprint tab and add at least one competency.");
-        }
-
-        // Check assessment goal is set
-        if (template.getGoal() == null) {
-            errors.add("Template must have an assessment goal defined");
-        }
-
-        // Check time limit is reasonable
-        if (template.getTimeLimitMinutes() == null || template.getTimeLimitMinutes() <= 0) {
-            errors.add("Template must have a valid time limit (> 0 minutes)");
-        }
-
-        // Check passing score is reasonable (0-100%)
-        if (template.getPassingScore() == null || template.getPassingScore() < 0 || template.getPassingScore() > 100) {
-            errors.add("Template must have a valid passing score (0-100)");
-        }
-
-        return errors;
+        return result.errorMessages();
     }
 
     // Mapping methods
@@ -335,7 +457,10 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getShowResultsImmediately(),
                 template.getCreatedAt(),
                 template.getUpdatedAt(),
-                blueprintConversionService.hasValidBlueprint(template)
+                blueprintConversionService.hasValidBlueprint(template),
+                template.getVersion(),
+                template.getParentId(),
+                template.getStatus() != null ? template.getStatus().name() : null
         );
     }
 
@@ -349,7 +474,9 @@ public class TestTemplateServiceImpl implements TestTemplateService {
                 template.getTimeLimitMinutes(),
                 template.getPassingScore(),
                 template.getIsActive(),
-                template.getCreatedAt()
+                template.getCreatedAt(),
+                template.getStatus() != null ? template.getStatus().name() : null,
+                template.getVersion()
         );
     }
 }

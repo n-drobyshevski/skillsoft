@@ -6,10 +6,12 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.external.OnetCompetencyResolver;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.OnetService.OnetProfile;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
 import app.skillsoft.assessmentbackend.services.external.PassportService.CompetencyPassport;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,6 +62,9 @@ class JobFitAssemblerTest {
     @Mock
     private QuestionSelectionService questionSelectionService;
 
+    @Mock
+    private OnetCompetencyResolver onetCompetencyResolver;
+
     @InjectMocks
     private JobFitAssembler assembler;
 
@@ -86,7 +91,18 @@ class JobFitAssemblerTest {
 
         competency1 = createCompetency(competencyId1, "Problem Solving");
         competency2 = createCompetency(competencyId2, "Communication");
-        indicator1 = createIndicator(indicatorId1, "Critical Thinking", 1.0f, true);
+        indicator1 = createIndicator(indicatorId1, "Critical Thinking", 1.0f, true, competencyId1);
+
+        // Default: resolver delegates to name-based lookup maps
+        lenient().when(onetCompetencyResolver.buildCompetencyLookupMaps(anyList()))
+            .thenAnswer(invocation -> {
+                List<Competency> competencies = invocation.getArgument(0);
+                Map<String, List<Competency>> lookup = new HashMap<>();
+                for (var c : competencies) {
+                    lookup.computeIfAbsent(c.getName().toLowerCase(), k -> new ArrayList<>()).add(c);
+                }
+                return lookup;
+            });
     }
 
     @Nested
@@ -160,9 +176,9 @@ class JobFitAssemblerTest {
             JobFitBlueprint blueprint = new JobFitBlueprint();
             blueprint.setOnetSocCode(null);
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(onetService);
         }
 
@@ -172,9 +188,9 @@ class JobFitAssemblerTest {
             JobFitBlueprint blueprint = new JobFitBlueprint();
             blueprint.setOnetSocCode("   ");
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(onetService);
         }
     }
@@ -191,10 +207,10 @@ class JobFitAssemblerTest {
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.empty());
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verify(onetService).getProfile(VALID_SOC_CODE);
         }
 
@@ -209,17 +225,17 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
             verify(onetService).getProfile(VALID_SOC_CODE);
         }
     }
@@ -240,17 +256,17 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
             verifyNoInteractions(passportService);
         }
 
@@ -268,8 +284,8 @@ class JobFitAssemblerTest {
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
             when(passportService.getPassportByClerkUserId(candidateId)).thenReturn(Optional.empty());
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
@@ -302,18 +318,17 @@ class JobFitAssemblerTest {
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
             when(passportService.getPassportByClerkUserId(candidateId)).thenReturn(Optional.of(passport));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(competencyRepository.findById(competencyId1)).thenReturn(Optional.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isNotEmpty();
+            assertThat(result.questionIds()).isNotEmpty();
         }
     }
 
@@ -332,17 +347,17 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
-            when(indicatorRepository.findByCompetencyId(competencyId1)).thenReturn(List.of(indicator1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), any(DifficultyLevel.class), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).contains(questionId1);
+            assertThat(result.questionIds()).contains(questionId1);
             verify(questionSelectionService).selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), any(DifficultyLevel.class), anySet()
             );
@@ -359,13 +374,108 @@ class JobFitAssemblerTest {
 
             OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
             when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
-            when(competencyRepository.findAll()).thenReturn(List.of(competency1));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("assemble - CompetencyIds Blueprint Path Tests")
+    class AssembleCompetencyIdsTests {
+
+        @Test
+        @DisplayName("should use only competencyIds when provided (no O*NET name resolution)")
+        void shouldUseOnlyCompetencyIdsWhenProvided() {
+            // Given: blueprint with explicit competencyIds (frontend already resolved O*NET)
+            JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
+            blueprint.setCompetencyIds(List.of(competencyId1, competencyId2));
+
+            Map<String, Double> benchmarks = new HashMap<>();
+            benchmarks.put("Problem Solving", 0.8);
+
+            OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
+            when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
+            // Only findAllById should be called — no name resolution
+            when(competencyRepository.findAllById(List.of(competencyId1, competencyId2)))
+                .thenReturn(List.of(competency1, competency2));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            AssemblyResult result = assembler.assemble(blueprint);
+
+            // Then: findByNameInIgnoreCase should NOT be called when competencyIds provided
+            verify(competencyRepository, never()).findByNameInIgnoreCase(any());
+            verify(competencyRepository).findAllById(List.of(competencyId1, competencyId2));
+            verify(competencyRepository, never()).findByIsActiveTrue();
+            assertThat(result.questionIds()).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("should fall back to name-based matching when competencyIds is empty")
+        void shouldFallBackToNameMatchingWhenCompetencyIdsEmpty() {
+            // Given: blueprint with empty competencyIds (legacy path)
+            JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
+            // competencyIds is empty by default
+
+            Map<String, Double> benchmarks = new HashMap<>();
+            benchmarks.put("Problem Solving", 0.8);
+
+            OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
+            when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
+            when(competencyRepository.findByNameInIgnoreCase(any())).thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then: should use name-based matching, NOT findAllById
+            verify(competencyRepository, never()).findAllById(anyList());
+            verify(competencyRepository).findByNameInIgnoreCase(any());
+        }
+
+        @Test
+        @DisplayName("should include uncovered competencies with default difficulty when competencyIds specified")
+        void shouldIncludeUncoveredCompetenciesWhenIdsSpecified() {
+            // Given: 2 competencies selected, but only 1 matches O*NET benchmark
+            UUID indicatorId2 = UUID.randomUUID();
+            BehavioralIndicator indicator2 = createIndicator(indicatorId2, "Active Listening", 1.0f, true, competencyId2);
+
+            JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
+            blueprint.setCompetencyIds(List.of(competencyId1, competencyId2));
+
+            Map<String, Double> benchmarks = new HashMap<>();
+            benchmarks.put("Problem Solving", 0.8);
+            // Note: no benchmark for "Communication" (competency2)
+
+            OnetProfile profile = createOnetProfile(VALID_SOC_CODE, "Software Developer", benchmarks);
+            when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.of(profile));
+            // Only findAllById — no name resolution when competencyIds provided
+            when(competencyRepository.findAllById(List.of(competencyId1, competencyId2)))
+                .thenReturn(List.of(competency1, competency2));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1, indicator2));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            AssemblyResult result = assembler.assemble(blueprint);
+
+            // Then: should select questions for BOTH indicators (matched + uncovered)
+            verify(competencyRepository, never()).findByNameInIgnoreCase(any());
+            verify(questionSelectionService, atLeast(2)).selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet());
         }
     }
 
@@ -385,12 +495,16 @@ class JobFitAssemblerTest {
         return competency;
     }
 
-    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive) {
+    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive, UUID competencyId) {
         BehavioralIndicator indicator = new BehavioralIndicator();
         indicator.setId(id);
         indicator.setTitle(title);
         indicator.setWeight(weight);
         indicator.setActive(isActive);
+        // Set competency for batch-loaded grouping (source groups by competency.getId())
+        Competency competency = new Competency();
+        competency.setId(competencyId);
+        indicator.setCompetency(competency);
         return indicator;
     }
 

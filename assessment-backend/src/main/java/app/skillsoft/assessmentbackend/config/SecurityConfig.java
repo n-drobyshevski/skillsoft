@@ -80,7 +80,10 @@ public class SecurityConfig {
             
             // Configure CORS - uses the same CorsConfigurationSource as CorsFilter
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
-            
+
+            // Disable default Cache-Control: no-cache headers so controllers can set their own
+            .headers(h -> h.cacheControl(c -> c.disable()))
+
             // Stateless session management
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -90,6 +93,8 @@ public class SecurityConfig {
                 // Public endpoints - no authentication required
                 .requestMatchers("/api/webhooks/**").permitAll()
                 .requestMatchers("/actuator/health/**").permitAll()
+                .requestMatchers("/actuator/caches/**").permitAll()
+                .requestMatchers("/actuator/circuitbreakers/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 
                 // Allow CORS preflight requests
@@ -99,11 +104,16 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/competencies/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/behavioral-indicators/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/questions/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/stats/**").permitAll()
 
                 // Allow public read access (GET) for content endpoints (v1)
                 .requestMatchers(HttpMethod.GET, "/api/v1/competencies/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/behavioral-indicators/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/questions/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/stats/**").permitAll()
+
+                // Allow public read access for active templates catalog (used by server-side cache)
+                .requestMatchers(HttpMethod.GET, "/api/v1/tests/templates/active").permitAll()
 
                 // Allow public access for share link validation (anonymous access support)
                 .requestMatchers(HttpMethod.GET, "/api/v1/tests/templates/validate-link").permitAll()
@@ -111,6 +121,10 @@ public class SecurityConfig {
                 // Allow public access for anonymous test-taking via share links
                 // These endpoints use session access tokens instead of Clerk JWT
                 .requestMatchers("/api/v1/anonymous/**").permitAll()
+
+                // Allow public read access for persistent anonymous result URLs
+                // These endpoints use HMAC-signed tokens for authentication
+                .requestMatchers(HttpMethod.GET, "/api/v1/public/results/**").permitAll()
 
                 // All other requests require authentication
                 // Role-based access is handled by @PreAuthorize annotations

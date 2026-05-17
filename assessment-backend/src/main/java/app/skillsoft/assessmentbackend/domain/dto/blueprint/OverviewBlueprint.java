@@ -8,7 +8,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -65,6 +67,13 @@ public class OverviewBlueprint extends TestBlueprintDto {
      * Recommended true to prevent clustering by competency.
      */
     private boolean shuffleQuestions = true;
+
+    /**
+     * Per-competency weight multipliers (competency UUID -> weight).
+     * Weight range: 0.5 - 2.0 (default 1.0 if absent).
+     * Higher weight = more questions allocated to that competency's indicators.
+     */
+    private Map<UUID, Double> competencyWeights;
 
     // Constructors
     public OverviewBlueprint() {
@@ -125,6 +134,14 @@ public class OverviewBlueprint extends TestBlueprintDto {
         this.shuffleQuestions = shuffleQuestions;
     }
 
+    public Map<UUID, Double> getCompetencyWeights() {
+        return competencyWeights;
+    }
+
+    public void setCompetencyWeights(Map<UUID, Double> competencyWeights) {
+        this.competencyWeights = competencyWeights;
+    }
+
     @Override
     public TestBlueprintDto deepCopy() {
         OverviewBlueprint copy = new OverviewBlueprint();
@@ -134,6 +151,9 @@ public class OverviewBlueprint extends TestBlueprintDto {
         copy.setQuestionsPerIndicator(this.questionsPerIndicator);
         copy.setPreferredDifficulty(this.preferredDifficulty);
         copy.setShuffleQuestions(this.shuffleQuestions);
+        if (this.competencyWeights != null) {
+            copy.setCompetencyWeights(new HashMap<>(this.competencyWeights));
+        }
         if (this.getAdaptivity() != null) {
             copy.setAdaptivity(this.getAdaptivity().deepCopy());
         }
@@ -150,13 +170,15 @@ public class OverviewBlueprint extends TestBlueprintDto {
                questionsPerIndicator == that.questionsPerIndicator &&
                shuffleQuestions == that.shuffleQuestions &&
                preferredDifficulty == that.preferredDifficulty &&
-               Objects.equals(competencyIds, that.competencyIds);
+               Objects.equals(competencyIds, that.competencyIds) &&
+               Objects.equals(competencyWeights, that.competencyWeights);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(super.hashCode(), competencyIds, includeBigFive,
-                questionsPerIndicator, preferredDifficulty, shuffleQuestions);
+                questionsPerIndicator, preferredDifficulty, shuffleQuestions,
+                competencyWeights);
     }
 
     @Override
@@ -168,6 +190,7 @@ public class OverviewBlueprint extends TestBlueprintDto {
                 ", questionsPerIndicator=" + questionsPerIndicator +
                 ", preferredDifficulty=" + preferredDifficulty +
                 ", shuffleQuestions=" + shuffleQuestions +
+                ", competencyWeights=" + competencyWeights +
                 ", adaptivity=" + getAdaptivity() +
                 '}';
     }

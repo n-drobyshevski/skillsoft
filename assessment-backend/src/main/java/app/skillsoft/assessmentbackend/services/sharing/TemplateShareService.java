@@ -178,9 +178,7 @@ public interface TemplateShareService {
      */
     int revokeAllShares(UUID templateId);
 
-    // ============================================
     // SHARED WITH ME OPERATIONS
-    // ============================================
 
     /**
      * Get all templates shared with the current user.

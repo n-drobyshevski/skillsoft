@@ -4,13 +4,17 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.selection.SelectionWarningCollector;
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -51,7 +55,7 @@ public class OverviewAssembler implements TestAssembler {
     }
 
     @Override
-    public List<UUID> assemble(TestBlueprintDto blueprint) {
+    public AssemblyResult assemble(TestBlueprintDto blueprint) {
         // Set operation context for assembly logging
         LoggingContext.setOperation("overview-assembly");
 
@@ -67,7 +71,7 @@ public class OverviewAssembler implements TestAssembler {
         var competencyIds = overviewBlueprint.getCompetencyIds();
         if (competencyIds == null || competencyIds.isEmpty()) {
             log.warn("No competency IDs provided in OverviewBlueprint");
-            return List.of();
+            return AssemblyResult.empty();
         }
 
         log.info("Assembling OVERVIEW test: competencies={} count={}",
@@ -89,19 +93,47 @@ public class OverviewAssembler implements TestAssembler {
         // Use QuestionSelectionService for centralized selection logic
         // This applies:
         // - Psychometric validation (excludes RETIRED items)
+        // - Context neutrality filtering (OVERVIEW requires context-neutral items)
         // - WATERFALL distribution across indicators
         // - Difficulty preference with fallback
         // - Optional shuffling
-        List<UUID> selectedQuestions = questionSelectionService.selectQuestionsForCompetencies(
-                competencyIds,
-                questionsPerIndicator,
-                preferredDifficulty,
-                shuffle
-        );
+        List<InventoryWarning> warnings = new ArrayList<>();
 
-        log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {})",
-                selectedQuestions.size(), competencyIds.size(), questionsPerIndicator);
+        Map<UUID, Double> competencyWeights = overviewBlueprint.getCompetencyWeights();
+        boolean useWeighted = competencyWeights != null && !competencyWeights.isEmpty();
 
-        return selectedQuestions;
+        SelectionWarningCollector.begin();
+        try {
+            List<UUID> selectedQuestions;
+
+            if (useWeighted) {
+                log.info("Using weighted selection for OVERVIEW: weights={}", competencyWeights);
+                selectedQuestions = questionSelectionService.selectQuestionsForCompetenciesWeighted(
+                        competencyIds,
+                        competencyWeights,
+                        questionsPerIndicator,
+                        preferredDifficulty,
+                        shuffle,
+                        true // contextNeutralOnly
+                );
+            } else {
+                selectedQuestions = questionSelectionService.selectQuestionsForCompetencies(
+                        competencyIds,
+                        questionsPerIndicator,
+                        preferredDifficulty,
+                        shuffle,
+                        true // contextNeutralOnly
+                );
+            }
+
+            log.info("Assembled {} questions for OVERVIEW assessment (competencies: {}, perIndicator: {}, weighted: {})",
+                    selectedQuestions.size(), competencyIds.size(), questionsPerIndicator, useWeighted);
+
+            warnings.addAll(SelectionWarningCollector.drain());
+            return new AssemblyResult(selectedQuestions, warnings);
+        } catch (Exception e) {
+            SelectionWarningCollector.clear();
+            throw e;
+        }
     }
 }

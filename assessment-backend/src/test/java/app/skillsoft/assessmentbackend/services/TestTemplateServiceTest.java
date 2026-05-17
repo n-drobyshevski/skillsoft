@@ -4,8 +4,10 @@ import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
-import app.skillsoft.assessmentbackend.services.impl.TestTemplateServiceImpl;
+import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
+import app.skillsoft.assessmentbackend.services.impl.TestTemplateServiceImpl;
+import app.skillsoft.assessmentbackend.services.validation.BlueprintValidationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -44,7 +46,13 @@ class TestTemplateServiceTest {
     private TestTemplateRepository templateRepository;
 
     @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private BlueprintConversionService blueprintConversionService;
+
+    @Mock
+    private BlueprintValidationService blueprintValidationService;
 
     @InjectMocks
     private TestTemplateServiceImpl testTemplateService;
@@ -115,7 +123,8 @@ class TestTemplateServiceTest {
                 null,  // shuffleOptions - not changed
                 null,  // allowSkip - not changed
                 true,  // allowBackNavigation
-                null   // showResultsImmediately - not changed
+                null,  // showResultsImmediately - not changed
+                null   // forceOverwrite
         );
     }
 
@@ -338,7 +347,8 @@ class TestTemplateServiceTest {
                     null,  // shuffleOptions - keep original
                     null,  // allowSkip - keep original
                     null,  // allowBackNavigation - keep original
-                    null   // showResultsImmediately - keep original
+                    null,  // showResultsImmediately - keep original
+                    null   // forceOverwrite
             );
             when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
             when(templateRepository.save(any(TestTemplate.class))).thenReturn(mockTemplate);
@@ -359,19 +369,19 @@ class TestTemplateServiceTest {
     class DeleteTemplateTests {
 
         @Test
-        @DisplayName("Should delete existing template")
-        void shouldDeleteExistingTemplate() {
+        @DisplayName("Should soft-delete existing template")
+        void shouldSoftDeleteExistingTemplate() {
             // Given
-            when(templateRepository.existsById(templateId)).thenReturn(true);
-            doNothing().when(templateRepository).deleteById(templateId);
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+            when(templateRepository.save(any())).thenReturn(mockTemplate);
 
             // When
             boolean result = testTemplateService.deleteTemplate(templateId);
 
             // Then
             assertThat(result).isTrue();
-            verify(templateRepository).existsById(templateId);
-            verify(templateRepository).deleteById(templateId);
+            verify(templateRepository).findById(templateId);
+            verify(templateRepository).save(any());
         }
 
         @Test
@@ -379,15 +389,15 @@ class TestTemplateServiceTest {
         void shouldReturnFalseWhenTemplateNotFound() {
             // Given
             UUID nonExistentId = UUID.randomUUID();
-            when(templateRepository.existsById(nonExistentId)).thenReturn(false);
+            when(templateRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
             // When
             boolean result = testTemplateService.deleteTemplate(nonExistentId);
 
             // Then
             assertThat(result).isFalse();
-            verify(templateRepository).existsById(nonExistentId);
-            verify(templateRepository, never()).deleteById(any());
+            verify(templateRepository).findById(nonExistentId);
+            verify(templateRepository, never()).save(any());
         }
     }
 

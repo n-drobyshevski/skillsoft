@@ -19,6 +19,7 @@ public class IndicatorScoreDto {
     private Double maxScore;
     private Double percentage;
     private Integer questionsAnswered;
+    private String proficiencyLabel;  // e.g., "Advanced", "Developing"
 
     // Constructors
     public IndicatorScoreDto() {
@@ -108,6 +109,14 @@ public class IndicatorScoreDto {
 
     public void setQuestionsAnswered(Integer questionsAnswered) {
         this.questionsAnswered = questionsAnswered;
+    }
+
+    public String getProficiencyLabel() {
+        return proficiencyLabel;
+    }
+
+    public void setProficiencyLabel(String proficiencyLabel) {
+        this.proficiencyLabel = proficiencyLabel;
     }
 
     @Override

@@ -8,12 +8,17 @@ import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
+import app.skillsoft.assessmentbackend.services.external.OnetCompetencyResolver;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.PassportService;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.selection.SelectionWarningCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.WarningCode;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -42,6 +47,7 @@ public class JobFitAssembler implements TestAssembler {
     private final CompetencyRepository competencyRepository;
     private final BehavioralIndicatorRepository indicatorRepository;
     private final QuestionSelectionService questionSelectionService;
+    private final OnetCompetencyResolver onetCompetencyResolver;
 
     /**
      * Gap threshold for selecting ADVANCED questions.
@@ -49,9 +55,19 @@ public class JobFitAssembler implements TestAssembler {
     private static final double SIGNIFICANT_GAP_THRESHOLD = 0.2;
 
     /**
-     * Default questions per competency gap area.
+     * Minimum questions allocated per competency gap area.
      */
-    private static final int DEFAULT_QUESTIONS_PER_GAP = 5;
+    private static final int MIN_QUESTIONS_PER_GAP = 2;
+
+    /**
+     * Maximum questions allocated per competency gap area.
+     */
+    private static final int MAX_QUESTIONS_PER_GAP = 8;
+
+    /**
+     * Maximum total questions for a single Job Fit assessment.
+     */
+    private static final int MAX_TOTAL_QUESTIONS = 50;
 
     @Override
     public AssessmentGoal getSupportedGoal() {
@@ -59,7 +75,7 @@ public class JobFitAssembler implements TestAssembler {
     }
 
     @Override
-    public List<UUID> assemble(TestBlueprintDto blueprint) {
+    public AssemblyResult assemble(TestBlueprintDto blueprint) {
         if (!(blueprint instanceof JobFitBlueprint jobFitBlueprint)) {
             throw new IllegalArgumentException(
                 "JobFitAssembler requires JobFitBlueprint, got: " +
@@ -67,10 +83,16 @@ public class JobFitAssembler implements TestAssembler {
             );
         }
 
+        var warnings = new ArrayList<InventoryWarning>();
+
         var socCode = jobFitBlueprint.getOnetSocCode();
         if (socCode == null || socCode.isBlank()) {
             log.warn("No O*NET SOC code provided in JobFitBlueprint");
-            return List.of();
+            return new AssemblyResult(List.of(), List.of(
+                InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.ERROR,
+                    WarningCode.NO_ONET_SOC_CODE,
+                    "No O*NET SOC code provided in blueprint configuration.")
+            ));
         }
 
         var candidateClerkUserId = jobFitBlueprint.getCandidateClerkUserId();
@@ -81,34 +103,44 @@ public class JobFitAssembler implements TestAssembler {
         var onetProfile = onetService.getProfile(socCode);
         if (onetProfile.isEmpty()) {
             log.warn("No O*NET profile found for SOC code: {}", socCode);
-            return List.of();
+            return new AssemblyResult(List.of(), List.of(
+                InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.ERROR,
+                    WarningCode.NO_ONET_PROFILE,
+                    "No O*NET profile found for SOC code: " + socCode,
+                    Map.of("socCode", socCode))
+            ));
         }
 
         var benchmarks = onetProfile.get().benchmarks();
         log.debug("Found {} benchmark competencies for {}", benchmarks.size(), socCode);
 
         // Step 2: Fetch candidate's Competency Passport if available (Delta Testing)
-        Optional<PassportService.CompetencyPassport> passport = fetchCandidatePassport(candidateClerkUserId);
+        Optional<PassportService.CompetencyPassport> passport = fetchCandidatePassport(
+            candidateClerkUserId, jobFitBlueprint.getPassportMaxAgeDays());
 
         // Step 3: Calculate gaps using passport data (or default to score=0 if no passport)
-        var gapAnalysis = analyzeGaps(benchmarks, passport, jobFitBlueprint.getStrictnessLevel());
+        var gapAnalysis = analyzeGaps(benchmarks, passport, jobFitBlueprint.getStrictnessLevel(), warnings);
 
         // Step 4: Select questions based on gap analysis using QuestionSelectionService
-        var selectedQuestions = selectQuestionsForGaps(gapAnalysis, jobFitBlueprint.getStrictnessLevel());
+        var selectedQuestions = selectQuestionsForGaps(
+            gapAnalysis, jobFitBlueprint.getStrictnessLevel(),
+            jobFitBlueprint.getCompetencyIds(), warnings);
 
         log.info("Assembled {} questions for JOB_FIT assessment (SOC: {}, deltaMode: {})",
             selectedQuestions.size(), socCode, passport.isPresent());
 
-        return selectedQuestions;
+        return new AssemblyResult(selectedQuestions, warnings);
     }
 
     /**
      * Fetch the candidate's Competency Passport from PassportService.
+     * Validates passport freshness against maxAgeDays threshold.
      *
      * @param candidateClerkUserId The Clerk User ID of the candidate (may be null)
-     * @return The passport if found and valid, empty otherwise
+     * @param maxAgeDays Maximum passport age in days before it's considered stale
+     * @return The passport if found, valid, and fresh enough; empty otherwise
      */
-    private Optional<PassportService.CompetencyPassport> fetchCandidatePassport(String candidateClerkUserId) {
+    private Optional<PassportService.CompetencyPassport> fetchCandidatePassport(String candidateClerkUserId, int maxAgeDays) {
         if (candidateClerkUserId == null || candidateClerkUserId.isBlank()) {
             log.debug("No candidate ID provided - using full assessment mode (all scores = 0)");
             return Optional.empty();
@@ -118,6 +150,17 @@ public class JobFitAssembler implements TestAssembler {
 
         if (passport.isPresent()) {
             var p = passport.get();
+
+            // Check passport freshness
+            if (p.lastAssessed() != null) {
+                long ageDays = java.time.Duration.between(p.lastAssessed(), java.time.LocalDateTime.now()).toDays();
+                if (ageDays > maxAgeDays) {
+                    log.warn("Competency Passport for candidate {} is stale ({} days old, max: {}). Using full assessment mode.",
+                        candidateClerkUserId, ageDays, maxAgeDays);
+                    return Optional.empty();
+                }
+            }
+
             log.info("Found Competency Passport for candidate {}: {} competency scores, last assessed: {}",
                 candidateClerkUserId, p.competencyScores().size(), p.lastAssessed());
         } else {
@@ -147,7 +190,8 @@ public class JobFitAssembler implements TestAssembler {
     private Map<String, GapInfo> analyzeGaps(
             Map<String, Double> benchmarks,
             Optional<PassportService.CompetencyPassport> passport,
-            int strictnessLevel) {
+            int strictnessLevel,
+            List<InventoryWarning> warnings) {
 
         var gaps = new HashMap<String, GapInfo>();
 
@@ -170,7 +214,27 @@ public class JobFitAssembler implements TestAssembler {
 
             // Look up candidate's existing score for this competency
             // Default to 0.0 if no passport or competency not assessed
-            var candidateScore = passportScoresByName.getOrDefault(competencyName, 0.0);
+            Double candidateScoreOrNull = passportScoresByName.get(competencyName);
+
+            // Fuzzy fallback: if exact match fails, try token-based similarity matching
+            if (candidateScoreOrNull == null && !passportScoresByName.isEmpty()) {
+                Optional<String> fuzzyMatch = CompetencyNameMatcher.findBestMatch(
+                    competencyName, passportScoresByName.keySet());
+                if (fuzzyMatch.isPresent()) {
+                    log.info("Fuzzy match used for passport lookup: benchmark competency '{}' matched to passport key '{}'. " +
+                             "Consider aligning competency names for exact matching.",
+                        competencyName, fuzzyMatch.get());
+                    warnings.add(InventoryWarning.assemblyWarning(
+                        InventoryWarning.WarningLevel.INFO,
+                        WarningCode.FUZZY_MATCH_PASSPORT,
+                        "Fuzzy match for passport lookup: benchmark '" + competencyName +
+                        "' matched to '" + fuzzyMatch.get() + "'. Consider aligning competency names.",
+                        Map.of("benchmark", competencyName, "match", fuzzyMatch.get())));
+                    candidateScoreOrNull = passportScoresByName.get(fuzzyMatch.get());
+                }
+            }
+
+            var candidateScore = candidateScoreOrNull != null ? candidateScoreOrNull : 0.0;
 
             // Calculate gap: how much the candidate falls short of the benchmark
             var gap = Math.max(0.0, benchmark - candidateScore);
@@ -205,6 +269,8 @@ public class JobFitAssembler implements TestAssembler {
      * This method maps internal competency UUIDs to their names so we can
      * match them against O*NET benchmark competency names.
      *
+     * Uses batch loading to avoid N+1 queries (single findAllById call).
+     *
      * @param passportScores Map of competency UUIDs to scores from passport
      * @return Map of competency names to scores
      */
@@ -213,31 +279,36 @@ public class JobFitAssembler implements TestAssembler {
             return Map.of();
         }
 
+        // Batch load all competencies at once instead of one-by-one
+        List<Competency> competencies = competencyRepository.findAllById(passportScores.keySet());
+        Map<UUID, Competency> competencyMap = competencies.stream()
+            .collect(Collectors.toMap(Competency::getId, c -> c));
+
         var lookup = new HashMap<String, Double>();
 
         for (var entry : passportScores.entrySet()) {
             var competencyId = entry.getKey();
             var score = entry.getValue();
 
-            // Look up the competency name from the repository
-            competencyRepository.findById(competencyId).ifPresent(competency -> {
-                // Use the competency name for matching
-                lookup.put(competency.getName(), score);
+            Competency competency = competencyMap.get(competencyId);
+            if (competency == null) continue;
 
-                // Also check standard_codes for O*NET code mapping if available
-                var standardCodes = competency.getStandardCodes();
-                if (standardCodes != null && standardCodes.hasOnetMapping()) {
-                    var onetCode = standardCodes.onetRef().code();
-                    if (onetCode != null && !onetCode.isBlank()) {
-                        lookup.put(onetCode, score);
-                    }
-                    // Also add by O*NET title if available
-                    var onetTitle = standardCodes.onetRef().title();
-                    if (onetTitle != null && !onetTitle.isBlank()) {
-                        lookup.put(onetTitle, score);
-                    }
+            // Use the competency name for matching
+            lookup.put(competency.getName(), score);
+
+            // Also check standard_codes for O*NET code mapping if available
+            var standardCodes = competency.getStandardCodes();
+            if (standardCodes != null && standardCodes.hasOnetMapping()) {
+                var onetCode = standardCodes.onetRef().code();
+                if (onetCode != null && !onetCode.isBlank()) {
+                    lookup.put(onetCode, score);
                 }
-            });
+                // Also add by O*NET title if available
+                var onetTitle = standardCodes.onetRef().title();
+                if (onetTitle != null && !onetTitle.isBlank()) {
+                    lookup.put(onetTitle, score);
+                }
+            }
         }
 
         log.debug("Built passport score lookup with {} entries", lookup.size());
@@ -249,8 +320,65 @@ public class JobFitAssembler implements TestAssembler {
      *
      * Uses WEIGHTED distribution with gap magnitude as weight.
      * Larger gaps receive more questions.
+     *
+     * Loads competencies using a two-phase strategy:
+     * 1. Try name-based lookup (fast path for matching names)
+     * 2. If insufficient, fall back to ALL active competencies and match via
+     *    standardCodes fields (onetRef.title, escoRef.title) + fuzzy matching
+     *
+     * This handles cross-language scenarios where O*NET benchmark names (English)
+     * differ from internal competency names (e.g., Russian).
      */
-    private List<UUID> selectQuestionsForGaps(Map<String, GapInfo> gapAnalysis, int strictnessLevel) {
+    private List<UUID> selectQuestionsForGaps(
+            Map<String, GapInfo> gapAnalysis, int strictnessLevel,
+            List<UUID> competencyIds, List<InventoryWarning> warnings) {
+
+        List<Competency> allCompetencies;
+
+        if (competencyIds != null && !competencyIds.isEmpty()) {
+            // Frontend builder already includes O*NET competencies on the canvas,
+            // so we simply load whatever IDs were sent — no backend merge needed.
+            allCompetencies = competencyRepository.findAllById(competencyIds);
+            log.info("Blueprint sent {} competencyIds, DB found {} competencies",
+                competencyIds.size(), allCompetencies.size());
+        } else {
+            // Legacy path: no competencyIds provided — resolve via O*NET benchmark names
+            Set<String> benchmarkNames = gapAnalysis.keySet().stream()
+                .map(String::toLowerCase)
+                .collect(Collectors.toSet());
+
+            // Phase 1: try direct name match
+            allCompetencies = competencyRepository.findByNameInIgnoreCase(benchmarkNames);
+
+            // Phase 2: if name match found fewer competencies than benchmarks, broaden search
+            if (allCompetencies.size() < benchmarkNames.size()) {
+                log.info("Name-based competency lookup matched only {}/{} benchmarks. " +
+                         "Falling back to full active competency scan for cross-reference matching.",
+                    allCompetencies.size(), benchmarkNames.size());
+                warnings.add(InventoryWarning.assemblyWarning(
+                    InventoryWarning.WarningLevel.INFO,
+                    WarningCode.BENCHMARK_LOOKUP_FALLBACK,
+                    "Name-based competency lookup matched only " + allCompetencies.size() + "/" +
+                    benchmarkNames.size() + " benchmarks. Falling back to full active competency scan.",
+                    Map.of("matched", String.valueOf(allCompetencies.size()),
+                           "total", String.valueOf(benchmarkNames.size()))));
+                allCompetencies = competencyRepository.findByIsActiveTrue();
+            }
+        }
+
+        Map<String, List<Competency>> competencyByName = onetCompetencyResolver.buildCompetencyLookupMaps(allCompetencies);
+
+        // Batch load indicators for all competencies at once
+        Set<UUID> allCompetencyIds = allCompetencies.stream()
+            .map(Competency::getId)
+            .collect(Collectors.toSet());
+        List<BehavioralIndicator> allIndicators = indicatorRepository.findByCompetencyIdIn(allCompetencyIds);
+
+        // Build indicator lookup by competency ID
+        Map<UUID, List<BehavioralIndicator>> indicatorsByCompetencyId = allIndicators.stream()
+            .filter(BehavioralIndicator::isActive)
+            .collect(Collectors.groupingBy(i -> i.getCompetency().getId()));
+
         // Build weighted indicator map based on gaps
         Map<UUID, Double> indicatorWeights = new LinkedHashMap<>();
         Map<UUID, DifficultyLevel> indicatorDifficulties = new HashMap<>();
@@ -260,106 +388,228 @@ public class JobFitAssembler implements TestAssembler {
             .sorted(Comparator.comparing(GapInfo::gap).reversed())
             .toList();
 
-        for (var gapInfo : sortedGaps) {
-            // Determine target difficulty based on gap significance
-            var targetDifficulty = gapInfo.isSignificant()
-                ? DifficultyLevel.ADVANCED
-                : DifficultyLevel.INTERMEDIATE;
+        // Track which competencies get matched via O*NET benchmarks
+        Set<UUID> coveredCompetencyIds = new HashSet<>();
 
-            // Find competency and its indicators by name
-            var indicatorsForGap = findIndicatorsForCompetencyName(gapInfo.competencyName());
+        for (var gapInfo : sortedGaps) {
+            // Determine target difficulty using graduated mapping based on gap magnitude
+            var targetDifficulty = mapGapToDifficulty(gapInfo.gap(), strictnessLevel);
+
+            // Find competency and its indicators by name using preloaded data
+            var indicatorsForGap = findIndicatorsForCompetencyNameCached(
+                gapInfo.competencyName(), competencyByName, indicatorsByCompetencyId, warnings);
 
             for (var indicator : indicatorsForGap) {
-                // Weight = gap magnitude (0.0 - 1.0), minimum 0.1 to ensure at least some questions
-                double weight = Math.max(0.1, gapInfo.gap());
+                // Weight = normalized gap magnitude (0.0 - 1.0), minimum 0.1 to ensure at least some questions
+                double weight = Math.max(0.1, Math.min(gapInfo.gap() / 5.0, 1.0));
                 indicatorWeights.put(indicator.getId(), weight);
                 indicatorDifficulties.put(indicator.getId(), targetDifficulty);
+                coveredCompetencyIds.add(indicator.getCompetency().getId());
+            }
+        }
+
+        // Ensure ALL competencies get questions even if they don't match an O*NET
+        // benchmark name. These use INTERMEDIATE difficulty and a baseline weight.
+        for (var competency : allCompetencies) {
+            if (!coveredCompetencyIds.contains(competency.getId())) {
+                var indicators = indicatorsByCompetencyId.getOrDefault(competency.getId(), List.of());
+                if (!indicators.isEmpty()) {
+                    log.info("Competency '{}' not matched to any O*NET benchmark; " +
+                             "including with default INTERMEDIATE difficulty",
+                        competency.getName());
+                    for (var indicator : indicators) {
+                        indicatorWeights.put(indicator.getId(), 0.5);
+                        indicatorDifficulties.put(indicator.getId(), DifficultyLevel.INTERMEDIATE);
+                    }
+                }
             }
         }
 
         if (indicatorWeights.isEmpty()) {
-            log.warn("No indicators found for gap analysis competencies");
+            log.warn("No indicators found for ANY gap analysis competencies. " +
+                     "Benchmark names {} could not be resolved to internal competencies. " +
+                     "Available lookup keys: {}",
+                gapAnalysis.keySet(),
+                competencyByName.keySet());
+            warnings.add(InventoryWarning.assemblyWarning(
+                InventoryWarning.WarningLevel.ERROR,
+                WarningCode.NO_INDICATORS_FOR_GAPS,
+                "No indicators found for any gap competencies. Benchmark names could not be resolved to internal competencies."));
             return List.of();
         }
 
-        // Calculate total questions based on gap count
-        int totalQuestions = Math.min(
-            gapAnalysis.size() * DEFAULT_QUESTIONS_PER_GAP,
-            50  // Cap at 50 questions for reasonable test length
-        );
+        // Group indicators by competency to ensure fair cross-competency distribution
+        Map<UUID, List<UUID>> indicatorsByCompetency = new LinkedHashMap<>();
+        for (UUID indicatorId : indicatorWeights.keySet()) {
+            // Find which competency owns this indicator
+            UUID ownerCompetencyId = indicatorsByCompetencyId.entrySet().stream()
+                .filter(e -> e.getValue().stream().anyMatch(bi -> bi.getId().equals(indicatorId)))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
+            if (ownerCompetencyId != null) {
+                indicatorsByCompetency.computeIfAbsent(ownerCompetencyId, k -> new ArrayList<>()).add(indicatorId);
+            }
+        }
 
-        // Select questions with weighted distribution
-        // Questions for higher-gap competencies get priority
+        int numCompetencies = Math.max(indicatorsByCompetency.size(), 1);
+
+        // Distribute budget fairly: each competency gets at least MIN_QUESTIONS_PER_GAP
+        // then remaining budget is distributed proportionally by weight
+        int baseBudget = MIN_QUESTIONS_PER_GAP * numCompetencies;
+        int totalBudget = Math.min(
+            Math.max(baseBudget, numCompetencies * 4), // at least 4 per competency
+            MAX_TOTAL_QUESTIONS
+        );
+        int remainingBudget = totalBudget - baseBudget;
+
+        // Compute per-competency allocation: base + weighted share of remaining
+        double totalWeight = indicatorsByCompetency.entrySet().stream()
+            .mapToDouble(e -> e.getValue().stream()
+                .mapToDouble(id -> indicatorWeights.getOrDefault(id, 0.5))
+                .max().orElse(0.5))
+            .sum();
+
+        Map<UUID, Integer> competencyAllocations = new LinkedHashMap<>();
+        for (var entry : indicatorsByCompetency.entrySet()) {
+            double maxWeight = entry.getValue().stream()
+                .mapToDouble(id -> indicatorWeights.getOrDefault(id, 0.5))
+                .max().orElse(0.5);
+            int extra = totalWeight > 0
+                ? (int) Math.round(remainingBudget * (maxWeight / totalWeight))
+                : 0;
+            competencyAllocations.put(entry.getKey(), MIN_QUESTIONS_PER_GAP + extra);
+        }
+
+        log.info("Question budget: {} total across {} competencies (base={}/comp, remaining={})",
+            totalBudget, numCompetencies, MIN_QUESTIONS_PER_GAP, remainingBudget);
+
+        // Select questions per competency, spreading across its indicators
         List<UUID> selectedQuestions = new ArrayList<>();
         Set<UUID> usedQuestions = new HashSet<>();
 
-        // Sort indicators by weight (highest gaps first)
-        List<UUID> sortedIndicators = indicatorWeights.entrySet().stream()
-            .sorted(Map.Entry.<UUID, Double>comparingByValue().reversed())
-            .map(Map.Entry::getKey)
-            .toList();
+        SelectionWarningCollector.begin();
+        try {
+            for (var compEntry : indicatorsByCompetency.entrySet()) {
+                if (selectedQuestions.size() >= totalBudget) break;
 
-        for (UUID indicatorId : sortedIndicators) {
-            if (selectedQuestions.size() >= totalQuestions) break;
+                UUID compId = compEntry.getKey();
+                List<UUID> compIndicators = compEntry.getValue();
+                int compAllocation = competencyAllocations.getOrDefault(compId, MIN_QUESTIONS_PER_GAP);
+                compAllocation = Math.min(compAllocation, totalBudget - selectedQuestions.size());
 
-            DifficultyLevel difficulty = indicatorDifficulties.get(indicatorId);
-            double weight = indicatorWeights.get(indicatorId);
+                // Spread allocation across indicators, sorted by weight (highest first)
+                compIndicators.sort(Comparator.comparing(
+                    (UUID id) -> indicatorWeights.getOrDefault(id, 0.0)).reversed());
 
-            // Questions per indicator proportional to weight
-            int questionsForIndicator = Math.max(1, (int) Math.round(weight * DEFAULT_QUESTIONS_PER_GAP));
-            questionsForIndicator = Math.min(questionsForIndicator, totalQuestions - selectedQuestions.size());
+                int perIndicator = Math.max(1, compAllocation / Math.max(compIndicators.size(), 1));
+                int compSelected = 0;
 
-            List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
-                indicatorId,
-                questionsForIndicator,
-                difficulty,
-                usedQuestions
-            );
+                for (UUID indicatorId : compIndicators) {
+                    if (compSelected >= compAllocation) break;
 
-            selectedQuestions.addAll(questions);
-            usedQuestions.addAll(questions);
+                    DifficultyLevel difficulty = indicatorDifficulties.get(indicatorId);
+                    int ask = Math.min(perIndicator, compAllocation - compSelected);
+
+                    List<UUID> questions = questionSelectionService.selectQuestionsForIndicator(
+                        indicatorId, ask, difficulty, usedQuestions);
+
+                    selectedQuestions.addAll(questions);
+                    usedQuestions.addAll(questions);
+                    compSelected += questions.size();
+                }
+
+                log.debug("Competency {} allocated {}, selected {} questions from {} indicators",
+                    compId, compAllocation, compSelected, compIndicators.size());
+            }
+        } finally {
+            warnings.addAll(SelectionWarningCollector.drain());
         }
 
-        log.debug("Selected {} questions for {} gaps using weighted distribution",
-            selectedQuestions.size(), gapAnalysis.size());
+        log.debug("Selected {} questions for {} competencies using fair distribution",
+            selectedQuestions.size(), indicatorsByCompetency.size());
 
         return selectedQuestions;
     }
 
     /**
-     * Find behavioral indicators matching a competency name.
+     * Find behavioral indicators matching a competency name using preloaded data.
      * Matches by competency name or O*NET standard code mappings.
+     * Uses preloaded lookup maps to avoid N+1 queries.
+     *
+     * If exact match (case-insensitive) fails, falls back to fuzzy matching
+     * using token-based Jaccard similarity via CompetencyNameMatcher.
      */
-    private List<BehavioralIndicator> findIndicatorsForCompetencyName(String competencyName) {
-        // First try to find competency by name
-        List<Competency> matchingCompetencies = competencyRepository.findAll().stream()
-            .filter(c -> {
-                // Match by name
-                if (c.getName().equalsIgnoreCase(competencyName)) {
-                    return true;
-                }
-                // Match by O*NET code or title
-                var standardCodes = c.getStandardCodes();
-                if (standardCodes != null && standardCodes.hasOnetMapping()) {
-                    var onetRef = standardCodes.onetRef();
-                    return competencyName.equalsIgnoreCase(onetRef.code()) ||
-                           competencyName.equalsIgnoreCase(onetRef.title());
-                }
-                return false;
-            })
-            .toList();
+    private List<BehavioralIndicator> findIndicatorsForCompetencyNameCached(
+            String competencyName,
+            Map<String, List<Competency>> competencyByName,
+            Map<UUID, List<BehavioralIndicator>> indicatorsByCompetencyId,
+            List<InventoryWarning> warnings) {
+
+        List<Competency> matchingCompetencies = competencyByName.getOrDefault(
+            competencyName.toLowerCase(), List.of());
+
+        // Fuzzy fallback: if exact match fails, try token-based similarity matching
+        if (matchingCompetencies.isEmpty()) {
+            Optional<String> fuzzyMatch = CompetencyNameMatcher.findBestMatch(
+                competencyName, competencyByName.keySet());
+
+            if (fuzzyMatch.isPresent()) {
+                log.info("Fuzzy match used: O*NET competency '{}' matched to internal competency key '{}'. " +
+                         "Consider aligning competency names for exact matching.",
+                    competencyName, fuzzyMatch.get());
+                warnings.add(InventoryWarning.assemblyWarning(
+                    InventoryWarning.WarningLevel.INFO,
+                    WarningCode.FUZZY_MATCH_ONET,
+                    "Fuzzy match: O*NET competency '" + competencyName +
+                    "' matched to '" + fuzzyMatch.get() + "'. Consider aligning names.",
+                    Map.of("onetName", competencyName, "match", fuzzyMatch.get())));
+                matchingCompetencies = competencyByName.getOrDefault(fuzzyMatch.get(), List.of());
+            }
+        }
 
         if (matchingCompetencies.isEmpty()) {
-            log.debug("No competency found matching name: {}", competencyName);
+            log.debug("No competency found matching name (exact or fuzzy): {}", competencyName);
             return List.of();
         }
 
-        // Get indicators for matching competencies
         return matchingCompetencies.stream()
-            .flatMap(c -> indicatorRepository.findByCompetencyId(c.getId()).stream())
-            .filter(BehavioralIndicator::isActive)
+            .flatMap(c -> indicatorsByCompetencyId.getOrDefault(c.getId(), List.of()).stream())
             .sorted(Comparator.comparing(BehavioralIndicator::getWeight).reversed())
             .collect(Collectors.toList());
+    }
+
+    /**
+     * Map gap magnitude to a DifficultyLevel using graduated thresholds.
+     *
+     * Higher gaps warrant more discriminating (harder) questions:
+     * - normalizedGap >= 0.8: EXPERT (massive gap, need most discriminating items)
+     * - normalizedGap >= 0.5: ADVANCED
+     * - normalizedGap >= 0.2: INTERMEDIATE
+     * - normalizedGap < 0.2: FOUNDATIONAL (small/nearly-met gap, basic verification)
+     *
+     * O*NET benchmarks use a 1-5 importance scale, so raw gaps are normalized
+     * to a 0-1 range before threshold comparison.
+     *
+     * Higher strictnessLevel shifts all thresholds down, making selection harder.
+     * At strictnessLevel=0, thresholds are nominal. At strictnessLevel=100,
+     * thresholds are halved (e.g., normalizedGap >= 0.4 triggers EXPERT instead of 0.8).
+     *
+     * @param gap The raw gap magnitude (may exceed 1.0 for O*NET 1-5 scale)
+     * @param strictnessLevel Strictness level (0-100)
+     * @return The target DifficultyLevel for question selection
+     */
+    private DifficultyLevel mapGapToDifficulty(double gap, int strictnessLevel) {
+        // Normalize gap from O*NET 1-5 scale to 0-1 range
+        double normalizedGap = Math.min(gap / 5.0, 1.0);
+
+        // Strictness factor: 1.0 at strictness=0, 0.5 at strictness=100
+        double strictnessFactor = 1.0 - (strictnessLevel / 200.0);
+
+        if (normalizedGap >= 0.8 * strictnessFactor) return DifficultyLevel.EXPERT;
+        if (normalizedGap >= 0.5 * strictnessFactor) return DifficultyLevel.ADVANCED;
+        if (normalizedGap >= 0.2 * strictnessFactor) return DifficultyLevel.INTERMEDIATE;
+        return DifficultyLevel.FOUNDATIONAL;
     }
 
     /**

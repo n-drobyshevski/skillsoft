@@ -27,6 +27,15 @@ public interface TestTemplateService {
     List<TestTemplateSummaryDto> listActiveTemplates();
 
     /**
+     * Get active templates owned by the authenticated user.
+     * Used for personal mode catalog.
+     *
+     * @param clerkId The Clerk ID of the authenticated user
+     * @return List of template summaries owned by the user
+     */
+    List<TestTemplateSummaryDto> listMyTemplates(String clerkId);
+
+    /**
      * Get a test template by ID.
      */
     Optional<TestTemplateDto> findById(UUID id);
@@ -70,6 +79,28 @@ public interface TestTemplateService {
      * Get template statistics (counts, etc.).
      */
     TemplateStatistics getStatistics();
+
+    /**
+     * Clone an existing template with reset metadata.
+     * Creates a deep copy with name "Copy of X", new UUID, DRAFT status.
+     *
+     * @param templateId The ID of the template to clone
+     * @return The cloned template DTO
+     * @throws app.skillsoft.assessmentbackend.exception.ResourceNotFoundException if template not found
+     */
+    TestTemplateDto cloneTemplate(UUID templateId);
+
+    /**
+     * Create a new version of an existing template.
+     * Uses the entity's createNextVersion() to preserve version chain (parentId linkage).
+     *
+     * @param templateId       The ID of the template to version
+     * @param archiveOriginal  Whether to archive the original template
+     * @return The new draft template DTO
+     * @throws app.skillsoft.assessmentbackend.exception.ResourceNotFoundException if template not found
+     * @throws IllegalStateException if template is already in DRAFT status
+     */
+    TestTemplateDto createNextVersion(UUID templateId, boolean archiveOriginal);
 
     /**
      * Publish a test template, making it available for test sessions.

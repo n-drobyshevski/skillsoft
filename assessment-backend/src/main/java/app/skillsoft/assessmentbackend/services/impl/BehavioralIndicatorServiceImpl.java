@@ -1,11 +1,13 @@
 // java
 package app.skillsoft.assessmentbackend.services.impl;
 
+import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.BehavioralIndicatorService;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +40,7 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.COMPETENCIES_CACHE, allEntries = true)
     public BehavioralIndicator createBehavioralIndicator(UUID competencyId, BehavioralIndicator behavioralIndicator) {
         if (behavioralIndicator.getId() != null) {
             throw new IllegalArgumentException("New behavioral indicator cannot already have an ID");
@@ -93,6 +96,7 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.COMPETENCIES_CACHE, allEntries = true)
     public BehavioralIndicator updateBehavioralIndicator(UUID behavioralIndicatorId, BehavioralIndicator behavioralIndicatorDetails) {
         final UUID currentIndicatorId = behavioralIndicatorId; // Make effectively final for lambda
         return behavioralIndicatorRepository.findById(behavioralIndicatorId)
@@ -153,6 +157,7 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.COMPETENCIES_CACHE, allEntries = true)
     public BehavioralIndicator updateBehavioralIndicatorCompetency(UUID behavioralIndicatorId, UUID newCompetencyId, BehavioralIndicator behavioralIndicatorDetails) {
         // Find the existing indicator
         BehavioralIndicator existingIndicator = behavioralIndicatorRepository.findById(behavioralIndicatorId)
@@ -190,6 +195,7 @@ public class BehavioralIndicatorServiceImpl implements BehavioralIndicatorServic
 
     @Override
     @Transactional
+    @CacheEvict(value = CacheConfig.COMPETENCIES_CACHE, allEntries = true)
     public void deleteBehavioralIndicator(UUID behavioralIndicatorId) {
         BehavioralIndicator indicator = behavioralIndicatorRepository.findById(behavioralIndicatorId)
                 .orElseThrow(() -> new RuntimeException("Behavioral indicator not found with id: " + behavioralIndicatorId));

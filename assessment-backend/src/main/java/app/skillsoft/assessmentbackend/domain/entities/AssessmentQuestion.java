@@ -19,7 +19,7 @@ import java.util.UUID;
 })
 public class AssessmentQuestion {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -82,6 +82,13 @@ public class AssessmentQuestion {
 
     @Column(name="is_active", nullable = false)
     private boolean isActive;
+
+    /**
+     * Tracks how many times this question has been selected for tests.
+     * Used for item exposure control - overexposed items get deprioritized.
+     */
+    @Column(name = "exposure_count", nullable = false)
+    private int exposureCount = 0;
 
     @Column(name="order_index", nullable = false)
     @Min(value = 1, message = "Order index must be positive")
@@ -258,6 +265,18 @@ public class AssessmentQuestion {
 
     public void setOrderIndex(int orderIndex) {
         this.orderIndex = orderIndex;
+    }
+
+    public int getExposureCount() {
+        return exposureCount;
+    }
+
+    public void setExposureCount(int exposureCount) {
+        this.exposureCount = exposureCount;
+    }
+
+    public void incrementExposureCount() {
+        this.exposureCount++;
     }
 
     // Object methods

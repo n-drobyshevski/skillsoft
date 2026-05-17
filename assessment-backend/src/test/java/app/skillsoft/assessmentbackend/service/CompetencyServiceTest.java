@@ -1,9 +1,14 @@
 package app.skillsoft.assessmentbackend.service;
 
+import app.skillsoft.assessmentbackend.domain.dto.IndicatorInventoryDto;
 import app.skillsoft.assessmentbackend.domain.dto.StandardCodesDto;
 import app.skillsoft.assessmentbackend.domain.entities.ApprovalStatus;
+import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
 import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.CompetencyCategory;
+import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
+import app.skillsoft.assessmentbackend.repository.AssessmentQuestionRepository;
+import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
 import app.skillsoft.assessmentbackend.services.impl.CompetencyServiceImpl;
 import org.mockito.ArgumentCaptor;
@@ -39,6 +44,12 @@ class CompetencyServiceTest {
 
     @Mock
     private CompetencyRepository competencyRepository;
+
+    @Mock
+    private BehavioralIndicatorRepository behavioralIndicatorRepository;
+
+    @Mock
+    private AssessmentQuestionRepository assessmentQuestionRepository;
 
     @InjectMocks
     private CompetencyServiceImpl competencyService;
@@ -337,6 +348,77 @@ class CompetencyServiceTest {
             assertThat(result).isFalse();
             verify(competencyRepository).existsById(nonExistentId);
             verify(competencyRepository, never()).deleteById(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Get Indicator Inventory Tests")
+    class GetIndicatorInventoryTests {
+
+        @Test
+        @DisplayName("Should return inventory with correct question counts per difficulty")
+        void shouldReturnInventoryWithCorrectQuestionCounts() {
+            // Given
+            UUID competencyId = UUID.randomUUID();
+            UUID indicator1Id = UUID.randomUUID();
+            UUID indicator2Id = UUID.randomUUID();
+
+            BehavioralIndicator indicator1 = new BehavioralIndicator();
+            indicator1.setId(indicator1Id);
+            indicator1.setTitle("Активное слушание");
+            indicator1.setWeight(0.6f);
+            indicator1.setActive(true);
+
+            BehavioralIndicator indicator2 = new BehavioralIndicator();
+            indicator2.setId(indicator2Id);
+            indicator2.setTitle("Обратная связь");
+            indicator2.setWeight(0.4f);
+            indicator2.setActive(true);
+
+            when(behavioralIndicatorRepository.findByCompetencyId(competencyId))
+                    .thenReturn(List.of(indicator1, indicator2));
+
+            // Indicator 1: 3 INTERMEDIATE, 2 ADVANCED; indicator2: no questions
+            List<Object[]> counts = List.of(
+                    new Object[]{indicator1Id, DifficultyLevel.INTERMEDIATE, 3L},
+                    new Object[]{indicator1Id, DifficultyLevel.ADVANCED, 2L}
+            );
+            when(assessmentQuestionRepository.countActiveQuestionsByIndicatorAndDifficulty(competencyId))
+                    .thenReturn(counts);
+
+            // When
+            IndicatorInventoryDto result = competencyService.getIndicatorInventory(competencyId);
+
+            // Then
+            assertThat(result.competencyId()).isEqualTo(competencyId);
+            assertThat(result.indicators()).hasSize(2);
+
+            IndicatorInventoryDto.IndicatorQuestionStats stats1 = result.indicators().stream()
+                    .filter(s -> s.indicatorId().equals(indicator1Id))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(stats1.totalQuestions()).isEqualTo(5);
+            assertThat(stats1.questionsByDifficulty().get(DifficultyLevel.INTERMEDIATE)).isEqualTo(3);
+            assertThat(stats1.questionsByDifficulty().get(DifficultyLevel.ADVANCED)).isEqualTo(2);
+            assertThat(stats1.questionsByDifficulty().get(DifficultyLevel.FOUNDATIONAL)).isEqualTo(0);
+            assertThat(stats1.questionsByDifficulty().get(DifficultyLevel.EXPERT)).isEqualTo(0);
+            assertThat(stats1.questionsByDifficulty().get(DifficultyLevel.SPECIALIZED)).isEqualTo(0);
+
+            IndicatorInventoryDto.IndicatorQuestionStats stats2 = result.indicators().stream()
+                    .filter(s -> s.indicatorId().equals(indicator2Id))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(stats2.totalQuestions()).isEqualTo(0);
+            assertThat(stats2.questionsByDifficulty().get(DifficultyLevel.FOUNDATIONAL)).isEqualTo(0);
+            assertThat(stats2.questionsByDifficulty().get(DifficultyLevel.INTERMEDIATE)).isEqualTo(0);
+            assertThat(stats2.questionsByDifficulty().get(DifficultyLevel.ADVANCED)).isEqualTo(0);
+            assertThat(stats2.questionsByDifficulty().get(DifficultyLevel.EXPERT)).isEqualTo(0);
+            assertThat(stats2.questionsByDifficulty().get(DifficultyLevel.SPECIALIZED)).isEqualTo(0);
+
+            verify(behavioralIndicatorRepository).findByCompetencyId(competencyId);
+            verify(assessmentQuestionRepository).countActiveQuestionsByIndicatorAndDifficulty(competencyId);
         }
     }
 

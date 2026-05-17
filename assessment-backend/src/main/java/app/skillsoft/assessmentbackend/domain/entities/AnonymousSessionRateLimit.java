@@ -77,9 +77,7 @@ public class AnonymousSessionRateLimit {
     @Column(name = "blocked_until")
     private LocalDateTime blockedUntil;
 
-    // ========================================
     // Constructors
-    // ========================================
 
     /**
      * Default constructor required by JPA.
@@ -99,9 +97,7 @@ public class AnonymousSessionRateLimit {
         this.windowStart = LocalDateTime.now();
     }
 
-    // ========================================
     // Business Methods
-    // ========================================
 
     /**
      * Check if this IP is currently blocked.
@@ -196,9 +192,7 @@ public class AnonymousSessionRateLimit {
         return java.time.Duration.between(LocalDateTime.now(), blockedUntil).getSeconds();
     }
 
-    // ========================================
     // Getters and Setters
-    // ========================================
 
     public UUID getId() {
         return id;
@@ -240,9 +234,7 @@ public class AnonymousSessionRateLimit {
         this.blockedUntil = blockedUntil;
     }
 
-    // ========================================
     // Object Overrides
-    // ========================================
 
     @Override
     public boolean equals(Object o) {

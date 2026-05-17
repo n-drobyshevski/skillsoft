@@ -36,6 +36,13 @@ public record AnonymousTakerInfoRequest(
          * Examples: department, job title, referral source.
          */
         @Size(max = 500, message = "Notes must be 500 characters or less")
-        String notes
+        String notes,
+
+        /**
+         * Whether the taker gave explicit GDPR consent for data processing.
+         * Required when the template has GDPR consent enabled.
+         * Must not be pre-checked in the UI.
+         */
+        Boolean gdprConsentGiven
 ) {
 }

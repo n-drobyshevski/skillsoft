@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -110,6 +111,13 @@ public interface ItemStatisticsRepository extends JpaRepository<ItemStatistics, 
     List<ItemStatistics> findProbationByIndicatorId(@Param("indicatorId") UUID indicatorId);
 
     /**
+     * Batch-load statistics for multiple questions at once (avoids N+1 queries).
+     * Used by quality-aware question selection.
+     */
+    @Query("SELECT i FROM ItemStatistics i WHERE i.question.id IN :questionIds")
+    List<ItemStatistics> findByQuestionIdIn(@Param("questionIds") Collection<UUID> questionIds);
+
+    /**
      * Check if statistics exist for a question.
      */
     boolean existsByQuestion_Id(UUID questionId);
@@ -129,4 +137,13 @@ public interface ItemStatisticsRepository extends JpaRepository<ItemStatistics, 
      * Delete statistics for a question.
      */
     void deleteByQuestion_Id(UUID questionId);
+
+    /**
+     * Count items that have been analyzed (recalculated) since a given timestamp.
+     * Used by the health report to track items analyzed since the last full audit.
+     *
+     * @param since The cutoff timestamp
+     * @return Number of items with lastCalculatedAt after the given timestamp
+     */
+    long countByLastCalculatedAtAfter(LocalDateTime since);
 }

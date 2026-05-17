@@ -201,13 +201,14 @@ class CompetencyControllerIntegrationTest {
             onetRef.put("title", "Oral Comprehension");
             onetRef.put("element_type", "ability");
 
-            Map<String, Object> bigFiveRef = new HashMap<>();
-            bigFiveRef.put("trait", "EXTRAVERSION");
+            Map<String, Object> globalCategory = new HashMap<>();
+            globalCategory.put("domain", "big_five");
+            globalCategory.put("trait", "EXTRAVERSION");
 
             Map<String, Object> complexStandardCodes = new HashMap<>();
             complexStandardCodes.put("escoRef", escoRef);
             complexStandardCodes.put("onetRef", onetRef);
-            complexStandardCodes.put("bigFiveRef", bigFiveRef);
+            complexStandardCodes.put("bigFiveRef", globalCategory);
 
             // Description must be at least 50 characters per validation
             Map<String, Object> competencyRequest = new HashMap<>();

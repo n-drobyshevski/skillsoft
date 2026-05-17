@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.config;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -75,6 +77,16 @@ public class ScoringConfiguration {
         @DecimalMin("1.0")
         @DecimalMax("2.0")
         private double bigFiveBoost = 1.1;
+
+        /**
+         * Maximum weight multiplier cap to prevent single-competency domination.
+         * After all boosts are compounded (ESCO + Big Five + gap relevance + role weight),
+         * the final weight is capped at this value.
+         * Default: 3.0 (no competency can have more than 3x weight)
+         */
+        @DecimalMin("1.0")
+        @DecimalMax("10.0")
+        private double maxWeightMultiplier = 3.0;
     }
 
     /**
@@ -93,6 +105,16 @@ public class ScoringConfiguration {
          */
         @Valid
         private TeamFit teamFit = new TeamFit();
+
+        /**
+         * Overview (Scenario A / Competency Passport) specific thresholds.
+         */
+        @Valid
+        private Overview overview = new Overview();
+
+        public Overview getOverview() {
+            return overview;
+        }
 
         /**
          * Thresholds for Job Fit (Targeted Fit / O*NET Benchmark) scoring.
@@ -116,6 +138,15 @@ public class ScoringConfiguration {
             @DecimalMin("0.0")
             @DecimalMax("1.0")
             private double strictnessMaxAdjustment = 0.3;
+
+            /**
+             * Minimum questions answered per competency for results to be considered reliable.
+             * Competencies below this threshold are flagged with insufficientEvidence.
+             * Default: 3
+             */
+            @Min(1)
+            @Max(10)
+            private int minQuestionsPerCompetency = 3;
         }
 
         /**
@@ -194,6 +225,128 @@ public class ScoringConfiguration {
             @DecimalMin("0.0")
             @DecimalMax("1.0")
             private double minDiversityRatio = 0.3;
+
+            /**
+             * Team size threshold for small team adjustment.
+             * Teams with fewer members than this get a lower pass threshold.
+             * Default: 5
+             */
+            @Min(1)
+            @Max(20)
+            private int smallTeamThreshold = 5;
+
+            /**
+             * Pass threshold reduction for small teams.
+             * Subtracted from passThreshold when team size < smallTeamThreshold.
+             * Default: 0.1 (10% reduction)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("0.3")
+            private double smallTeamAdjustment = 0.1;
+
+            /**
+             * Pass threshold reduction for teams with severe gaps.
+             * Applied when > 50% of team competencies are gaps (saturation < diversityThreshold).
+             * Default: 0.1 (10% reduction)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("0.3")
+            private double severeGapAdjustment = 0.1;
+
+            /**
+             * Minimum pass threshold floor.
+             * The threshold will never be reduced below this value.
+             * Default: 0.3 (30%)
+             */
+            @DecimalMin("0.1")
+            @DecimalMax("0.5")
+            private double minPassThreshold = 0.3;
+
+            /**
+             * Steepness of the sigmoid curve for team fit multiplier calculation.
+             * Higher values create a sharper transition; lower values create a smoother curve.
+             * At steepness=10, the multiplier transitions from ~0.92 to ~1.08 over a balance range of [-0.2, +0.2].
+             * Default: 10.0
+             */
+            @DecimalMin("1.0")
+            @DecimalMax("30.0")
+            private double sigmoidSteepness = 10.0;
+
+            /**
+             * Weight factor for personality compatibility in overall score.
+             * Applied as additive multiplier adjustment: multiplier += (compatibility - 0.5) * personalityWeight
+             * Default: 0.1 (±5% adjustment at extremes)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("0.5")
+            private double personalityWeight = 0.1;
+        }
+
+        /**
+         * Thresholds for Overview (Universal Baseline / Competency Passport) scoring.
+         *
+         * Controls evidence sufficiency, proficiency classification, and profile pattern analysis.
+         *
+         * Usage in application.properties:
+         * <pre>
+         * scoring.thresholds.overview.min-questions-per-competency=3
+         * scoring.thresholds.overview.strength-threshold=75.0
+         * </pre>
+         */
+        @Data
+        public static class Overview {
+            /**
+             * Minimum questions answered per competency for evidence to be considered sufficient.
+             * Competencies below this threshold are flagged with insufficientEvidence.
+             * Default: 3
+             */
+            @Min(1)
+            @Max(10)
+            private int minQuestionsPerCompetency = 3;
+
+            /**
+             * Weight factor applied to competency scores with insufficient evidence.
+             * Reduces the influence of low-evidence scores in overall calculations.
+             * Default: 0.5 (50% weight)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("1.0")
+            private double lowEvidenceWeightFactor = 0.5;
+
+            /**
+             * Minimum percentage required to classify a competency as a strength.
+             * Default: 75.0 (75%)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("100.0")
+            private double strengthThreshold = 75.0;
+
+            /**
+             * Minimum percentage required to classify a competency as developing (not a gap).
+             * Competencies below this are candidates for critical gap classification.
+             * Default: 40.0 (40%)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("100.0")
+            private double developmentThreshold = 40.0;
+
+            /**
+             * Maximum percentage below which a competency is classified as a critical gap.
+             * Default: 30.0 (30%)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("100.0")
+            private double criticalGapThreshold = 30.0;
+
+            /**
+             * Bandwidth (in percentage points) above overall score to qualify as a signature strength.
+             * A competency is a SIGNATURE_STRENGTH when its percentage >= overallPercentage + profileBandWidth
+             * AND percentage >= strengthThreshold.
+             * Default: 10.0 (10 percentage points above overall)
+             */
+            @DecimalMin("0.0")
+            @DecimalMax("50.0")
+            private double profileBandWidth = 10.0;
         }
     }
 }

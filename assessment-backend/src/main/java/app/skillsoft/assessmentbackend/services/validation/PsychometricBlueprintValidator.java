@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -123,14 +124,29 @@ public class PsychometricBlueprintValidator {
 
     /**
      * Partition questions by their psychometric validity status.
+     * Batch-loads all item statistics in a single query to avoid N+1.
      */
     private Map<ItemValidityStatus, List<AssessmentQuestion>> partitionByValidityStatus(
             List<AssessmentQuestion> questions) {
 
         Map<ItemValidityStatus, List<AssessmentQuestion>> result = new EnumMap<>(ItemValidityStatus.class);
 
+        // Batch-load all item stats in a single query (N+1 fix)
+        Set<UUID> allQuestionIds = questions.stream()
+                .map(AssessmentQuestion::getId)
+                .collect(Collectors.toSet());
+        Map<UUID, ItemStatistics> statsMap = itemStatsRepository.findByQuestionIdIn(allQuestionIds).stream()
+                .collect(Collectors.toMap(
+                        s -> s.getQuestion().getId(),
+                        Function.identity(),
+                        (a, b) -> a
+                ));
+
         for (AssessmentQuestion question : questions) {
-            ItemValidityStatus status = getValidityStatus(question.getId());
+            ItemStatistics stats = statsMap.get(question.getId());
+            ItemValidityStatus status = (stats != null)
+                    ? stats.getValidityStatus()
+                    : ItemValidityStatus.PROBATION;
             result.computeIfAbsent(status, k -> new ArrayList<>()).add(question);
         }
 
@@ -227,8 +243,9 @@ public class PsychometricBlueprintValidator {
     public boolean hasSufficientQuestions(UUID indicatorId, int requiredCount) {
         Map<ItemValidityStatus, Integer> summary = getAvailabilitySummary(indicatorId);
 
-        // Count eligible questions (ACTIVE + PROBATION + FLAGGED, but not RETIRED)
+        // Count eligible questions (ACTIVE + PRELIMINARY + PROBATION + FLAGGED, but not RETIRED)
         int eligible = summary.getOrDefault(ItemValidityStatus.ACTIVE, 0)
+                + summary.getOrDefault(ItemValidityStatus.PRELIMINARY, 0)
                 + summary.getOrDefault(ItemValidityStatus.PROBATION, 0)
                 + summary.getOrDefault(ItemValidityStatus.FLAGGED_FOR_REVIEW, 0);
 

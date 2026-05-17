@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.services.impl;
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.dto.TemplateReadinessResponse.CompetencyReadiness;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
 import app.skillsoft.assessmentbackend.domain.dto.simulation.HealthStatus;
 import app.skillsoft.assessmentbackend.domain.entities.*;
@@ -11,6 +12,7 @@ import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.exception.TestNotReadyException;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.repository.*;
@@ -18,6 +20,7 @@ import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
 import app.skillsoft.assessmentbackend.services.ScoringOrchestrationService;
 import app.skillsoft.assessmentbackend.services.TestSessionService;
+import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyCompletedEvent;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyFailedEvent;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyProgress;
@@ -26,9 +29,12 @@ import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker
 import app.skillsoft.assessmentbackend.util.LoggingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import app.skillsoft.assessmentbackend.domain.dto.BulkDeleteResultDto;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +61,8 @@ public class TestSessionServiceImpl implements TestSessionService {
     private final ScoringOrchestrationService scoringOrchestrationService;
     private final ActivityTrackingService activityTrackingService;
     private final BlueprintConversionService blueprintConversionService;
+    private final QuestionSelectionService questionSelectionService;
+    private final TestSessionService self;
 
     public TestSessionServiceImpl(
             TestSessionRepository sessionRepository,
@@ -70,7 +78,9 @@ public class TestSessionServiceImpl implements TestSessionService {
             AssemblyProgressTracker assemblyProgressTracker,
             ScoringOrchestrationService scoringOrchestrationService,
             ActivityTrackingService activityTrackingService,
-            BlueprintConversionService blueprintConversionService) {
+            BlueprintConversionService blueprintConversionService,
+            QuestionSelectionService questionSelectionService,
+            @Lazy TestSessionService self) {
         this.sessionRepository = sessionRepository;
         this.templateRepository = templateRepository;
         this.answerRepository = answerRepository;
@@ -85,6 +95,8 @@ public class TestSessionServiceImpl implements TestSessionService {
         this.scoringOrchestrationService = scoringOrchestrationService;
         this.activityTrackingService = activityTrackingService;
         this.blueprintConversionService = blueprintConversionService;
+        this.questionSelectionService = questionSelectionService;
+        this.self = self;
     }
 
     @Override
@@ -118,12 +130,22 @@ public class TestSessionServiceImpl implements TestSessionService {
             throw new DuplicateSessionException(existing.getId(), request.templateId(), request.clerkUserId());
         }
 
-        // Create new session
+        // Create new session — UUID is assigned in the constructor for deterministic
+        // question ordering (BE-008). The same sessionId always produces the same
+        // question order, enabling psychometric validation of test forms.
         TestSession session = new TestSession(template, request.clerkUserId());
+        questionSelectionService.setSessionSeed(session.getId());
 
         // Generate question order based on template configuration
         // Pass clerkUserId for Delta Testing (gap-based question selection)
-        List<UUID> questionOrder = generateQuestionOrder(template, request.clerkUserId());
+        AssemblyResult assemblyResult;
+        try {
+            assemblyResult = generateQuestionOrder(template, request.clerkUserId());
+        } finally {
+            questionSelectionService.clearSessionSeed();
+        }
+
+        List<UUID> questionOrder = assemblyResult.questionIds();
 
         // CRITICAL VALIDATION: Prevent sessions with empty question order
         if (questionOrder == null || questionOrder.isEmpty()) {
@@ -131,6 +153,11 @@ public class TestSessionServiceImpl implements TestSessionService {
                      "Competencies: {}, QuestionsPerIndicator: {}, Goal: {}",
                      template.getId(), template.getCompetencyIds(),
                      template.getQuestionsPerIndicator(), template.getGoal());
+
+            // Extract assembly-level warnings (e.g. "No team ID", "No competency data")
+            List<String> assemblyWarnings = assemblyResult.warnings().stream()
+                    .map(w -> w.message())
+                    .toList();
 
             // Build detailed error info using readiness check
             TemplateReadinessResponse readiness = checkTemplateReadiness(template.getId());
@@ -151,7 +178,8 @@ public class TestSessionServiceImpl implements TestSessionService {
                     template.getId(),
                     issues,
                     readiness.totalQuestionsAvailable(),
-                    readiness.questionsRequired()
+                    readiness.questionsRequired(),
+                    assemblyWarnings
             );
         }
 
@@ -459,8 +487,14 @@ public class TestSessionServiceImpl implements TestSessionService {
         }
 
         // Mark session as COMPLETED and commit (TX #1)
+        // Optimistic lock protects against concurrent complete + abandon/timeout
         session.complete();
-        sessionRepository.save(session);
+        try {
+            sessionRepository.save(session);
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            log.warn("Optimistic lock conflict while completing session={}, re-reading to resolve", sessionId);
+            return handleCompleteConflict(sessionId);
+        }
 
         log.info("Session marked as COMPLETED (TX #1 committed), delegating to scoring orchestration sessionId={}", sessionId);
 
@@ -474,6 +508,32 @@ public class TestSessionServiceImpl implements TestSessionService {
         return result;
     }
 
+    /**
+     * Handle optimistic lock conflict during session completion.
+     *
+     * Re-reads the session from the database. If another request already completed
+     * the session, this returns the existing result (idempotent). If the session
+     * was moved to an incompatible terminal state (ABANDONED, TIMED_OUT), throws
+     * IllegalStateException since the complete operation can no longer succeed.
+     */
+    private TestResultDto handleCompleteConflict(UUID sessionId) {
+        TestSession freshSession = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+
+        if (freshSession.getStatus() == SessionStatus.COMPLETED) {
+            // Another request already completed -- idempotent success
+            log.info("Session {} was already completed by a concurrent request, returning existing result", sessionId);
+            return scoringOrchestrationService.calculateAndSaveResult(sessionId);
+        }
+
+        // Session was moved to a different terminal state by a concurrent request
+        log.warn("Session {} moved to {} by concurrent request while attempting completion",
+                sessionId, freshSession.getStatus());
+        throw new IllegalStateException(
+                "Session was concurrently modified and is now " + freshSession.getStatus()
+                        + ". Cannot complete.");
+    }
+
     @Override
     @Transactional
     public TestSessionDto abandonSession(UUID sessionId) {
@@ -481,12 +541,80 @@ public class TestSessionServiceImpl implements TestSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
 
         session.abandon();
-        TestSession saved = sessionRepository.save(session);
+        try {
+            TestSession saved = sessionRepository.save(session);
 
-        // Record activity event for audit trail
-        activityTrackingService.recordSessionAbandoned(saved);
+            // Record activity event for audit trail
+            activityTrackingService.recordSessionAbandoned(saved);
 
-        return toDto(saved);
+            return toDto(saved);
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            log.warn("Optimistic lock conflict while abandoning session={}, re-reading to resolve", sessionId);
+            return handleAbandonConflict(sessionId);
+        }
+    }
+
+    /**
+     * Handle optimistic lock conflict during session abandonment.
+     *
+     * Re-reads the session. If it is already in a terminal state (COMPLETED,
+     * ABANDONED, TIMED_OUT), returns the current state (idempotent for ABANDONED,
+     * graceful acknowledgement for other terminal states). If still IN_PROGRESS,
+     * lets the exception propagate since the conflict is unexpected.
+     */
+    private TestSessionDto handleAbandonConflict(UUID sessionId) {
+        TestSession freshSession = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Session", sessionId));
+
+        SessionStatus currentStatus = freshSession.getStatus();
+        if (currentStatus == SessionStatus.ABANDONED) {
+            // Already abandoned by concurrent request -- idempotent success
+            log.info("Session {} was already abandoned by a concurrent request", sessionId);
+            return toDto(freshSession);
+        }
+
+        if (currentStatus == SessionStatus.COMPLETED || currentStatus == SessionStatus.TIMED_OUT) {
+            // Session reached a different terminal state -- cannot abandon
+            log.warn("Session {} moved to {} by concurrent request while attempting abandon",
+                    sessionId, currentStatus);
+            throw new IllegalStateException(
+                    "Session was concurrently modified and is now " + currentStatus
+                            + ". Cannot abandon.");
+        }
+
+        // Unexpected: session is still in a non-terminal state but version conflicted
+        throw new IllegalStateException(
+                "Concurrent modification detected for session " + sessionId
+                        + ". Please retry.");
+    }
+
+    @Override
+    @Transactional
+    public void discardSession(UUID sessionId) {
+        TestSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestSession", sessionId));
+
+        SessionStatus status = session.getStatus();
+        if (status != SessionStatus.IN_PROGRESS && status != SessionStatus.NOT_STARTED) {
+            throw new IllegalStateException(
+                    "Cannot discard session in " + status + " status. Only IN_PROGRESS or NOT_STARTED sessions can be discarded.");
+        }
+
+        log.info("Discarding test session {} (template={}, user={}, status={})",
+                sessionId, session.getTemplate().getId(),
+                session.getClerkUserId(), session.getStatus());
+
+        try {
+            sessionRepository.delete(session);
+            sessionRepository.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("Optimistic lock on discard session {}, retrying once", sessionId);
+            TestSession refreshed = sessionRepository.findById(sessionId)
+                    .orElse(null);
+            if (refreshed != null) {
+                sessionRepository.delete(refreshed);
+            }
+        }
     }
 
     @Override
@@ -540,7 +668,7 @@ public class TestSessionServiceImpl implements TestSessionService {
      * @return Ordered list of question UUIDs for the session
      * @throws IllegalStateException if template has no typed blueprint configured
      */
-    private List<UUID> generateQuestionOrder(TestTemplate template, String clerkUserId) {
+    private AssemblyResult generateQuestionOrder(TestTemplate template, String clerkUserId) {
         var typedBlueprint = template.getTypedBlueprint();
         Instant assemblyStartTime = Instant.now();
 
@@ -566,6 +694,16 @@ public class TestSessionServiceImpl implements TestSessionService {
                         "Please go to the template's Blueprint tab and add at least one competency. " +
                         "Template ID: " + template.getId());
             }
+        }
+
+        // Ensure TeamFitBlueprint has competencyIds from the template
+        // (legacy seed data stores them in the template's competency_ids column, not the blueprint JSON)
+        if (typedBlueprint instanceof TeamFitBlueprint teamFit
+                && (teamFit.getCompetencyIds() == null || teamFit.getCompetencyIds().isEmpty())
+                && template.getCompetencyIds() != null && !template.getCompetencyIds().isEmpty()) {
+            log.info("Propagating {} template competencyIds into TeamFitBlueprint for template {}",
+                    template.getCompetencyIds().size(), template.getId());
+            teamFit.setCompetencyIds(template.getCompetencyIds());
         }
 
         // Inject candidate context into the blueprint for Delta Testing
@@ -610,7 +748,7 @@ public class TestSessionServiceImpl implements TestSessionService {
                     "Starting question selection"
             );
 
-            List<UUID> questions = assembler.assemble(enrichedBlueprint);
+            AssemblyResult assemblyResult = assembler.assemble(enrichedBlueprint);
 
             // Update progress to VALIDATING phase
             assemblyProgressTracker.updatePhase(
@@ -621,21 +759,21 @@ public class TestSessionServiceImpl implements TestSessionService {
             );
 
             // Complete progress tracking
-            assemblyProgressTracker.complete(trackingId, questions.size());
+            assemblyProgressTracker.complete(trackingId, assemblyResult.questionIds().size());
 
             // Publish assembly completed event
             eventPublisher.publishEvent(AssemblyCompletedEvent.fromStart(
                     null, // Session ID not yet available
                     template.getId(),
                     enrichedBlueprint.getStrategy(),
-                    questions.size(),
+                    assemblyResult.questionIds().size(),
                     assemblyStartTime
             ));
 
             log.info("TestAssembler produced {} questions for goal: {}",
-                questions.size(), enrichedBlueprint.getStrategy());
+                assemblyResult.questionIds().size(), enrichedBlueprint.getStrategy());
 
-            return questions;
+            return assemblyResult;
         } catch (Exception e) {
             // Mark progress as failed
             assemblyProgressTracker.fail(trackingId, e.getMessage());
@@ -676,8 +814,6 @@ public class TestSessionServiceImpl implements TestSessionService {
             jobFitBlueprint.setCandidateClerkUserId(clerkUserId);
             log.debug("Injected candidateClerkUserId '{}' into JobFitBlueprint for Delta Testing", clerkUserId);
         }
-
-        // TODO: Future enhancement - inject candidate context for TEAM_FIT blueprints as well
 
         return enrichedBlueprint;
     }
@@ -1139,5 +1275,47 @@ public class TestSessionServiceImpl implements TestSessionService {
     public Optional<AssemblyProgress> getAssemblyProgress(UUID templateId) {
         // Template ID is used as tracking ID during assembly
         return assemblyProgressTracker.getProgress(templateId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSession(UUID sessionId) {
+        TestSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TestSession", sessionId));
+
+        log.info("Deleting test session {} (template={}, user={}, status={})",
+                sessionId, session.getTemplate().getId(),
+                session.getClerkUserId(), session.getStatus());
+
+        try {
+            sessionRepository.delete(session);
+            sessionRepository.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("Optimistic lock on session {}, retrying once", sessionId);
+            TestSession refreshed = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new ResourceNotFoundException("TestSession", sessionId));
+            sessionRepository.delete(refreshed);
+        }
+    }
+
+    @Override
+    public BulkDeleteResultDto bulkDeleteSessions(List<UUID> sessionIds) {
+        log.info("Bulk deleting {} test sessions", sessionIds.size());
+
+        int deleted = 0;
+        int failed = 0;
+
+        for (UUID sessionId : sessionIds) {
+            try {
+                self.deleteSession(sessionId);
+                deleted++;
+            } catch (Exception e) {
+                log.warn("Failed to delete session {}: {}", sessionId, e.getMessage());
+                failed++;
+            }
+        }
+
+        log.info("Bulk delete complete: {} deleted, {} failed", deleted, failed);
+        return new BulkDeleteResultDto(deleted, failed);
     }
 }

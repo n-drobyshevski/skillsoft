@@ -73,11 +73,58 @@ application-secrets.properties
 *.swo
 .github/
 # ====================
+# AI Tooling
+# ====================
+.agents/
+.claude/
+.superpowers/
+.playwright-mcp/
+skills-lock.json
+# Cursor AI
+.cursor/
+.cursorignore
+.cursorindexingignore
+# GitHub Copilot
+.copilot/
+# Continue.dev
+.continue/
+# Aider
+.aider/
+aider.conf.yml
+.aider.tags.cache.v3/
+# Windsurf
+.windsurf/
+# Codeium / Tabnine
+.codeium/
+.tabnine/
+# Roo Cline / Cline
+.roo/
+.roomodes
+.clinerules
+.cline/
+# Google Gemini
+.gemini/
+# OpenAI Codex
+.codex/
+# Claude Code memory
+MEMORY.md
+memory/
+# AI-generated artifact files (plans, audits, etc.)
+PLAN_*.md
+AUDIT-*.md
+*-ROADMAP.md
+# Local AI instruction / design files
+CLAUDE.md
+DESIGN.md
+
+# ====================
 # OS Files
 # ====================
 .DS_Store
 Thumbs.db
 Desktop.ini
+*.png
+*.pdf
 
 # ====================
 # Logs & Temporary Files
@@ -87,10 +134,19 @@ logs/
 *.tmp
 *.bak
 .cache/
+*_validation_log.txt
+test-output.txt
 
 # ====================
 # Project Specific
 # ====================
+prompts/
 docs/
 !docs/output/.gitkeep
 infrastructure/database/postgres-data/
+scripts/
+
+
+# ====================
+frontend-app/*
+/frontend-app/

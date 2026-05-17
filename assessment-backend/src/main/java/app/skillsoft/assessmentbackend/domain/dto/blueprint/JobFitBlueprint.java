@@ -5,7 +5,10 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Blueprint configuration for JOB_FIT (Targeted Fit) assessment strategy.
@@ -64,6 +67,27 @@ public class JobFitBlueprint extends TestBlueprintDto {
      */
     private String candidateClerkUserId;
 
+    /**
+     * Maximum age in days for a Competency Passport to be considered valid for delta testing.
+     * Passports older than this will be treated as expired (full assessment mode).
+     * Default: 180 days (6 months).
+     */
+    @Min(value = 1, message = "Passport max age must be at least 1 day")
+    @Max(value = 730, message = "Passport max age must not exceed 730 days")
+    private int passportMaxAgeDays = 180;
+
+    /**
+     * Optional list of competency IDs selected by the user in the builder.
+     *
+     * When non-empty, constrains the assembler to only consider these
+     * competencies during question selection. O*NET gap analysis still
+     * determines difficulty levels, but only for the specified competencies.
+     *
+     * When empty or null, the assembler falls back to O*NET benchmark
+     * name matching (original behavior).
+     */
+    private List<UUID> competencyIds = new ArrayList<>();
+
     // Constructors
     public JobFitBlueprint() {
         super();
@@ -107,6 +131,22 @@ public class JobFitBlueprint extends TestBlueprintDto {
         this.candidateClerkUserId = candidateClerkUserId;
     }
 
+    public int getPassportMaxAgeDays() {
+        return passportMaxAgeDays;
+    }
+
+    public void setPassportMaxAgeDays(int passportMaxAgeDays) {
+        this.passportMaxAgeDays = passportMaxAgeDays;
+    }
+
+    public List<UUID> getCompetencyIds() {
+        return competencyIds;
+    }
+
+    public void setCompetencyIds(List<UUID> competencyIds) {
+        this.competencyIds = competencyIds != null ? new ArrayList<>(competencyIds) : new ArrayList<>();
+    }
+
     @Override
     public TestBlueprintDto deepCopy() {
         JobFitBlueprint copy = new JobFitBlueprint();
@@ -114,6 +154,8 @@ public class JobFitBlueprint extends TestBlueprintDto {
         copy.setOnetSocCode(this.onetSocCode);
         copy.setStrictnessLevel(this.strictnessLevel);
         copy.setCandidateClerkUserId(this.candidateClerkUserId);
+        copy.setPassportMaxAgeDays(this.passportMaxAgeDays);
+        copy.setCompetencyIds(new ArrayList<>(this.competencyIds));
         if (this.getAdaptivity() != null) {
             copy.setAdaptivity(this.getAdaptivity().deepCopy());
         }
@@ -127,13 +169,15 @@ public class JobFitBlueprint extends TestBlueprintDto {
         if (!super.equals(o)) return false;
         JobFitBlueprint that = (JobFitBlueprint) o;
         return strictnessLevel == that.strictnessLevel &&
+               passportMaxAgeDays == that.passportMaxAgeDays &&
                Objects.equals(onetSocCode, that.onetSocCode) &&
-               Objects.equals(candidateClerkUserId, that.candidateClerkUserId);
+               Objects.equals(candidateClerkUserId, that.candidateClerkUserId) &&
+               Objects.equals(competencyIds, that.competencyIds);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), onetSocCode, strictnessLevel, candidateClerkUserId);
+        return Objects.hash(super.hashCode(), onetSocCode, strictnessLevel, candidateClerkUserId, passportMaxAgeDays, competencyIds);
     }
 
     @Override
@@ -143,6 +187,8 @@ public class JobFitBlueprint extends TestBlueprintDto {
                 ", onetSocCode='" + onetSocCode + '\'' +
                 ", strictnessLevel=" + strictnessLevel +
                 ", candidateClerkUserId='" + candidateClerkUserId + '\'' +
+                ", passportMaxAgeDays=" + passportMaxAgeDays +
+                ", competencyIds=" + competencyIds +
                 ", adaptivity=" + getAdaptivity() +
                 '}';
     }

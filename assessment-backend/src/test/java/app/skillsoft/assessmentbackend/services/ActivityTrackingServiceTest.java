@@ -223,7 +223,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(mockSession));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(mockUser));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -263,7 +263,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(session1, session2, session3));
             when(userRepository.findByClerkIdIn(Set.of(clerkId1, clerkId2, clerkId3)))
                     .thenReturn(List.of(user1, user2, user3));
-            when(resultRepository.findAllById(Set.of(session1.getId())))
+            when(resultRepository.findBySessionIdIn(Set.of(session1.getId())))
                     .thenReturn(Collections.emptyList());
 
             // When
@@ -273,7 +273,7 @@ class ActivityTrackingServiceTest {
             assertThat(result).hasSize(3);
             // Verify single batch call instead of N calls
             verify(userRepository, times(1)).findByClerkIdIn(anySet());
-            verify(resultRepository, times(1)).findAllById(anySet());
+            verify(resultRepository, times(1)).findBySessionIdIn(anySet());
         }
 
         @Test
@@ -284,7 +284,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(mockSession));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(Collections.emptyList()); // User not found
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(Collections.emptyList());
 
             // When
@@ -316,7 +316,7 @@ class ActivityTrackingServiceTest {
             assertThat(result.get(0).score()).isNull();
             assertThat(result.get(0).passed()).isNull();
             // Verify results not fetched for non-completed sessions
-            verify(resultRepository, never()).findAllById(anySet());
+            verify(resultRepository, never()).findBySessionIdIn(anySet());
         }
 
         @Test
@@ -332,7 +332,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(mockSession));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(mockUser));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -354,7 +354,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(mockSession));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(mockUser));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -428,7 +428,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(new PageImpl<>(List.of(mockSession)));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(mockUser));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -453,7 +453,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(new PageImpl<>(List.of(mockSession)));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(mockUser));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -544,7 +544,7 @@ class ActivityTrackingServiceTest {
                             createMockUser(clerkId1, "Alice", "Johnson"),
                             createMockUser(clerkId2, "Борис", "Смирнов")
                     ));
-            when(resultRepository.findAllById(anySet()))
+            when(resultRepository.findBySessionIdIn(anySet()))
                     .thenReturn(Collections.emptyList());
 
             // When
@@ -1111,7 +1111,7 @@ class ActivityTrackingServiceTest {
                             createMockUser("user_2", "Emma", "Wilson"),
                             createMockUser("user_3", "Дмитрий", "Соколов")
                     ));
-            when(resultRepository.findAllById(Set.of(completedSession.getId())))
+            when(resultRepository.findBySessionIdIn(Set.of(completedSession.getId())))
                     .thenReturn(Collections.emptyList());
 
             // When
@@ -1137,7 +1137,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(mockSession));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(russianUser));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -1222,7 +1222,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(mockSession));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(userWithFirstNameOnly));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -1249,7 +1249,7 @@ class ActivityTrackingServiceTest {
                     .thenReturn(List.of(mockSession));
             when(userRepository.findByClerkIdIn(Set.of(clerkUserId)))
                     .thenReturn(List.of(userWithUsernameOnly));
-            when(resultRepository.findAllById(Set.of(sessionId)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId)))
                     .thenReturn(List.of(mockResult));
 
             // When
@@ -1291,7 +1291,7 @@ class ActivityTrackingServiceTest {
                             createMockUser("user_1", "User", "One"),
                             createMockUser("user_2", "User", "Two")
                     ));
-            when(resultRepository.findAllById(Set.of(sessionId1, sessionId2)))
+            when(resultRepository.findBySessionIdIn(Set.of(sessionId1, sessionId2)))
                     .thenReturn(List.of(result1, result2));
 
             // When

@@ -1,11 +1,14 @@
 package app.skillsoft.assessmentbackend.services.impl;
 
+import app.skillsoft.assessmentbackend.domain.dto.CompetencyTrendPointDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultDto;
 import app.skillsoft.assessmentbackend.domain.dto.TestResultSummaryDto;
+import app.skillsoft.assessmentbackend.domain.dto.TrendDataPointDto;
 import app.skillsoft.assessmentbackend.domain.entities.TestResult;
 import app.skillsoft.assessmentbackend.domain.entities.TestSession;
 import app.skillsoft.assessmentbackend.domain.projections.TemplateStatisticsProjection;
 import app.skillsoft.assessmentbackend.domain.projections.UserStatisticsProjection;
+import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.repository.TestResultRepository;
 import app.skillsoft.assessmentbackend.services.TestResultService;
 import org.springframework.data.domain.Page;
@@ -53,11 +56,17 @@ public class TestResultServiceImpl implements TestResultService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TestResultSummaryDto> findByUserOrderByDate(String clerkUserId) {
+    public Page<TestResultDto> findByUserDetailed(String clerkUserId, Pageable pageable) {
+        return resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable)
+                .map(this::toDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TestResultSummaryDto> findByUserOrderByDate(String clerkUserId, Pageable pageable) {
         // Use JOIN FETCH to avoid N+1 when accessing session and template
-        return resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId).stream()
-                .map(this::toSummaryDto)
-                .toList();
+        return resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable)
+                .map(this::toSummaryDto);
     }
 
     @Override
@@ -78,11 +87,10 @@ public class TestResultServiceImpl implements TestResultService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TestResultSummaryDto> findPassedByUser(String clerkUserId) {
+    public Page<TestResultSummaryDto> findPassedByUser(String clerkUserId, Pageable pageable) {
         // Use JOIN FETCH to avoid N+1 when accessing session and template
-        return resultRepository.findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId).stream()
-                .map(this::toSummaryDto)
-                .toList();
+        return resultRepository.findPassedByClerkUserIdWithSessionAndTemplate(clerkUserId, pageable)
+                .map(this::toSummaryDto);
     }
 
     @Override
@@ -161,10 +169,9 @@ public class TestResultServiceImpl implements TestResultService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TestResultSummaryDto> findByDateRange(LocalDateTime startDate, LocalDateTime endDate) {
-        return resultRepository.findByCompletedAtBetween(startDate, endDate).stream()
-                .map(this::toSummaryDto)
-                .toList();
+    public Page<TestResultSummaryDto> findByDateRange(LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
+        return resultRepository.findByCompletedAtBetweenWithSessionAndTemplate(startDate, endDate, pageable)
+                .map(this::toSummaryDto);
     }
 
     @Override
@@ -180,7 +187,7 @@ public class TestResultServiceImpl implements TestResultService {
     @Transactional
     public int calculatePercentile(UUID resultId) {
         TestResult result = resultRepository.findById(resultId)
-                .orElseThrow(() -> new RuntimeException("Result not found with id: " + resultId));
+                .orElseThrow(() -> new ResourceNotFoundException("TestResult", resultId));
         
         UUID templateId = result.getSession().getTemplate().getId();
         Double score = result.getOverallPercentage();
@@ -199,6 +206,20 @@ public class TestResultServiceImpl implements TestResultService {
         resultRepository.save(result);
         
         return percentile;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TrendDataPointDto> getUserHistory(String clerkUserId, UUID templateId) {
+        List<TestResult> results;
+        if (templateId != null) {
+            results = resultRepository.findByUserAndTemplateWithSession(clerkUserId, templateId);
+        } else {
+            results = resultRepository.findByClerkUserIdWithSessionAndTemplate(clerkUserId);
+        }
+        return results.stream()
+                .map(this::toTrendDto)
+                .toList();
     }
 
     // Mapping methods
@@ -223,6 +244,31 @@ public class TestResultServiceImpl implements TestResultService {
                 result.getStatus(),
                 result.getBigFiveProfile(),
                 result.getExtendedMetrics()
+        );
+    }
+
+    private TrendDataPointDto toTrendDto(TestResult result) {
+        TestSession session = result.getSession();
+        List<CompetencyTrendPointDto> competencyPoints = List.of();
+        if (result.getCompetencyScores() != null) {
+            competencyPoints = result.getCompetencyScores().stream()
+                    .map(cs -> new CompetencyTrendPointDto(
+                            cs.getCompetencyId(),
+                            cs.getCompetencyName(),
+                            cs.getPercentage(),
+                            cs.getCiLower(),
+                            cs.getCiUpper()
+                    ))
+                    .toList();
+        }
+        return new TrendDataPointDto(
+                result.getId(),
+                session.getTemplate().getId(),
+                session.getTemplate().getName(),
+                result.getOverallPercentage(),
+                result.getPassed(),
+                result.getCompletedAt(),
+                competencyPoints
         );
     }
 

@@ -5,11 +5,13 @@ import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
+import app.skillsoft.assessmentbackend.domain.entities.Competency;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.external.TeamService.TeamProfile;
 import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -35,9 +37,9 @@ import static org.mockito.Mockito.*;
  * - Happy path with valid blueprint and team profile
  * - Missing/null team ID
  * - Team service returns empty profile
- * - Undersaturated competency detection
- * - Saturation threshold effects
- * - Fallback to all competencies when none undersaturated
+ * - Canvas competency primary path with saturation weighting
+ * - Saturation threshold effects (fallback path only)
+ * - Adaptive difficulty based on saturation levels
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TeamFitAssembler Tests")
@@ -76,8 +78,8 @@ class TeamFitAssemblerTest {
         questionId1 = UUID.randomUUID();
         questionId2 = UUID.randomUUID();
 
-        indicator1 = createIndicator(indicatorId1, "Indicator 1", 1.0f, true);
-        indicator2 = createIndicator(indicatorId2, "Indicator 2", 0.8f, true);
+        indicator1 = createIndicator(indicatorId1, "Indicator 1", 1.0f, true, competencyId1);
+        indicator2 = createIndicator(indicatorId2, "Indicator 2", 0.8f, true, competencyId1);
     }
 
     @Nested
@@ -151,9 +153,9 @@ class TeamFitAssemblerTest {
             TeamFitBlueprint blueprint = new TeamFitBlueprint();
             blueprint.setTeamId(null);
 
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(teamService);
         }
     }
@@ -163,73 +165,76 @@ class TeamFitAssemblerTest {
     class AssembleTeamProfileTests {
 
         @Test
-        @DisplayName("should return empty list when team profile not found")
+        @DisplayName("should return empty when team profile not found and canvas competencies have no indicators")
         void shouldReturnEmptyWhenTeamProfileNotFound() {
-            // Given
+            // Given — canvas has competencies but team profile is empty
             TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.empty());
+            // Canvas competencies are present; assembler will try to find indicators
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of());
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            // Then
-            assertThat(result).isEmpty();
+            // Then — no indicators found, so no questions
+            assertThat(result.questionIds()).isEmpty();
             verify(teamService).getTeamProfile(teamId);
         }
 
         @Test
-        @DisplayName("should use undersaturated competencies from team service")
-        void shouldUseUndersaturatedCompetencies() {
+        @DisplayName("should use canvas competencies with team saturation weighting")
+        void shouldUseCanvasCompetenciesWithSaturationWeighting() {
             // Given
             TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
 
             Map<UUID, Double> saturation = new HashMap<>();
-            saturation.put(competencyId1, 0.2);  // Undersaturated
-            saturation.put(competencyId2, 0.8);  // Saturated
+            saturation.put(competencyId1, 0.2);  // In team profile
+            saturation.put(competencyId2, 0.8);  // In team profile
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
-                .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            // Then
-            assertThat(result).isNotEmpty();
-            verify(teamService).getUndersaturatedCompetencies(teamId, 0.3);
+            // Then — canvas competencies used directly, no getUndersaturatedCompetencies call
+            assertThat(result.questionIds()).isNotEmpty();
+            verify(teamService).getTeamProfile(teamId);
+            verify(teamService, never()).getUndersaturatedCompetencies(any(), anyDouble());
         }
 
         @Test
-        @DisplayName("should fallback to all competencies when none undersaturated")
-        void shouldFallbackToAllCompetenciesWhenNoneUndersaturated() {
-            // Given
+        @DisplayName("should use all canvas competencies regardless of saturation level")
+        void shouldUseAllCanvasCompetenciesRegardlessOfSaturation() {
+            // Given — both competencies saturated, but canvas includes them
             TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
 
             Map<UUID, Double> saturation = new HashMap<>();
             saturation.put(competencyId1, 0.9);  // All saturated
             saturation.put(competencyId2, 0.8);
 
+            BehavioralIndicator ind1 = createIndicator(indicatorId1, "Ind1", 1.0f, true, competencyId1);
+            BehavioralIndicator ind2 = createIndicator(indicatorId2, "Ind2", 0.8f, true, competencyId2);
+
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
-                .thenReturn(List.of());  // None undersaturated
-            when(indicatorRepository.findByCompetencyId(any()))
-                .thenReturn(List.of(indicator1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(ind1, ind2));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            // Then - Should still produce questions from all competencies
-            assertThat(result).isNotEmpty();
+            // Then — canvas competencies are always used, even if saturated
+            assertThat(result.questionIds()).isNotEmpty();
         }
     }
 
@@ -238,29 +243,28 @@ class TeamFitAssemblerTest {
     class AssembleSaturationThresholdTests {
 
         @Test
-        @DisplayName("should use custom saturation threshold")
-        void shouldUseCustomSaturationThreshold() {
-            // Given
+        @DisplayName("should produce correct results with custom saturation threshold")
+        void shouldProduceResultsWithCustomThreshold() {
+            // Given — threshold only affects fallback path, but assembly should still succeed
             TeamFitBlueprint blueprint = createBlueprint(teamId, 0.5);
 
             Map<UUID, Double> saturation = new HashMap<>();
-            saturation.put(competencyId1, 0.4);  // Undersaturated with threshold 0.5
+            saturation.put(competencyId1, 0.4);
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(teamId, 0.5))
-                .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            // Then
-            verify(teamService).getUndersaturatedCompetencies(teamId, 0.5);
+            // Then — canvas path used, questions selected
+            assertThat(result.questionIds()).isNotEmpty();
+            verify(teamService, never()).getUndersaturatedCompetencies(any(), anyDouble());
         }
 
         @Test
@@ -274,19 +278,17 @@ class TeamFitAssemblerTest {
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(eq(teamId), anyDouble()))
-                .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            // Then - Should use default 0.3
-            verify(teamService).getUndersaturatedCompetencies(teamId, 0.3);
+            // Then — assembly succeeds with canvas path
+            assertThat(result.questionIds()).isNotEmpty();
         }
 
         @Test
@@ -300,19 +302,17 @@ class TeamFitAssemblerTest {
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(eq(teamId), anyDouble()))
-                .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1));
             when(questionSelectionService.selectQuestionsForIndicator(
                 any(), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
-            // Then - Should use default 0.3
-            verify(teamService).getUndersaturatedCompetencies(teamId, 0.3);
+            // Then — assembly succeeds with canvas path
+            assertThat(result.questionIds()).isNotEmpty();
         }
     }
 
@@ -331,9 +331,7 @@ class TeamFitAssemblerTest {
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
-                .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1, indicator2));
             when(questionSelectionService.selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()))
@@ -343,10 +341,10 @@ class TeamFitAssemblerTest {
                 .thenReturn(List.of(questionId2));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).contains(questionId1, questionId2);
+            assertThat(result.questionIds()).contains(questionId1, questionId2);
             verify(questionSelectionService, times(2)).selectQuestionsForIndicator(
                 any(), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()
             );
@@ -361,20 +359,19 @@ class TeamFitAssemblerTest {
             Map<UUID, Double> saturation = new HashMap<>();
             saturation.put(competencyId1, 0.2);
 
-            BehavioralIndicator inactiveIndicator = createIndicator(indicatorId2, "Inactive", 0.5f, false);
+            BehavioralIndicator inactiveIndicator = createIndicator(indicatorId2, "Inactive", 0.5f, false, competencyId1);
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
-                .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            // Batch query returns both active and inactive; implementation filters active only
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of(indicator1, inactiveIndicator));
             when(questionSelectionService.selectQuestionsForIndicator(
                 eq(indicatorId1), anyInt(), any(), anySet()))
                 .thenReturn(List.of(questionId1));
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then - Only active indicator should be used
             verify(questionSelectionService, times(1)).selectQuestionsForIndicator(
@@ -393,17 +390,209 @@ class TeamFitAssemblerTest {
 
             TeamProfile profile = createTeamProfile(teamId, saturation);
             when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
-            when(teamService.getUndersaturatedCompetencies(teamId, 0.3))
-                .thenReturn(List.of(competencyId1));
-            when(indicatorRepository.findByCompetencyId(competencyId1))
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
                 .thenReturn(List.of());  // No indicators
 
             // When
-            List<UUID> result = assembler.assemble(blueprint);
+            AssemblyResult result = assembler.assemble(blueprint);
 
             // Then
-            assertThat(result).isEmpty();
+            assertThat(result.questionIds()).isEmpty();
             verifyNoInteractions(questionSelectionService);
+        }
+    }
+
+    @Nested
+    @DisplayName("assemble - Adaptive Difficulty Tests")
+    class AssembleAdaptiveDifficultyTests {
+
+        @Test
+        @DisplayName("should select ADVANCED difficulty for critical gap (saturation < 0.1)")
+        void shouldSelectAdvancedDifficultyForCriticalGap() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.05);  // Critical gap: < 0.1
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Critical gap should use ADVANCED difficulty
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.ADVANCED), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should select INTERMEDIATE difficulty for moderate gap (saturation 0.1-0.3)")
+        void shouldSelectIntermediateDifficultyForModerateGap() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.2);  // Moderate gap: 0.1 <= sat < 0.3
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Moderate gap should use INTERMEDIATE difficulty
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should select FOUNDATIONAL difficulty for minor gap (saturation >= 0.3)")
+        void shouldSelectFoundationalDifficultyForMinorGap() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.5);  // Higher threshold
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.4);  // Minor gap: >= 0.3
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Minor gap should use FOUNDATIONAL difficulty
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.FOUNDATIONAL), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use different difficulties for multiple competencies with different saturations")
+        void shouldUseDifferentDifficultiesPerCompetency() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.5);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.05);  // Critical gap -> ADVANCED
+            saturation.put(competencyId2, 0.4);   // Minor gap -> FOUNDATIONAL
+
+            // indicator2 needs to belong to competencyId2 for this test
+            BehavioralIndicator ind2ForComp2 = createIndicator(indicatorId2, "Indicator 2", 0.8f, true, competencyId2);
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1, ind2ForComp2));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then - Each competency should get its own difficulty based on saturation
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.ADVANCED), anySet()
+            );
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId2), anyInt(), eq(DifficultyLevel.FOUNDATIONAL), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use ADVANCED at boundary saturation of exactly 0.0")
+        void shouldSelectAdvancedAtZeroSaturation() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.0);  // Zero saturation -> ADVANCED
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.ADVANCED), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use INTERMEDIATE at boundary saturation of exactly 0.1")
+        void shouldSelectIntermediateAtBoundarySaturation() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.3);
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.1);  // Exactly 0.1 -> INTERMEDIATE
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.INTERMEDIATE), anySet()
+            );
+        }
+
+        @Test
+        @DisplayName("should use FOUNDATIONAL at boundary saturation of exactly 0.3")
+        void shouldSelectFoundationalAtBoundarySaturation() {
+            // Given
+            TeamFitBlueprint blueprint = createBlueprint(teamId, 0.5);  // Higher threshold
+
+            Map<UUID, Double> saturation = new HashMap<>();
+            saturation.put(competencyId1, 0.3);  // Exactly 0.3 -> FOUNDATIONAL
+
+            TeamProfile profile = createTeamProfile(teamId, saturation);
+            when(teamService.getTeamProfile(teamId)).thenReturn(Optional.of(profile));
+            when(indicatorRepository.findByCompetencyIdIn(anySet()))
+                .thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            assembler.assemble(blueprint);
+
+            // Then
+            verify(questionSelectionService).selectQuestionsForIndicator(
+                eq(indicatorId1), anyInt(), eq(DifficultyLevel.FOUNDATIONAL), anySet()
+            );
         }
     }
 
@@ -413,15 +602,22 @@ class TeamFitAssemblerTest {
         TeamFitBlueprint blueprint = new TeamFitBlueprint();
         blueprint.setTeamId(teamId);
         blueprint.setSaturationThreshold(saturationThreshold);
+        // Canvas competencies — assembler uses these as primary source
+        blueprint.setCompetencyIds(List.of(competencyId1, competencyId2));
         return blueprint;
     }
 
-    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive) {
+    private BehavioralIndicator createIndicator(UUID id, String title, float weight, boolean isActive, UUID competencyId) {
         BehavioralIndicator indicator = new BehavioralIndicator();
         indicator.setId(id);
         indicator.setTitle(title);
         indicator.setWeight(weight);
         indicator.setActive(isActive);
+        if (competencyId != null) {
+            Competency competency = new Competency();
+            competency.setId(competencyId);
+            indicator.setCompetency(competency);
+        }
         return indicator;
     }
 
@@ -432,7 +628,8 @@ class TeamFitAssemblerTest {
             List.of(),  // members
             saturation,
             Map.of(),   // averagePersonality
-            List.of()   // skillGaps
+            List.of(),  // skillGaps
+            Map.of()    // competencyNames
         );
     }
 }

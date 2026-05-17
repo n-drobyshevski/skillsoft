@@ -1,10 +1,10 @@
 package app.skillsoft.assessmentbackend.domain.entities;
 
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TestBlueprintDto;
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
@@ -48,10 +48,7 @@ public class TestTemplate {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    // ============================================
-    // VERSIONING FIELDS
-    // Immutable Versioning Pattern
-    // ============================================
+    // Versioning fields
 
     /**
      * Version number for this template.
@@ -137,7 +134,7 @@ public class TestTemplate {
      * Stored in the same JSONB column as legacy blueprint field.
      * When both are set, typedBlueprint takes precedence.
      */
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "typed_blueprint", columnDefinition = "jsonb")
     private TestBlueprintDto typedBlueprint;
 
@@ -177,35 +174,22 @@ public class TestTemplate {
     @Column(name = "show_results_immediately")
     private Boolean showResultsImmediately = true;
 
-    // ============================================
-    // VISIBILITY & OWNERSHIP FIELDS
-    // Per visibility system implementation
-    // ============================================
-
     /**
      * Owner of this template (creator by default).
-     * Required for visibility and sharing features.
-     * The owner always has full access to the template.
+     * The owner always has full access regardless of visibility setting.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private User owner;
 
     /**
-     * Visibility mode for this template.
-     * Controls who can access the template:
-     * - PUBLIC: All authenticated users can access
-     * - PRIVATE: Only owner and explicitly shared users/teams (default)
-     * - LINK: Anyone with a valid share link (supports anonymous access)
+     * Controls access: PUBLIC = all users, PRIVATE = owner/shares only, LINK = anonymous share link.
      */
     @Column(name = "visibility", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
     private TemplateVisibility visibility = TemplateVisibility.PRIVATE;
 
-    /**
-     * Timestamp when visibility was last changed.
-     * Used for audit trails and link invalidation.
-     */
+    /** Used for audit trails and share link invalidation. */
     @Column(name = "visibility_changed_at")
     private LocalDateTime visibilityChangedAt;
 
@@ -215,22 +199,10 @@ public class TestTemplate {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // ============================================
-    // SOFT DELETE FIELDS
-    // ============================================
-
-    /**
-     * Soft delete timestamp.
-     * When set, the template is considered deleted but data is preserved.
-     * Null means the template is active (not deleted).
-     */
+    /** Non-null means the template is soft-deleted; data is preserved. */
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    /**
-     * User who deleted this template.
-     * Tracks who performed the soft delete for audit purposes.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "deleted_by_id")
     private User deletedBy;
@@ -298,9 +270,6 @@ public class TestTemplate {
         this.description = description;
     }
 
-    // ============================================
-    // VERSIONING GETTERS/SETTERS
-    // ============================================
 
     public Integer getVersion() {
         return version;
@@ -361,10 +330,6 @@ public class TestTemplate {
         }
     }
 
-    // ============================================
-    // VERSIONING METHODS
-    // Immutable Versioning Pattern
-    // ============================================
 
     /**
      * Create a new version of this template.
@@ -476,66 +441,76 @@ public class TestTemplate {
         }
     }
 
-    // ============================================
-    // BLUEPRINT HELPER METHODS
-    // Per ROADMAP.md Section 1.2
-    // ============================================
-
-    /**
-     * Get the strategy from blueprint.
-     * @return Strategy string (e.g., "UNIVERSAL_BASELINE", "TARGETED_FIT", "DYNAMIC_GAP_ANALYSIS")
-     */
+    /** Reads typedBlueprint first, falls back to legacy blueprint Map. */
     @Transient
     public String getStrategy() {
-        if (blueprint == null) return null;
-        Object strategy = blueprint.get("strategy");
-        return strategy != null ? strategy.toString() : null;
+        if (typedBlueprint != null && typedBlueprint.getStrategy() != null) {
+            return typedBlueprint.getStrategy().name();
+        }
+        // Legacy fallback
+        if (blueprint != null) {
+            Object strategy = blueprint.get("strategy");
+            return strategy != null ? strategy.toString() : null;
+        }
+        return null;
     }
 
-    /**
-     * Get the O*NET SOC code for JOB_FIT scenarios.
-     * @return SOC code (e.g., "15-1132.00") or null
-     */
     @Transient
     public String getOnetSocCode() {
-        if (blueprint == null) return null;
-        Object code = blueprint.get("onetSocCode");
-        return code != null ? code.toString() : null;
+        if (typedBlueprint instanceof JobFitBlueprint jobFit && jobFit.getOnetSocCode() != null) {
+            return jobFit.getOnetSocCode();
+        }
+        // Legacy fallback
+        if (blueprint != null) {
+            Object code = blueprint.get("onetSocCode");
+            return code != null ? code.toString() : null;
+        }
+        return null;
     }
 
-    /**
-     * Get the team ID for TEAM_FIT scenarios.
-     * @return Team UUID or null
-     */
     @Transient
     public String getTeamId() {
-        if (blueprint == null) return null;
-        Object teamId = blueprint.get("teamId");
-        return teamId != null ? teamId.toString() : null;
+        if (typedBlueprint instanceof TeamFitBlueprint teamFit && teamFit.getTeamId() != null) {
+            return teamFit.getTeamId().toString();
+        }
+        // Legacy fallback
+        if (blueprint != null) {
+            Object teamId = blueprint.get("teamId");
+            return teamId != null ? teamId.toString() : null;
+        }
+        return null;
     }
 
     /**
      * Check if this template should save results as Competency Passport.
      * Used in OVERVIEW scenario.
+     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
      * @return true if results should be saved as reusable passport
      */
     @Transient
     public boolean shouldSaveAsPassport() {
-        if (blueprint == null) return false;
-        Object save = blueprint.get("saveAsPassport");
-        return Boolean.TRUE.equals(save);
+        // typedBlueprint does not currently expose saveAsPassport; fall back to legacy
+        if (blueprint != null) {
+            Object save = blueprint.get("saveAsPassport");
+            return Boolean.TRUE.equals(save);
+        }
+        return false;
     }
 
     /**
      * Check if this template should reuse existing Passport data.
      * Used in JOB_FIT scenario for Delta Testing.
+     * Reads from typedBlueprint first, falling back to legacy blueprint Map.
      * @return true if existing passport data should be reused
      */
     @Transient
     public boolean shouldReusePassportData() {
-        if (blueprint == null) return false;
-        Object reuse = blueprint.get("reusePassportData");
-        return Boolean.TRUE.equals(reuse);
+        // typedBlueprint does not currently expose reusePassportData; fall back to legacy
+        if (blueprint != null) {
+            Object reuse = blueprint.get("reusePassportData");
+            return Boolean.TRUE.equals(reuse);
+        }
+        return false;
     }
 
     /**
@@ -642,9 +617,6 @@ public class TestTemplate {
         this.updatedAt = updatedAt;
     }
 
-    // ============================================
-    // VISIBILITY & OWNERSHIP GETTERS/SETTERS
-    // ============================================
 
     public User getOwner() {
         return owner;
@@ -721,9 +693,6 @@ public class TestTemplate {
         return clerkId.equals(owner.getClerkId());
     }
 
-    // ============================================
-    // SOFT DELETE GETTERS/SETTERS AND METHODS
-    // ============================================
 
     public LocalDateTime getDeletedAt() {
         return deletedAt;

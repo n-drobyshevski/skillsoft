@@ -19,7 +19,26 @@ public class CompetencyScoreDto {
     private Integer questionsAnswered;
     private Integer questionsCorrect;
     private String onetCode; // O*NET code for Big Five projection
+    private Double benchmarkScore; // O*NET benchmark score for this competency (if available)
+    private String escoUri;  // ESCO URI for skill normalization (Team Fit weighting)
+    private String bigFiveCategory; // Big Five personality trait mapping (e.g., CONSCIENTIOUSNESS)
     private List<IndicatorScoreDto> indicatorScores; // Nested indicator breakdown
+
+    // Confidence interval fields (populated by ConfidenceIntervalCalculator)
+    private Double sem;           // Standard Error of Measurement
+    private Double ciLower;       // 95% CI lower bound
+    private Double ciUpper;       // 95% CI upper bound
+    private Double cronbachAlpha; // Cronbach's alpha used for calculation
+
+    // Per-competency percentile (populated by SubscalePercentileCalculator)
+    private Integer percentile;   // Percentile rank within this competency across all takers
+
+    // Evidence sufficiency (populated by JobFitScoringStrategy / OverviewScoringStrategy)
+    private Boolean insufficientEvidence;  // Whether too few questions were answered
+    private String evidenceNote;           // Human-readable note about evidence sufficiency
+
+    // Proficiency classification (populated by ScoreInterpreter via OverviewScoringStrategy)
+    private String proficiencyLabel;       // e.g., "Advanced", "Developing"
 
     // Constructors
     public CompetencyScoreDto() {
@@ -99,12 +118,100 @@ public class CompetencyScoreDto {
         this.onetCode = onetCode;
     }
 
+    public Double getBenchmarkScore() {
+        return benchmarkScore;
+    }
+
+    public void setBenchmarkScore(Double benchmarkScore) {
+        this.benchmarkScore = benchmarkScore;
+    }
+
+    public String getEscoUri() {
+        return escoUri;
+    }
+
+    public void setEscoUri(String escoUri) {
+        this.escoUri = escoUri;
+    }
+
+    public String getBigFiveCategory() {
+        return bigFiveCategory;
+    }
+
+    public void setBigFiveCategory(String bigFiveCategory) {
+        this.bigFiveCategory = bigFiveCategory;
+    }
+
     public List<IndicatorScoreDto> getIndicatorScores() {
         return indicatorScores;
     }
 
     public void setIndicatorScores(List<IndicatorScoreDto> indicatorScores) {
         this.indicatorScores = indicatorScores;
+    }
+
+    public Double getSem() {
+        return sem;
+    }
+
+    public void setSem(Double sem) {
+        this.sem = sem;
+    }
+
+    public Double getCiLower() {
+        return ciLower;
+    }
+
+    public void setCiLower(Double ciLower) {
+        this.ciLower = ciLower;
+    }
+
+    public Double getCiUpper() {
+        return ciUpper;
+    }
+
+    public void setCiUpper(Double ciUpper) {
+        this.ciUpper = ciUpper;
+    }
+
+    public Double getCronbachAlpha() {
+        return cronbachAlpha;
+    }
+
+    public void setCronbachAlpha(Double cronbachAlpha) {
+        this.cronbachAlpha = cronbachAlpha;
+    }
+
+    public Integer getPercentile() {
+        return percentile;
+    }
+
+    public void setPercentile(Integer percentile) {
+        this.percentile = percentile;
+    }
+
+    public Boolean getInsufficientEvidence() {
+        return insufficientEvidence;
+    }
+
+    public void setInsufficientEvidence(Boolean insufficientEvidence) {
+        this.insufficientEvidence = insufficientEvidence;
+    }
+
+    public String getEvidenceNote() {
+        return evidenceNote;
+    }
+
+    public void setEvidenceNote(String evidenceNote) {
+        this.evidenceNote = evidenceNote;
+    }
+
+    public String getProficiencyLabel() {
+        return proficiencyLabel;
+    }
+
+    public void setProficiencyLabel(String proficiencyLabel) {
+        this.proficiencyLabel = proficiencyLabel;
     }
 
     @Override

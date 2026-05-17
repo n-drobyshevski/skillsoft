@@ -8,12 +8,12 @@ import com.svix.Webhook;
 import com.svix.exceptions.WebhookVerificationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.annotation.PostConstruct;
 import java.net.http.HttpHeaders;
 import java.util.List;
 import java.util.Map;
@@ -45,10 +45,17 @@ public class ClerkWebhookController {
     @Value("${clerk.webhook.secret}")
     private String webhookSecret;
 
-    @Autowired
     public ClerkWebhookController(UserService userService, ObjectMapper objectMapper) {
         this.userService = userService;
         this.objectMapper = objectMapper;
+    }
+
+    @PostConstruct
+    void validateWebhookSecret() {
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            throw new IllegalStateException(
+                "CLERK_WEBHOOK_SECRET must be configured. Set the environment variable or clerk.webhook.secret property.");
+        }
     }
 
     /**

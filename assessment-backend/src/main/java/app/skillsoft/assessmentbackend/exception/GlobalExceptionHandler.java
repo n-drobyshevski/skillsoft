@@ -10,6 +10,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -41,26 +42,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Enhanced Global Exception Handler for the SkillSoft Assessment Backend.
- * 
- * This class provides centralized exception handling across all controllers following
- * Spring Boot best practices for REST API error handling.
- * 
- * Features:
- * - Extends ResponseEntityExceptionHandler for comprehensive Spring MVC exception coverage
- * - Structured error responses using ErrorResponse DTO
- * - Configurable stack trace inclusion for development/debugging
- * - Security-aware error messages (no sensitive data exposure)
- * - Comprehensive logging with correlation IDs
- * - Validation error handling with field-specific details
- * - Database constraint violation handling
- * - Security exception handling
- * 
- * @author SkillSoft Development Team
- * @version 2.0
- * @since 1.0
- */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
@@ -80,9 +61,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final String TRACE_PARAM = "trace";
     private static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
 
-    // ===============================
     // UTILITY METHODS
-    // ===============================
 
     /**
      * Extract path from WebRequest
@@ -174,9 +153,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return sb.toString();
     }
 
-    // ===============================
     // SPRING FRAMEWORK EXCEPTIONS
-    // ===============================
 
     /**
      * Handle validation errors from @Valid annotation
@@ -333,9 +310,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
     }
 
-    // ===============================
     // SECURITY EXCEPTIONS
-    // ===============================
 
     /**
      * Handle AccessDeniedException (insufficient permissions/role).
@@ -383,9 +358,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
     }
 
-    // ===============================
     // DOMAIN-SPECIFIC EXCEPTIONS
-    // ===============================
 
     /**
      * Handle EntityNotFoundException (JPA/Database entity not found)
@@ -489,6 +462,32 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
 
         return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Handle TemplateNotEditableException when a non-DRAFT template is modified.
+     * Returns HTTP 409 Conflict with TEMPLATE_NOT_EDITABLE error code.
+     */
+    @ExceptionHandler(TemplateNotEditableException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleTemplateNotEditableException(
+            TemplateNotEditableException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Template not editable [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.CONFLICT,
+            ex.getMessage(),
+            "Only templates in DRAFT status can be modified. Create a new version to make changes.",
+            request
+        );
+
+        errorResponse.setCode("TEMPLATE_NOT_EDITABLE");
+        errorResponse.addContext("currentStatus", ex.getCurrentStatus().name());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
 
     /**
@@ -608,13 +607,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorResponse.addContext("totalQuestionsAvailable", ex.getTotalQuestionsAvailable());
         errorResponse.addContext("questionsRequired", ex.getQuestionsRequired());
         errorResponse.addContext("competencyIssues", ex.getCompetencyIssues());
+        if (ex.getAssemblyWarnings() != null && !ex.getAssemblyWarnings().isEmpty()) {
+            errorResponse.addContext("assemblyWarnings", ex.getAssemblyWarnings());
+        }
 
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
     }
 
-    // ===============================
     // ANONYMOUS SESSION EXCEPTIONS
-    // ===============================
 
     /**
      * Handle InvalidSessionTokenException when anonymous session token is missing or invalid.
@@ -721,9 +721,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.GONE).body(errorResponse);
     }
 
-    // ===============================
     // DATABASE & SECURITY EXCEPTIONS
-    // ===============================
+
+    /**
+     * Handle optimistic locking failures (concurrent modification).
+     * Returns HTTP 409 Conflict when two concurrent requests attempt to modify
+     * the same entity (e.g., simultaneous session complete + abandon).
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(
+            ObjectOptimisticLockingFailureException ex, WebRequest request) {
+
+        String correlationId = getCorrelationId(request);
+        logger.warn("Optimistic locking failure [{}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse errorResponse = buildErrorResponse(
+            ex,
+            HttpStatus.CONFLICT,
+            "The resource was modified by another request. Please retry.",
+            "A concurrent update was detected. Refresh and try again.",
+            request
+        );
+
+        errorResponse.setCode("CONCURRENT_MODIFICATION");
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
 
     /**
      * Handle database constraint violations
@@ -774,9 +798,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
 
-    // ===============================
     // CATCH-ALL EXCEPTION HANDLERS
-    // ===============================
 
     /**
      * Handle runtime exceptions
@@ -822,9 +844,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
 
-    // ===============================
     // VALIDATION ERROR CLASS
-    // ===============================
 
     /**
      * Inner class for validation error details

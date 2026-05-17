@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,16 @@ public interface CompetencyReliabilityRepository extends JpaRepository<Competenc
      * Find reliability metrics for a specific competency.
      */
     Optional<CompetencyReliability> findByCompetency_Id(UUID competencyId);
+
+    /**
+     * Batch-load reliability metrics for multiple competencies in a single query.
+     * Prevents N+1 queries when enriching confidence intervals for multiple competency scores.
+     *
+     * @param competencyIds Collection of competency IDs to fetch reliability for
+     * @return List of reliability entities with competency pre-loaded
+     */
+    @Query("SELECT cr FROM CompetencyReliability cr WHERE cr.competency.id IN :competencyIds")
+    List<CompetencyReliability> findByCompetencyIdIn(@Param("competencyIds") Collection<UUID> competencyIds);
 
     /**
      * Find all competencies with a specific reliability status.

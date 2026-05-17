@@ -35,9 +35,7 @@ import java.util.UUID;
  */
 public interface PsychometricAnalysisService {
 
-    // ============================================
     // ITEM-LEVEL ANALYSIS
-    // ============================================
 
     /**
      * Calculate and persist all psychometric statistics for a single question.
@@ -106,9 +104,7 @@ public interface PsychometricAnalysisService {
      */
     Map<String, Double> analyzeDistractors(UUID questionId);
 
-    // ============================================
     // COMPETENCY-LEVEL ANALYSIS
-    // ============================================
 
     /**
      * Calculate and persist Cronbach's Alpha for a competency.
@@ -163,9 +159,7 @@ public interface PsychometricAnalysisService {
      */
     Map<UUID, BigDecimal> calculateAlphaIfDeleted(UUID competencyId);
 
-    // ============================================
     // BIG FIVE TRAIT-LEVEL ANALYSIS
-    // ============================================
 
     /**
      * Calculate and persist Cronbach's Alpha for a Big Five personality trait.
@@ -178,9 +172,7 @@ public interface PsychometricAnalysisService {
      */
     BigFiveReliability calculateBigFiveReliability(BigFiveTrait trait);
 
-    // ============================================
     // BATCH OPERATIONS
-    // ============================================
 
     /**
      * Recalculate psychometric statistics for all questions with sufficient responses.
@@ -216,9 +208,7 @@ public interface PsychometricAnalysisService {
      */
     List<BigFiveReliability> recalculateAllBigFiveTraits();
 
-    // ============================================
     // ITEM STATUS MANAGEMENT
-    // ============================================
 
     /**
      * Update the validity status of a question based on its psychometric metrics.
@@ -268,9 +258,7 @@ public interface PsychometricAnalysisService {
      */
     void activateItem(UUID questionId);
 
-    // ============================================
     // HEALTH REPORTING
-    // ============================================
 
     /**
      * Generate a comprehensive psychometric health report.

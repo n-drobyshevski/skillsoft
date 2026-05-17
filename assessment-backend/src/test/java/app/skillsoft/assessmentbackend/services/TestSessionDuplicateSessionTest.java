@@ -16,10 +16,12 @@ import app.skillsoft.assessmentbackend.repository.TestAnswerRepository;
 import app.skillsoft.assessmentbackend.repository.TestSessionRepository;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.services.assembly.AssemblyProgressTracker;
+import app.skillsoft.assessmentbackend.services.assembly.AssemblyResult;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssembler;
 import app.skillsoft.assessmentbackend.services.assembly.TestAssemblerFactory;
 import app.skillsoft.assessmentbackend.services.impl.TestSessionServiceImpl;
 import app.skillsoft.assessmentbackend.services.psychometrics.PsychometricAuditJob;
+import app.skillsoft.assessmentbackend.services.selection.QuestionSelectionService;
 import app.skillsoft.assessmentbackend.services.validation.InventoryHeatmapService;
 import app.skillsoft.assessmentbackend.services.ActivityTrackingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,6 +90,9 @@ class TestSessionDuplicateSessionTest {
     @Mock
     private BlueprintConversionService blueprintConversionService;
 
+    @Mock
+    private QuestionSelectionService questionSelectionService;
+
     private TestSessionService testSessionService;
 
     private UUID templateId;
@@ -113,7 +118,9 @@ class TestSessionDuplicateSessionTest {
                 assemblyProgressTracker,
                 scoringOrchestrationService,
                 activityTrackingService,
-                blueprintConversionService
+                blueprintConversionService,
+                questionSelectionService,
+                null // @Lazy self-reference, not needed in unit tests
         );
 
         // Initialize test data
@@ -209,7 +216,7 @@ class TestSessionDuplicateSessionTest {
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
         TestAssembler mockAssembler = mock(TestAssembler.class);
-        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(question1Id, question2Id)));
         when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion
@@ -252,7 +259,7 @@ class TestSessionDuplicateSessionTest {
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
         TestAssembler mockAssembler = mock(TestAssembler.class);
-        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(question1Id, question2Id)));
         when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion
@@ -294,7 +301,7 @@ class TestSessionDuplicateSessionTest {
         UUID question1Id = UUID.randomUUID();
         UUID question2Id = UUID.randomUUID();
         TestAssembler mockAssembler = mock(TestAssembler.class);
-        when(mockAssembler.assemble(any())).thenReturn(List.of(question1Id, question2Id));
+        when(mockAssembler.assemble(any())).thenReturn(AssemblyResult.of(List.of(question1Id, question2Id)));
         when(assemblerFactory.getAssembler(any(TestBlueprintDto.class))).thenReturn(mockAssembler);
 
         // Mock answer repository for DTO conversion

@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <title th:text="${templateName} + ' - Manager Summary'">Manager Summary</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 18mm 15mm 18mm 15mm;
+        }
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            font-size: 10pt;
+            color: #1f2937;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        /* Header band */
+        .header-band {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 5mm 5mm;
+            margin-bottom: 5mm;
+        }
+        .header-band h1 {
+            font-size: 16pt;
+            margin: 0 0 1mm 0;
+            color: #0f172a;
+        }
+        .header-band .subtitle {
+            font-size: 9pt;
+            color: #64748b;
+            margin: 0;
+        }
+
+        /* Info + Score layout */
+        .main-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+        .main-table td { vertical-align: top; padding: 0; }
+        .info-col { width: 62%; padding-right: 4mm; }
+        .score-col { width: 38%; text-align: center; }
+
+        /* Info grid */
+        .info-grid { width: 100%; border-collapse: collapse; }
+        .info-grid td { padding: 1.5mm 2mm; vertical-align: top; }
+        .info-grid .label { color: #64748b; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5pt; }
+        .info-grid .value { font-size: 10pt; font-weight: 600; color: #1e293b; }
+
+        /* Score display */
+        .score-block { padding: 3mm 0; }
+        .score-big { font-size: 28pt; font-weight: 700; color: #0f172a; margin: 0; }
+        .score-label { font-size: 9pt; margin: 1mm 0 0 0; }
+        .badge { display: inline-block; padding: 1mm 4mm; font-size: 8pt; font-weight: 700; letter-spacing: 0.3pt; }
+        .badge-pass { background-color: #dcfce7; color: #166534; }
+        .badge-fail { background-color: #fef3c7; color: #92400e; }
+
+        /* Stats bar */
+        .stats-bar {
+            background-color: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            padding: 2.5mm 4mm;
+            margin-bottom: 5mm;
+            font-size: 9pt;
+            color: #475569;
+        }
+
+        /* Sections */
+        h2 {
+            font-size: 11pt;
+            margin: 5mm 0 2mm 0;
+            color: #0f172a;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 1.5mm;
+        }
+        .section-list { margin: 0; padding-left: 5mm; }
+        .section-list li { margin-bottom: 2mm; font-size: 10pt; }
+        .strength { color: #166534; }
+        .development { color: #92400e; }
+        .empty-note { color: #94a3b8; font-style: italic; font-size: 9pt; }
+
+        /* Competency table */
+        .comp-table { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+        .comp-table th { text-align: left; font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.3pt; padding: 1.5mm 2mm; border-bottom: 2px solid #e2e8f0; }
+        .comp-table td { padding: 2mm; font-size: 10pt; border-bottom: 1px solid #f1f5f9; }
+        .comp-table .pct { text-align: right; font-weight: 700; width: 15%; }
+        .comp-table .bar-cell { width: 30%; }
+        .pct-bar { height: 3mm; background-color: #e2e8f0; }
+        .pct-fill { height: 100%; }
+        .fill-green { background-color: #22c55e; }
+        .fill-amber { background-color: #f59e0b; }
+        .fill-red { background-color: #ef4444; }
+        .prof-label { font-size: 8pt; color: #64748b; }
+
+        /* Recommendation */
+        .recommendation-box {
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-left: 4px solid #3b82f6;
+            padding: 3mm 4mm;
+            margin-top: 4mm;
+        }
+        .recommendation-box strong { color: #1e40af; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.3pt; }
+        .recommendation-box p { margin: 1mm 0 0 0; font-size: 10pt; color: #1e293b; }
+
+        /* Footer */
+        .footer {
+            margin-top: 6mm;
+            padding-top: 3mm;
+            border-top: 1px solid #e2e8f0;
+            font-size: 7.5pt;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Band -->
+    <div class="header-band">
+        <h1 th:text="${templateName}">Software Developer Assessment</h1>
+        <p class="subtitle">Manager Summary Report</p>
+    </div>
+
+    <!-- Main layout: Info + Score -->
+    <table class="main-table">
+        <tr>
+            <td class="info-col">
+                <table class="info-grid">
+                    <tr>
+                        <td style="width: 50%;">
+                            <div class="label">Candidate</div>
+                            <div class="value" th:text="${candidateName}">user_2abc...</div>
+                        </td>
+                        <td style="width: 50%;">
+                            <div class="label">Assessment Type</div>
+                            <div class="value" th:text="${goal}">JOB_FIT</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="label">Completed</div>
+                            <div class="value" th:text="${completedAt}">2026-03-18</div>
+                        </td>
+                        <td>
+                            <div class="label">Duration</div>
+                            <div class="value" th:text="${duration}">42m 15s</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="padding-top: 2mm;">
+                            <div class="label">Result</div>
+                            <span th:if="${passed}" class="badge badge-pass">PASSED</span>
+                            <span th:unless="${passed}" class="badge badge-fail">NOT PASSED</span>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+            <td class="score-col">
+                <div class="score-block" th:utext="${scoreCircleSvg}">
+                    <!-- SVG score circle -->
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Stats bar -->
+    <div class="stats-bar">
+        <span th:text="${questionsAnswered} + ' / ' + ${totalQuestions} + ' questions answered'">78 / 80 questions answered</span>
+        <span style="margin: 0 2mm;">|</span>
+        <span th:text="'Overall score: ' + ${overallPercentage} + '%'">Overall score: 85%</span>
+    </div>
+
+    <!-- Competency Breakdown -->
+    <h2>Competency Breakdown</h2>
+    <table class="comp-table" th:if="${hasCompetencies}">
+        <tr>
+            <th style="width: 55%;">Competency</th>
+            <th class="bar-cell">Score</th>
+            <th class="pct">%</th>
+        </tr>
+        <tr th:each="c : ${competencyRows}">
+            <td>
+                <span th:text="${c.name}">Competency Name</span>
+                <span th:if="${c.proficiency != ''}" class="prof-label" th:text="' · ' + ${c.proficiency}"> · Advanced</span>
+            </td>
+            <td class="bar-cell">
+                <div class="pct-bar">
+                    <div th:classappend="${c.percentage >= 70 ? 'fill-green' : (c.percentage >= 50 ? 'fill-amber' : 'fill-red')}"
+                         class="pct-fill"
+                         th:style="'width: ' + ${c.percentage} + '%'">&#160;</div>
+                </div>
+            </td>
+            <td class="pct" th:classappend="${c.isStrength ? 'strength' : 'development'}" th:text="${c.percentage} + '%'">85%</td>
+        </tr>
+    </table>
+    <p th:unless="${hasCompetencies}" class="empty-note">No competency data available</p>
+
+    <!-- Recommendation -->
+    <div th:if="${recommendation != null and !recommendation.isEmpty()}" class="recommendation-box">
+        <strong>Recommendation</strong>
+        <p th:text="${recommendation}">Recommended. Meets role requirements.</p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        CONFIDENTIAL
+        <span style="margin: 0 2mm;">|</span>
+        <span th:text="'Generated ' + ${generatedAt}">Generated 2026-03-18 10:30</span>
+        <span style="margin: 0 2mm;">|</span>
+        SkillSoft Assessment Platform
+    </div>
+
+</body>
+</html>

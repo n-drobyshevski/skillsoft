@@ -126,6 +126,41 @@ public class ItemStatistics {
     private BigDecimal previousDiscriminationIndex;
 
     /**
+     * IRT 2PL discrimination parameter (a).
+     * Higher values indicate the item better differentiates between ability levels.
+     * Typical range: 0.5 to 2.5
+     * - a < 0.5: Poor discrimination
+     * - 0.5 <= a < 1.0: Low discrimination
+     * - 1.0 <= a < 1.5: Moderate discrimination
+     * - a >= 1.5: High discrimination
+     */
+    @Column(name = "irt_discrimination", precision = 6, scale = 4)
+    private BigDecimal irtDiscrimination;
+
+    /**
+     * IRT 2PL difficulty parameter (b).
+     * Represents the ability level at which there is a 50% chance of correct response.
+     * Measured on the same scale as ability (theta), typically -3 to +3.
+     * - b < -2: Very easy
+     * - -2 <= b < -1: Easy
+     * - -1 <= b <= 1: Medium
+     * - 1 < b <= 2: Hard
+     * - b > 2: Very hard
+     */
+    @Column(name = "irt_difficulty", precision = 6, scale = 4)
+    private BigDecimal irtDifficulty;
+
+    /**
+     * IRT 3PL guessing parameter (c).
+     * Lower asymptote representing the probability of a correct response by guessing.
+     * For 2PL model, this is fixed at 0.
+     * Stored for future 3PL model support.
+     * Typical range: 0.0 to 0.35
+     */
+    @Column(name = "irt_guessing", precision = 5, scale = 4)
+    private BigDecimal irtGuessing;
+
+    /**
      * History of status changes for audit trail.
      * Each entry contains: fromStatus, toStatus, timestamp, reason
      */
@@ -279,6 +314,30 @@ public class ItemStatistics {
 
     public void setPreviousDiscriminationIndex(BigDecimal previousDiscriminationIndex) {
         this.previousDiscriminationIndex = previousDiscriminationIndex;
+    }
+
+    public BigDecimal getIrtDiscrimination() {
+        return irtDiscrimination;
+    }
+
+    public void setIrtDiscrimination(BigDecimal irtDiscrimination) {
+        this.irtDiscrimination = irtDiscrimination;
+    }
+
+    public BigDecimal getIrtDifficulty() {
+        return irtDifficulty;
+    }
+
+    public void setIrtDifficulty(BigDecimal irtDifficulty) {
+        this.irtDifficulty = irtDifficulty;
+    }
+
+    public BigDecimal getIrtGuessing() {
+        return irtGuessing;
+    }
+
+    public void setIrtGuessing(BigDecimal irtGuessing) {
+        this.irtGuessing = irtGuessing;
     }
 
     public List<StatusChangeRecord> getStatusChangeHistory() {

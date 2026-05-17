@@ -1,6 +1,7 @@
 package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.dto.BulkDeleteResultDto;
 import app.skillsoft.assessmentbackend.domain.entities.SessionStatus;
 import app.skillsoft.assessmentbackend.events.assembly.AssemblyProgress;
 import org.springframework.data.domain.Page;
@@ -72,6 +73,13 @@ public interface TestSessionService {
     TestSessionDto abandonSession(UUID sessionId);
 
     /**
+     * Discard a test session completely (exit without saving).
+     * Deletes the session and all associated answers from the database.
+     * Only allowed for IN_PROGRESS or NOT_STARTED sessions.
+     */
+    void discardSession(UUID sessionId);
+
+    /**
      * Get all answers for a session.
      */
     List<TestAnswerDto> getSessionAnswers(UUID sessionId);
@@ -98,6 +106,17 @@ public interface TestSessionService {
      * @return Current assembly progress if active, empty otherwise
      */
     Optional<AssemblyProgress> getAssemblyProgress(UUID templateId);
+
+    /**
+     * Delete a single test session and its cascaded result + answers.
+     * ADMIN only.
+     */
+    void deleteSession(UUID sessionId);
+
+    /**
+     * Bulk delete test sessions. Each deletion runs in its own transaction.
+     */
+    BulkDeleteResultDto bulkDeleteSessions(List<UUID> sessionIds);
 
     /**
      * DTO for current question with context.

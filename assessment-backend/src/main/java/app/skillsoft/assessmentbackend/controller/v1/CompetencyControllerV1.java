@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.controller.v1;
 
 import app.skillsoft.assessmentbackend.domain.dto.BehavioralIndicatorDto;
 import app.skillsoft.assessmentbackend.domain.dto.CompetencyDto;
+import app.skillsoft.assessmentbackend.domain.dto.IndicatorInventoryDto;
 import app.skillsoft.assessmentbackend.domain.dto.request.CreateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.dto.request.UpdateCompetencyRequest;
 import app.skillsoft.assessmentbackend.domain.entities.BehavioralIndicator;
@@ -14,6 +15,7 @@ import app.skillsoft.assessmentbackend.services.CompetencyService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * V1 REST Controller for Competency management.
@@ -55,18 +58,23 @@ public class CompetencyControllerV1 {
     }
 
     @GetMapping
-    public List<CompetencyDto> listCompetencies() {
+    public ResponseEntity<List<CompetencyDto>> listCompetencies() {
         logger.info("GET /api/v1/competencies endpoint called");
         List<Competency> competencies = competencyService.listCompetencies();
         logger.info("Found {} competencies", competencies.size());
-        return competencies.stream().map(competencyMapper::toDto).toList();
+        List<CompetencyDto> dtos = competencies.stream().map(competencyMapper::toDto).toList();
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(10, TimeUnit.MINUTES).cachePublic())
+                .body(dtos);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<CompetencyDto> getCompetencyById(@PathVariable UUID id) {
         logger.info("GET /api/v1/competencies/{} endpoint called", id);
         return competencyService.findCompetencyById(id)
-                .map(competency -> ResponseEntity.ok(competencyMapper.toDto(competency)))
+                .map(competency -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.maxAge(10, TimeUnit.MINUTES).cachePublic())
+                        .body(competencyMapper.toDto(competency)))
                 .orElseGet(() -> {
                     logger.warn("Competency with id {} not found", id);
                     return ResponseEntity.notFound().build();
@@ -74,12 +82,15 @@ public class CompetencyControllerV1 {
     }
 
     @GetMapping("/{competencyId}/behavioral-indicators")
-    public List<BehavioralIndicatorDto> listCompetencyBehavioralIndicators(
+    public ResponseEntity<List<BehavioralIndicatorDto>> listCompetencyBehavioralIndicators(
             @PathVariable("competencyId") UUID competencyId) {
         logger.info("GET /api/v1/competencies/{}/behavioral-indicators endpoint called", competencyId);
         List<BehavioralIndicator> indicators = behavioralIndicatorService.listCompetencyBehavioralIndicators(competencyId);
         logger.info("Found {} behavioral indicators for competency {}", indicators.size(), competencyId);
-        return indicators.stream().map(behavioralIndicatorMapper::toDto).toList();
+        List<BehavioralIndicatorDto> dtos = indicators.stream().map(behavioralIndicatorMapper::toDto).toList();
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(10, TimeUnit.MINUTES).cachePublic())
+                .body(dtos);
     }
 
     @PostMapping
@@ -118,6 +129,23 @@ public class CompetencyControllerV1 {
             logger.error("Error updating competency with id {}: {}", id, e.getMessage());
             throw e;
         }
+    }
+
+    @GetMapping("/{competencyId}/indicator-inventory")
+    public ResponseEntity<IndicatorInventoryDto> getIndicatorInventory(
+            @PathVariable UUID competencyId) {
+        logger.info("GET /api/v1/competencies/{}/indicator-inventory", competencyId);
+        return competencyService.findCompetencyById(competencyId)
+                .map(comp -> {
+                    IndicatorInventoryDto inventory = competencyService.getIndicatorInventory(competencyId);
+                    return ResponseEntity.ok()
+                            .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePublic())
+                            .body(inventory);
+                })
+                .orElseGet(() -> {
+                    logger.warn("Competency {} not found for indicator-inventory", competencyId);
+                    return ResponseEntity.notFound().build();
+                });
     }
 
     @DeleteMapping("/{id}")

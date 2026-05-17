@@ -13,6 +13,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import app.skillsoft.assessmentbackend.domain.entities.IndicatorMeasurementType;
+
 @Repository
 public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralIndicator, UUID> {
 
@@ -26,7 +28,17 @@ public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralI
         @Query("SELECT bi FROM BehavioralIndicator bi LEFT JOIN FETCH bi.competency WHERE bi.id IN :ids")
         List<BehavioralIndicator> findAllByIdWithCompetency(@Param("ids") Set<UUID> ids);
         public List<BehavioralIndicator> findByCompetencyId(UUID competencyId);
-        
+
+        /**
+         * Batch load indicators by competency IDs with their competency eagerly fetched.
+         * Used by JobFitAssembler to prevent N+1 queries during gap-based question selection.
+         *
+         * @param competencyIds Set of competency IDs to fetch indicators for
+         * @return List of indicators with competency pre-loaded
+         */
+        @Query("SELECT bi FROM BehavioralIndicator bi LEFT JOIN FETCH bi.competency WHERE bi.competency.id IN :competencyIds")
+        List<BehavioralIndicator> findByCompetencyIdIn(@Param("competencyIds") Set<UUID> competencyIds);
+
         public Optional<BehavioralIndicator> findByIdAndCompetencyId(UUID id, UUID competencyId);
         
         /**
@@ -40,4 +52,34 @@ public interface BehavioralIndicatorRepository extends JpaRepository<BehavioralI
          * @return List of indicators matching the specified scope
          */
         public List<BehavioralIndicator> findByContextScope(ContextScope contextScope);
+
+        long countByIsActiveTrue();
+
+        long countByContextScope(ContextScope contextScope);
+
+        @Query("SELECT bi.contextScope, COUNT(bi) FROM BehavioralIndicator bi GROUP BY bi.contextScope")
+        List<Object[]> countGroupedByContextScope();
+
+        @Query("""
+            SELECT COUNT(DISTINCT bi) FROM BehavioralIndicator bi
+            JOIN AssessmentQuestion q ON q.behavioralIndicator = bi
+            WHERE q.isActive = true
+            """)
+        long countWithActiveQuestions();
+
+        @Query("SELECT COUNT(bi) FROM BehavioralIndicator bi WHERE bi.measurementType IN :types")
+        long countByMeasurementTypeIn(@Param("types") List<IndicatorMeasurementType> types);
+
+        @Query("""
+            SELECT COALESCE(AVG(
+                CASE bi.observabilityLevel
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.DIRECTLY_OBSERVABLE THEN 1.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.PARTIALLY_OBSERVABLE THEN 2.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.INFERRED THEN 3.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.SELF_REPORTED THEN 4.0
+                    WHEN app.skillsoft.assessmentbackend.domain.entities.ObservabilityLevel.REQUIRES_DOCUMENTATION THEN 5.0
+                END
+            ), 0) FROM BehavioralIndicator bi
+            """)
+        double averageObservabilityComplexity();
 }

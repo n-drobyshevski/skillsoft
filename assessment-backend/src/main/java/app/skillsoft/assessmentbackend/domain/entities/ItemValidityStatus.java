@@ -6,7 +6,8 @@ package app.skillsoft.assessmentbackend.domain.entities;
  */
 public enum ItemValidityStatus {
     ACTIVE("Активный", "Validated item with good psychometric properties (rpb > 0.3)"),
-    PROBATION("Пробационный", "New item with < 50 responses, gathering data"),
+    PRELIMINARY("Предварительный", "Item with 10-49 responses, preliminary metrics calculated"),
+    PROBATION("Пробационный", "New item with < 10 responses, gathering data"),
     FLAGGED_FOR_REVIEW("На проверке", "Requires manual review due to extreme metrics"),
     RETIRED("Отключен", "Removed from active use due to poor discrimination (rpb < 0)");
 

@@ -62,9 +62,25 @@ public class AnonymousTakerInfo implements Serializable {
      */
     private LocalDateTime collectedAt;
 
-    // ========================================
+    /**
+     * Whether the taker gave explicit GDPR consent for data processing.
+     * Must not be pre-checked in the UI.
+     */
+    private Boolean gdprConsentGiven;
+
+    /**
+     * Timestamp when GDPR consent was given.
+     */
+    private LocalDateTime gdprConsentAt;
+
+    /**
+     * Number of times the taker switched away from the test tab during the assessment.
+     * Advisory metadata only — does NOT trigger auto-disqualification.
+     * Null means tracking data was not collected (e.g., older sessions).
+     */
+    private Integer tabSwitchCount;
+
     // Constructors
-    // ========================================
 
     /**
      * Default constructor required for JSON deserialization.
@@ -101,9 +117,7 @@ public class AnonymousTakerInfo implements Serializable {
         this.collectedAt = LocalDateTime.now();
     }
 
-    // ========================================
     // Business Methods
-    // ========================================
 
     /**
      * Get the taker's full display name.
@@ -136,9 +150,7 @@ public class AnonymousTakerInfo implements Serializable {
         return email != null && !email.isBlank();
     }
 
-    // ========================================
     // Getters and Setters
-    // ========================================
 
     public String getFirstName() {
         return firstName;
@@ -180,9 +192,31 @@ public class AnonymousTakerInfo implements Serializable {
         this.collectedAt = collectedAt;
     }
 
-    // ========================================
+    public Boolean getGdprConsentGiven() {
+        return gdprConsentGiven;
+    }
+
+    public void setGdprConsentGiven(Boolean gdprConsentGiven) {
+        this.gdprConsentGiven = gdprConsentGiven;
+    }
+
+    public LocalDateTime getGdprConsentAt() {
+        return gdprConsentAt;
+    }
+
+    public void setGdprConsentAt(LocalDateTime gdprConsentAt) {
+        this.gdprConsentAt = gdprConsentAt;
+    }
+
+    public Integer getTabSwitchCount() {
+        return tabSwitchCount;
+    }
+
+    public void setTabSwitchCount(Integer tabSwitchCount) {
+        this.tabSwitchCount = tabSwitchCount;
+    }
+
     // Object Overrides
-    // ========================================
 
     @Override
     public boolean equals(Object o) {

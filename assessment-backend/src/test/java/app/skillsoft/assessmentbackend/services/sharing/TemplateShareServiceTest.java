@@ -186,10 +186,11 @@ class TemplateShareServiceTest extends BaseUnitTest {
         }
 
         @Test
-        @DisplayName("should throw exception when sharing DRAFT template")
+        @DisplayName("should throw exception when non-owner/non-admin sharing DRAFT template")
         void shouldThrowExceptionWhenSharingDraftTemplate() {
-            // Given - use non-owner, non-admin grantor to trigger the DRAFT restriction
-            // (owners and admins are allowed to share DRAFT templates)
+            // Given - use non-owner, non-admin grantor (EDITOR role)
+            // The updated logic allows owners and admins to share DRAFT templates,
+            // but non-owner non-admin users should still be blocked
             template.setStatus(TemplateStatus.DRAFT);
 
             when(templateRepository.findById(template.getId())).thenReturn(Optional.of(template));
