@@ -35,9 +35,10 @@ public class DeprecationHeaderInterceptor implements HandlerInterceptor {
     }
 
     private boolean isV0Path(String path) {
-        return path.startsWith("/api/competencies") ||
-                path.startsWith("/api/behavioral-indicators") ||
-                path.startsWith("/api/questions") ||
-                path.startsWith("/api/users");
+        // Only paths whose legacy controllers still exist. The /api/competencies,
+        // /api/behavioral-indicators, and /api/questions handlers were removed in
+        // dev's "chore: remove AI artifacts and deprecated controllers" cleanup;
+        // requests to them now 404 before reaching this interceptor's response.
+        return path.startsWith("/api/users");
     }
 }

@@ -100,13 +100,11 @@ public class SecurityConfig {
                 // Allow CORS preflight requests
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 
-                // Allow public read access (GET) for content endpoints (legacy v0)
-                .requestMatchers(HttpMethod.GET, "/api/competencies/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/behavioral-indicators/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/questions/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/stats/**").permitAll()
-
                 // Allow public read access (GET) for content endpoints (v1)
+                // The legacy v0 paths (/api/competencies, /api/behavioral-indicators,
+                // /api/questions, /api/stats) had their controllers removed in dev's
+                // deprecated-controllers cleanup, so the corresponding permitAll
+                // entries were dropped — they matched routes that no longer exist.
                 .requestMatchers(HttpMethod.GET, "/api/v1/competencies/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/behavioral-indicators/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/questions/**").permitAll()
