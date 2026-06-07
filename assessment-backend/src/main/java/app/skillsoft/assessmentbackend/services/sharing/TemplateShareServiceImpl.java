@@ -232,6 +232,22 @@ public class TemplateShareServiceImpl implements TemplateShareService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<TemplateShareDto> listTeamSharedTemplates(UUID teamId) {
+        log.debug("Listing templates shared with team {}", teamId);
+
+        if (!teamRepository.existsById(teamId)) {
+            throw new ResourceNotFoundException("Team", teamId);
+        }
+
+        List<TemplateShare> shares = shareRepository.findActiveTeamSharesByTeamWithDetails(teamId);
+
+        return shares.stream()
+                .map(TemplateShareDto::fromEntity)
+                .toList();
+    }
+
+    @Override
     public BulkShareResponse bulkShare(UUID templateId, BulkShareRequest request, String grantedByClerkId) {
         log.info("Bulk sharing template {} with {} users and {} teams",
                 templateId, request.userShares().size(), request.teamShares().size());

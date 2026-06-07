@@ -591,6 +591,47 @@ class TemplateShareServiceTest extends BaseUnitTest {
     }
 
     // ============================================
+    // LIST TEAM SHARED TEMPLATES TESTS
+    // ============================================
+
+    @Nested
+    @DisplayName("listTeamSharedTemplates")
+    class ListTeamSharedTemplatesTests {
+
+        @Test
+        @DisplayName("should return active team shares for a team")
+        void shouldReturnActiveTeamSharesForTeam() {
+            // Given
+            TemplateShare teamShare = new TemplateShare(template, team, SharePermission.VIEW, owner);
+            teamShare.setId(UUID.randomUUID());
+
+            when(teamRepository.existsById(team.getId())).thenReturn(true);
+            when(shareRepository.findActiveTeamSharesByTeamWithDetails(team.getId()))
+                    .thenReturn(List.of(teamShare));
+
+            // When
+            List<TemplateShareDto> result = shareService.listTeamSharedTemplates(team.getId());
+
+            // Then
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).granteeType()).isEqualTo(GranteeType.TEAM);
+            assertThat(result.get(0).templateId()).isEqualTo(template.getId());
+        }
+
+        @Test
+        @DisplayName("should throw exception when team not found")
+        void shouldThrowExceptionWhenTeamNotFound() {
+            // Given
+            UUID nonExistentTeamId = UUID.randomUUID();
+            when(teamRepository.existsById(nonExistentTeamId)).thenReturn(false);
+
+            // When & Then
+            assertThatThrownBy(() -> shareService.listTeamSharedTemplates(nonExistentTeamId))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    // ============================================
     // BULK SHARE TESTS
     // ============================================
 

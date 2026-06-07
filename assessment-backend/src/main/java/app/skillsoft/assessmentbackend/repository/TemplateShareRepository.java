@@ -103,6 +103,23 @@ public interface TemplateShareRepository extends JpaRepository<TemplateShare, UU
            "AND (s.expiresAt IS NULL OR s.expiresAt > CURRENT_TIMESTAMP)")
     List<TemplateShare> findActiveByTeamIds(@Param("teamIds") List<UUID> teamIds);
 
+    /**
+     * Find all active team shares for a single team with eager loading.
+     * Returns every template shared with the team (regardless of owner),
+     * for admin team management. Uses JOIN FETCH to avoid N+1 queries and
+     * LazyInitialization issues when mapping to DTOs.
+     */
+    @Query("SELECT s FROM TemplateShare s " +
+           "JOIN FETCH s.template t " +
+           "LEFT JOIN FETCH t.owner " +
+           "LEFT JOIN FETCH s.team " +
+           "LEFT JOIN FETCH s.grantedBy " +
+           "WHERE s.granteeType = 'TEAM' AND s.team.id = :teamId " +
+           "AND s.isActive = true AND s.revokedAt IS NULL " +
+           "AND (s.expiresAt IS NULL OR s.expiresAt > CURRENT_TIMESTAMP) " +
+           "ORDER BY s.grantedAt DESC")
+    List<TemplateShare> findActiveTeamSharesByTeamWithDetails(@Param("teamId") UUID teamId);
+
     // PERMISSION CHECKS
 
     /**

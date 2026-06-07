@@ -110,6 +110,16 @@ public interface TemplateShareService {
     List<TemplateShareDto> listTeamShares(UUID templateId);
 
     /**
+     * List all templates currently shared with a specific team.
+     * Used by admin team management ("Tests" tab) to show every template
+     * a team has been granted access to. Returns active, non-expired shares.
+     *
+     * @param teamId The team to list shared templates for
+     * @return List of active team shares for the team (newest first)
+     */
+    List<TemplateShareDto> listTeamSharedTemplates(UUID teamId);
+
+    /**
      * Bulk share a template with multiple users and/or teams.
      * Uses partial success pattern - shares with as many as possible.
      *

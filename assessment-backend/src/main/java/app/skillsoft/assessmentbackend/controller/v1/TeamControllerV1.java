@@ -1,11 +1,13 @@
 package app.skillsoft.assessmentbackend.controller.v1;
 
+import app.skillsoft.assessmentbackend.domain.dto.sharing.TemplateShareDto;
 import app.skillsoft.assessmentbackend.domain.dto.team.*;
 import app.skillsoft.assessmentbackend.domain.entities.TeamStatus;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.security.SessionSecurityService;
 import app.skillsoft.assessmentbackend.services.external.TeamService;
 import app.skillsoft.assessmentbackend.services.external.TeamService.TeamProfile;
+import app.skillsoft.assessmentbackend.services.sharing.TemplateShareService;
 import app.skillsoft.assessmentbackend.services.team.TeamMapper;
 import app.skillsoft.assessmentbackend.services.team.TeamOrchestrationService;
 import app.skillsoft.assessmentbackend.services.team.TeamQueryService;
@@ -52,6 +54,7 @@ public class TeamControllerV1 {
     private final TeamMapper teamMapper;
     private final UserRepository userRepository;
     private final SessionSecurityService sessionSecurity;
+    private final TemplateShareService templateShareService;
 
     public TeamControllerV1(
             TeamQueryService queryService,
@@ -59,13 +62,15 @@ public class TeamControllerV1 {
             TeamService teamService,
             TeamMapper teamMapper,
             UserRepository userRepository,
-            SessionSecurityService sessionSecurity) {
+            SessionSecurityService sessionSecurity,
+            TemplateShareService templateShareService) {
         this.queryService = queryService;
         this.orchestrationService = orchestrationService;
         this.teamService = teamService;
         this.teamMapper = teamMapper;
         this.userRepository = userRepository;
         this.sessionSecurity = sessionSecurity;
+        this.templateShareService = templateShareService;
     }
 
     // ==================== Team CRUD ====================
@@ -336,6 +341,64 @@ public class TeamControllerV1 {
         response.put("activeTeams", stats.activeTeams());
         response.put("archivedTeams", stats.archivedTeams());
         return ResponseEntity.ok(response);
+    }
+
+    // ==================== Shared Templates (Tests) ====================
+
+    /**
+     * List all test templates currently shared with this team.
+     * Powers the admin team "Tests" tab.
+     */
+    @GetMapping("/{teamId}/shared-templates")
+    public ResponseEntity<List<TemplateShareDto>> getSharedTemplates(@PathVariable UUID teamId) {
+        logger.info("GET /api/v1/teams/{}/shared-templates", teamId);
+
+        List<TemplateShareDto> shares = templateShareService.listTeamSharedTemplates(teamId);
+        return ResponseEntity.ok(shares);
+    }
+
+    /**
+     * Grant this team access to a test template (add a test directly to the team).
+     * Admins may share any template at any permission level.
+     */
+    @PostMapping("/{teamId}/shared-templates")
+    public ResponseEntity<?> addSharedTemplate(
+            @PathVariable UUID teamId,
+            @Valid @RequestBody AddTeamTemplateRequest request) {
+        logger.info("POST /api/v1/teams/{}/shared-templates - template {}", teamId, request.templateId());
+
+        String clerkId = sessionSecurity.getAuthenticatedUserId();
+        if (clerkId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        try {
+            TemplateShareDto share = templateShareService.shareWithTeam(
+                    request.templateId(),
+                    teamId,
+                    request.permissionOrDefault(),
+                    request.expiresAt(),
+                    clerkId
+            );
+            return ResponseEntity.status(HttpStatus.CREATED).body(share);
+        } catch (IllegalStateException e) {
+            logger.warn("Add shared template validation failed: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Remove (revoke) a team's access to a test template by share id.
+     */
+    @DeleteMapping("/{teamId}/shared-templates/{shareId}")
+    public ResponseEntity<Void> removeSharedTemplate(
+            @PathVariable UUID teamId,
+            @PathVariable UUID shareId) {
+        logger.info("DELETE /api/v1/teams/{}/shared-templates/{}", teamId, shareId);
+
+        templateShareService.revokeShare(shareId);
+        return ResponseEntity.noContent().build();
     }
 
     // ==================== Helper Methods ====================
