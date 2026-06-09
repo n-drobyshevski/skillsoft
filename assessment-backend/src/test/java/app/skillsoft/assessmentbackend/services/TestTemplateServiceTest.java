@@ -2,7 +2,9 @@ package app.skillsoft.assessmentbackend.services;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
+import app.skillsoft.assessmentbackend.domain.entities.TemplateStatus;
 import app.skillsoft.assessmentbackend.domain.entities.TestTemplate;
+import app.skillsoft.assessmentbackend.exception.TemplateNotEditableException;
 import app.skillsoft.assessmentbackend.repository.TestTemplateRepository;
 import app.skillsoft.assessmentbackend.repository.UserRepository;
 import app.skillsoft.assessmentbackend.services.BlueprintConversionService;
@@ -361,6 +363,52 @@ class TestTemplateServiceTest {
                     template.getName().equals("Leadership Assessment Test") &&
                     template.getDescription().equals("New description only")
             ));
+        }
+
+        @Test
+        @DisplayName("Should update a PUBLISHED template when forceOverwrite is true")
+        void shouldUpdatePublishedTemplateWhenForceOverwrite() {
+            // Given: a published (non-editable) template
+            mockTemplate.setStatus(TemplateStatus.PUBLISHED);
+            UpdateTestTemplateRequest forceRequest = new UpdateTestTemplateRequest(
+                    null,                       // name
+                    "Force edited description", // description
+                    null, null, null, null, null, null,
+                    null, null, null, null, null, null,
+                    true                        // forceOverwrite
+            );
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+            when(templateRepository.save(any(TestTemplate.class))).thenReturn(mockTemplate);
+
+            // When
+            TestTemplateDto result = testTemplateService.updateTemplate(templateId, forceRequest);
+
+            // Then
+            assertThat(result.description()).isEqualTo("Force edited description");
+            verify(templateRepository).save(argThat(t ->
+                    t.getDescription().equals("Force edited description")));
+        }
+
+        @Test
+        @DisplayName("Should reject editing a PUBLISHED template without forceOverwrite")
+        void shouldRejectPublishedTemplateWithoutForceOverwrite() {
+            // Given: a published (non-editable) template
+            mockTemplate.setStatus(TemplateStatus.PUBLISHED);
+            UpdateTestTemplateRequest noForceRequest = new UpdateTestTemplateRequest(
+                    null,                    // name
+                    "Should not apply",      // description
+                    null, null, null, null, null, null,
+                    null, null, null, null, null, null,
+                    false                    // forceOverwrite
+            );
+            when(templateRepository.findById(templateId)).thenReturn(Optional.of(mockTemplate));
+
+            // When & Then
+            assertThatThrownBy(() -> testTemplateService.updateTemplate(templateId, noForceRequest))
+                    .isInstanceOf(TemplateNotEditableException.class)
+                    .hasMessageContaining("PUBLISHED");
+
+            verify(templateRepository, never()).save(any());
         }
     }
 
