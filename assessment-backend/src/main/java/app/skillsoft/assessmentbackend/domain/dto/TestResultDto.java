@@ -1,5 +1,6 @@
 package app.skillsoft.assessmentbackend.domain.dto;
 
+import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.ResultStatus;
 
 import java.time.LocalDateTime;
@@ -20,12 +21,17 @@ import java.util.UUID;
  *
  * The extendedMetrics field contains goal-specific metrics:
  * - For TEAM_FIT: TeamFitMetrics (diversityRatio, saturationRatio, teamFitMultiplier, etc.)
+ *
+ * The goal field carries the assessment type of the originating template
+ * (OVERVIEW / JOB_FIT / TEAM_FIT) so clients can categorize results without
+ * a separate template lookup.
  */
 public record TestResultDto(
         UUID id,
         UUID sessionId,
         UUID templateId,
         String templateName,
+        AssessmentGoal goal,
         String clerkUserId,
         Double overallScore,
         Double overallPercentage,
@@ -61,7 +67,7 @@ public record TestResultDto(
             Integer totalQuestions,
             LocalDateTime completedAt
     ) {
-        this(id, sessionId, templateId, templateName, clerkUserId,
+        this(id, sessionId, templateId, templateName, AssessmentGoal.OVERVIEW, clerkUserId,
                 overallScore, overallPercentage, percentile, passed,
                 competencyScores, totalTimeSeconds, questionsAnswered,
                 questionsSkipped, totalQuestions, completedAt,
@@ -89,7 +95,7 @@ public record TestResultDto(
             LocalDateTime completedAt,
             ResultStatus status
     ) {
-        this(id, sessionId, templateId, templateName, clerkUserId,
+        this(id, sessionId, templateId, templateName, AssessmentGoal.OVERVIEW, clerkUserId,
                 overallScore, overallPercentage, percentile, passed,
                 competencyScores, totalTimeSeconds, questionsAnswered,
                 questionsSkipped, totalQuestions, completedAt,

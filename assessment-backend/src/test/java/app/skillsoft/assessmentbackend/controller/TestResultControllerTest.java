@@ -1,6 +1,7 @@
 package app.skillsoft.assessmentbackend.controller;
 
 import app.skillsoft.assessmentbackend.domain.dto.*;
+import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.exception.ResourceNotFoundException;
 import app.skillsoft.assessmentbackend.services.CandidateComparisonService;
 import app.skillsoft.assessmentbackend.services.TestResultService;
@@ -106,12 +107,13 @@ class TestResultControllerTest {
                 now               // completedAt
         );
 
-        // TestResultSummaryDto: id, sessionId, templateId, templateName, overallPercentage, passed, completedAt
+        // TestResultSummaryDto: id, sessionId, templateId, templateName, goal, overallPercentage, passed, completedAt
         testResultSummaryDto = new TestResultSummaryDto(
                 resultId,
                 sessionId,
                 templateId,
                 "Leadership Assessment",
+                AssessmentGoal.JOB_FIT, // goal
                 75.0,             // overallPercentage
                 true,             // passed
                 now               // completedAt

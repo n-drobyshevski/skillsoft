@@ -544,6 +544,7 @@ public class ScoringOrchestrationServiceImpl implements ScoringOrchestrationServ
                 result.getSessionId(),
                 session.getTemplate().getId(),
                 session.getTemplate().getName(),
+                session.getTemplate().getGoal(),
                 result.getClerkUserId(),
                 result.getOverallScore(),
                 result.getOverallPercentage(),

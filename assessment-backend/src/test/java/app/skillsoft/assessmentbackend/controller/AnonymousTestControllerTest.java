@@ -3,6 +3,7 @@ package app.skillsoft.assessmentbackend.controller;
 import app.skillsoft.assessmentbackend.domain.dto.*;
 import app.skillsoft.assessmentbackend.domain.entities.DifficultyLevel;
 import app.skillsoft.assessmentbackend.domain.entities.QuestionType;
+import app.skillsoft.assessmentbackend.domain.entities.AssessmentGoal;
 import app.skillsoft.assessmentbackend.domain.entities.ResultStatus;
 import app.skillsoft.assessmentbackend.exception.GlobalExceptionHandler;
 import app.skillsoft.assessmentbackend.exception.InvalidSessionTokenException;
@@ -180,6 +181,7 @@ class AnonymousTestControllerTest {
                 sessionId,
                 templateId,
                 "Leadership Assessment",
+                AssessmentGoal.OVERVIEW, // goal
                 null, // clerkUserId (anonymous)
                 85.0, // overallScore
                 85.0, // overallPercentage

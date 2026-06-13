@@ -230,6 +230,7 @@ public class TestResultServiceImpl implements TestResultService {
                 result.getSessionId(),
                 session.getTemplate().getId(),
                 session.getTemplate().getName(),
+                session.getTemplate().getGoal(),
                 result.getClerkUserId(),
                 result.getOverallScore(),
                 result.getOverallPercentage(),
@@ -279,6 +280,7 @@ public class TestResultServiceImpl implements TestResultService {
                 result.getSessionId(),
                 session.getTemplate().getId(),
                 session.getTemplate().getName(),
+                session.getTemplate().getGoal(),
                 result.getOverallPercentage(),
                 result.getPassed(),
                 result.getCompletedAt()
