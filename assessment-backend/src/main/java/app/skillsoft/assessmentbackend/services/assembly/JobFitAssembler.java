@@ -99,19 +99,25 @@ public class JobFitAssembler implements TestAssembler {
         log.info("Assembling JOB_FIT test for SOC code: {}, candidateClerkUserId: {}",
             socCode, candidateClerkUserId != null ? candidateClerkUserId : "(none - full assessment)");
 
-        // Step 1: Fetch O*NET profile/benchmarks
+        // Step 1: Fetch O*NET profile/benchmarks.
+        // A missing profile is NOT fatal: the builder already includes the chosen
+        // competencies on the canvas (sent as competencyIds), so we degrade to a
+        // full-assessment of those competencies rather than dead-ending the test.
+        // We emit a non-blocking WARNING (not ERROR) so the simulation stays valid
+        // while still surfacing the localized "no O*NET profile" notice.
         var onetProfile = onetService.getProfile(socCode);
+        Map<String, Double> benchmarks;
         if (onetProfile.isEmpty()) {
-            log.warn("No O*NET profile found for SOC code: {}", socCode);
-            return new AssemblyResult(List.of(), List.of(
-                InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.ERROR,
-                    WarningCode.NO_ONET_PROFILE,
-                    "No O*NET profile found for SOC code: " + socCode,
-                    Map.of("socCode", socCode))
-            ));
+            log.warn("No O*NET profile found for SOC code: {} — continuing in full-assessment mode "
+                + "over the selected competencies (benchmark-driven difficulty unavailable)", socCode);
+            warnings.add(InventoryWarning.assemblyWarning(InventoryWarning.WarningLevel.WARNING,
+                WarningCode.NO_ONET_PROFILE,
+                "No O*NET profile found for SOC code: " + socCode,
+                Map.of("socCode", socCode)));
+            benchmarks = Map.of();
+        } else {
+            benchmarks = onetProfile.get().benchmarks();
         }
-
-        var benchmarks = onetProfile.get().benchmarks();
         log.debug("Found {} benchmark competencies for {}", benchmarks.size(), socCode);
 
         // Step 2: Fetch candidate's Competency Passport if available (Delta Testing)

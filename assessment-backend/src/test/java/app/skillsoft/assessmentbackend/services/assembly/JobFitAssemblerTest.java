@@ -3,6 +3,8 @@ package app.skillsoft.assessmentbackend.services.assembly;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.JobFitBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.OverviewBlueprint;
 import app.skillsoft.assessmentbackend.domain.dto.blueprint.TeamFitBlueprint;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.InventoryWarning;
+import app.skillsoft.assessmentbackend.domain.dto.simulation.WarningCode;
 import app.skillsoft.assessmentbackend.domain.entities.*;
 import app.skillsoft.assessmentbackend.repository.BehavioralIndicatorRepository;
 import app.skillsoft.assessmentbackend.repository.CompetencyRepository;
@@ -212,6 +214,37 @@ class JobFitAssemblerTest {
             // Then
             assertThat(result.questionIds()).isEmpty();
             verify(onetService).getProfile(VALID_SOC_CODE);
+        }
+
+        @Test
+        @DisplayName("should degrade to full-assessment (WARNING, not ERROR) when profile missing but competencyIds provided")
+        void shouldDegradeWhenProfileMissingButCompetencyIdsProvided() {
+            // Given: no O*NET profile (e.g. an occupation outside the dataset),
+            // but the builder already placed competencies on the canvas.
+            JobFitBlueprint blueprint = createBlueprint(VALID_SOC_CODE, 50);
+            blueprint.setCompetencyIds(List.of(competencyId1));
+
+            when(onetService.getProfile(VALID_SOC_CODE)).thenReturn(Optional.empty());
+            when(competencyRepository.findAllById(List.of(competencyId1)))
+                .thenReturn(List.of(competency1));
+            when(indicatorRepository.findByCompetencyIdIn(anySet())).thenReturn(List.of(indicator1));
+            when(questionSelectionService.selectQuestionsForIndicator(
+                any(), anyInt(), any(), anySet()))
+                .thenReturn(List.of(questionId1));
+
+            // When
+            AssemblyResult result = assembler.assemble(blueprint);
+
+            // Then: a test still assembles (no dead-end)...
+            assertThat(result.questionIds()).isNotEmpty();
+            // ...with a non-blocking NO_ONET_PROFILE WARNING (keeps simulation valid)...
+            assertThat(result.warnings()).anySatisfy(w -> {
+                assertThat(w.code()).isEqualTo(WarningCode.NO_ONET_PROFILE);
+                assertThat(w.level()).isEqualTo(InventoryWarning.WarningLevel.WARNING);
+            });
+            // ...and crucially NO ERROR-level warning (which would invalidate the sim).
+            assertThat(result.warnings())
+                .noneMatch(w -> w.level() == InventoryWarning.WarningLevel.ERROR);
         }
 
         @Test

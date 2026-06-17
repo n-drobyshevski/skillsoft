@@ -4,6 +4,8 @@ import app.skillsoft.assessmentbackend.config.CacheConfig;
 import app.skillsoft.assessmentbackend.config.OnetProperties;
 import app.skillsoft.assessmentbackend.services.external.OnetService;
 import app.skillsoft.assessmentbackend.services.external.impl.OnetApiResponses.*;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -23,8 +26,11 @@ import java.util.stream.Collectors;
  * O*NET Service implementation with real API integration and mock fallback.
  *
  * <p>When {@code skillsoft.onet.enabled=true} and credentials are configured,
- * makes real HTTP calls to the O*NET Web Services API. Otherwise, falls back
- * to hardcoded mock data for 9 common occupations.</p>
+ * makes real HTTP calls to the O*NET Web Services API. Otherwise, profiles are
+ * served from a bundled classpath resource ({@code /onet/onet-profiles.json},
+ * ~1,000 occupations precomputed from the O*NET element dataset), overlaid with
+ * 9 hand-curated mock profiles. If the resource cannot be read, the service
+ * still serves the 9 curated mocks so it never starts empty.</p>
  *
  * <p>Resilience patterns applied:</p>
  * <ul>
@@ -40,7 +46,11 @@ public class OnetServiceImpl implements OnetService {
     private final OnetProperties properties;
     private final RestClient restClient;
 
-    // Mock data for common occupations (fallback when API is disabled)
+    /** Classpath location of the precomputed O*NET profiles bundle. */
+    private static final String PROFILES_RESOURCE = "/onet/onet-profiles.json";
+
+    // Hand-curated profiles for 9 common occupations. Used as overrides on top
+    // of the bundled dataset, and as the sole fallback if the bundle is missing.
     private static final Map<String, OnetProfile> MOCK_PROFILES = new HashMap<>();
 
     static {
@@ -309,6 +319,35 @@ public class OnetServiceImpl implements OnetService {
         ));
     }
 
+    /**
+     * Full profile lookup set: bundled precomputed profiles overlaid with the
+     * curated mocks (mocks win). Used by getProfile/getBenchmark/isValidSocCode.
+     * Loaded once at class init so every instance shares it.
+     */
+    private static final Map<String, OnetProfile> PROFILES = loadProfiles();
+
+    private static Map<String, OnetProfile> loadProfiles() {
+        try (InputStream in = OnetServiceImpl.class.getResourceAsStream(PROFILES_RESOURCE)) {
+            if (in == null) {
+                log.warn("O*NET profiles resource {} not found — falling back to {} curated mock profiles",
+                    PROFILES_RESOURCE, MOCK_PROFILES.size());
+                return new HashMap<>(MOCK_PROFILES);
+            }
+            Map<String, OnetProfile> loaded = new ObjectMapper()
+                .readValue(in, new TypeReference<Map<String, OnetProfile>>() {});
+            Map<String, OnetProfile> merged = new HashMap<>(loaded);
+            // Curated mocks take precedence over generated profiles for the same code.
+            merged.putAll(MOCK_PROFILES);
+            log.info("Loaded {} O*NET profiles from {} ({} curated overrides applied)",
+                merged.size(), PROFILES_RESOURCE, MOCK_PROFILES.size());
+            return merged;
+        } catch (Exception e) {
+            log.error("Failed to load bundled O*NET profiles from {}, falling back to {} curated mock profiles: {}",
+                PROFILES_RESOURCE, MOCK_PROFILES.size(), e.getMessage());
+            return new HashMap<>(MOCK_PROFILES);
+        }
+    }
+
     @Autowired
     public OnetServiceImpl(OnetProperties properties) {
         this.properties = properties;
@@ -345,7 +384,7 @@ public class OnetServiceImpl implements OnetService {
         log.debug("Fetching O*NET profile for SOC code: {} (cache miss)", socCode);
 
         if (!isApiEnabled()) {
-            return Optional.ofNullable(MOCK_PROFILES.get(socCode));
+            return Optional.ofNullable(PROFILES.get(socCode));
         }
 
         return fetchProfileFromApi(socCode);
@@ -502,6 +541,10 @@ public class OnetServiceImpl implements OnetService {
 
     // ===== Mock Methods =====
 
+    // Keyword search intentionally stays on the curated mocks: the builder uses
+    // the frontend's local O*NET catalog for occupation search, so this fallback
+    // only needs to cover the demo occupations. Profile lookup (getProfile) uses
+    // the full bundled dataset.
     private List<OnetProfile> searchMockProfiles(String keyword) {
         String lowerKeyword = keyword.toLowerCase();
         return MOCK_PROFILES.values().stream()
@@ -517,7 +560,7 @@ public class OnetServiceImpl implements OnetService {
      */
     private Optional<OnetProfile> getProfileInternal(String socCode) {
         if (!isApiEnabled()) {
-            return Optional.ofNullable(MOCK_PROFILES.get(socCode));
+            return Optional.ofNullable(PROFILES.get(socCode));
         }
         return fetchProfileFromApi(socCode);
     }

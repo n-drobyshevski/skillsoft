@@ -94,6 +94,41 @@ class OnetServiceImplTest {
     }
 
     @Nested
+    @DisplayName("Bundled profiles (precomputed dataset)")
+    class BundledProfiles {
+
+        @Test
+        @DisplayName("getProfile resolves a non-mock occupation from the bundled dataset")
+        void getProfile_bundledNonMockCode_returnsProfileWithBenchmarks() {
+            // 17-2199.09 (Nanosystems Engineers) is NOT one of the 9 curated mocks;
+            // it must now resolve from the bundled onet-profiles.json resource.
+            Optional<OnetProfile> result = service.getProfile("17-2199.09");
+
+            assertThat(result).isPresent();
+            assertThat(result.get().occupationTitle()).isEqualTo("Nanosystems Engineers");
+            assertThat(result.get().benchmarks()).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("isValidSocCode returns true for a bundled (non-mock) code")
+        void isValidSocCode_bundledCode_returnsTrue() {
+            assertThat(service.isValidSocCode("17-2199.09")).isTrue();
+        }
+
+        @Test
+        @DisplayName("curated mock overrides the bundled profile for the same SOC code")
+        void curatedMockTakesPrecedenceOverBundled() {
+            // 15-1252.00 exists in both the bundle and the curated mocks. The
+            // hand-tuned mock (with a non-empty skills map) must win.
+            Optional<OnetProfile> result = service.getProfile("15-1252.00");
+
+            assertThat(result).isPresent();
+            assertThat(result.get().occupationTitle()).isEqualTo("Software Developers");
+            assertThat(result.get().skills()).containsKey("Programming");
+        }
+    }
+
+    @Nested
     @DisplayName("getBenchmark")
     class GetBenchmark {
 
